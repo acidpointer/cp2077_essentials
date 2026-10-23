@@ -157,6 +157,7 @@ rg -n -m 20 'fatal error:|error:|CMake Error|Traceback' build/logs/codeware-rele
 
 | Failure | Required response |
 | --- | --- |
+| Dubious ownership in container CI | Keep the post-checkout trust step in the release workflow: shell Git needs safe.directory entries for GITHUB_WORKSPACE and its descendants. Do not change host Git config or trust every repository. |
 | Missing registered Gitlink | Use a Git clone with submodules; a source ZIP lacks revision metadata. |
 | Submodule HEAD differs | Preserve edits and inspect the intended root Gitlink. Bootstrap must not check it out forcibly. |
 | Source edits are unexported | Export that project, then rebuild. |
