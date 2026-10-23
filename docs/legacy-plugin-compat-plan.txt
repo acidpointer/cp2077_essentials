@@ -1,0 +1,224 @@
+Shared legacy ABI runtime: proposed changes
+==========================================
+
+Date: 2026-10-24
+Evidence: docs/legacy-plugin-compat-evidence.txt
+Initial version pair: engine/SDK ABI 2.31 -> game 2.5 / 3.0.88.46235.
+This is a change plan. No production runtime or admission changes were made.
+
+Design contract
+---------------
+
+Support unchanged plugins through engine/SDK ABI descriptions and operation
+adapters. No compatibility behavior keyed by plugin name, DLL SHA256, vendor
+or a patched instruction RVA. Input hashes may identify fixtures and caches;
+they must not become a list of individually supported mods.
+
+Use four explicit representation policies:
+  IDENTITY: complete relevant representation/ownership contract is compatible.
+  VALUE: bounded copy-in/out for values or synchronous nonescaping objects.
+  LIVE_VIEW: stable legacy addresses with mediated access to changed live data.
+  CUSTOM: reviewed engine-level semantic adaptation for a changed operation.
+An unknown policy is not implicitly IDENTITY. Equal sizes are not proof.
+
+The protected-view backend is not sufficient for arbitrary native pointers.
+General admission remains blocked until the supported ABI contract has a
+credible pointer/boundary coverage mechanism. Do not rename a partial mode to
+"universal compatibility" or infer coverage from successful startup.
+
+Sequence and acceptance gates
+-----------------------------
+
+P0. Preserve and extend the laboratory harness
+
+Proposed root files:
+  tests/compatibility/CMakeLists.txt
+  tests/compatibility/fixtures/
+  tests/compatibility/host/
+  scripts/test-compatibility.py
+  cmake/Compatibility.cmake
+
+Promote the fixtures preserved in docs/legacy-compat-lab/ into a reproducible,
+standalone Microsoft-ABI test target. Keep normal essential builds and the six
+source projects unchanged.
+Do not use SDK CMake configuration that writes generated headers into sources.
+Store generated schemas, fixture DLLs, logs and prefixes under build/compat/.
+Backends/downloads must have reviewed source or asset pins and licenses before
+being added to sources.lock.json. The lab's downloaded binaries are not pins.
+
+Add native Windows CI plus isolated Wine/GE runs with explicit runtime paths.
+The lab has no native-Windows result. Test actual old-header fixtures from
+several SDK snapshots and compiler configurations; synthetic shifts alone
+cannot establish SDK compatibility. Add independent reference implementations
+and a withheld fixture to catch accidental fixture-specific adaptation.
+
+Gate: exception control cases pass without translation, then pass with the
+chosen backend. Cover C++ unwinding, hardware SEH, nested callbacks, worker
+threads and exact DLL initialization ordering. Do not proceed on a timeout.
+Preserve failing configurations and their logs as negative evidence.
+
+P1. ABI descriptions, extraction and validation
+
+Proposed root files:
+  compat/schema/abi.schema.json
+  compat/schema/2.31-to-2.50.json
+  compat/tools/extract-schema.py
+  compat/src/Schema.cpp
+  compat/src/AddressCatalog.cpp
+
+Use Clang's Microsoft x64 record layouts and historical/current declarations,
+plus RTTI-derived reflected fields and explicit annotations for private data.
+Record sizes, alignments, inheritance, fields, padding policy, virtual slots,
+calling conventions, argument direction, hidden returns, object lifetimes,
+ownership, callback signatures and representation policy. Generate assertions.
+
+Use semantic type/operation IDs. Address entries must have reviewed source and
+target identities and uniqueness checks; primary 32-bit hash matches alone are
+insufficient. Preserve current native address resolution behavior outside the
+compatibility router. No guessed addresses or "missing means compatible" path.
+
+SDK version 1.0.0 is insufficient to select layouts. Configure the source ABI
+family for the legacy domain before initialization; validate runtime metadata
+when available. A version-family root/policy can cover many modules without
+individual DLL rules. Automatic arbitrary-DllMain ABI inference is not promised.
+
+Gate: ambiguous identities, missing semantic rules, overlapping fields, invalid
+offsets, unsupported bitfields and unbounded pointer contracts are rejected.
+Compare actual old/current core layouts, not only fabricated examples.
+
+P2. Runtime domains and typed call thunks
+
+Proposed root files:
+  compat/src/DomainRegistry.cpp
+  compat/src/CallRouter.cpp
+  compat/src/CallbackBridge.cpp
+  compat/src/ValueMarshaller.cpp
+
+Create per-source-ABI domains and a nested per-thread domain stack. Returned
+entry thunks retain their domain explicitly; asynchronous callbacks and worker
+threads cannot rely on the loading thread's TLS or return address alone.
+Preserve the existing RED4ext_ResolveAddress export signature.
+
+Implement reviewed core operations first: RTTI callback registration, function
+construction/registration, property registration, stack-frame calls and their
+allocators/destructors. Use full Win64 signatures, including hidden sret and
+stack arguments. C++ exception specifications and ownership are part of the
+contract. Do not reinterpret arbitrary erased function pointers as compatible.
+
+Own old callbacks through their ABI handlers. Keep defining modules alive until
+the final callback/destructor returns; drain callbacks before removing a domain.
+Do not use the currently failing SDK copy-template instantiation as a bridge.
+Any SDK constness fix is a separate reviewed SDK patch, requiring all builds.
+
+Gate: retained callbacks, copies/moves, reverse calls, unload, nested domains,
+stack-frame state/destruction and output argument propagation pass independently.
+Bounded VALUE policies need a nonescape and synchronization contract; persistent
+objects cannot silently become snapshots.
+
+P3. Live object views and instruction mediation
+
+Proposed root files:
+  compat/src/ObjectRegistry.cpp
+  compat/src/ViewArena.cpp
+  compat/src/InstructionPlan.cpp
+  compat/src/ExceptionBackend.cpp
+
+Use canonical identities keyed by native object, lifetime generation, subobject
+and source ABI. Support interior/base pointers and bidirectional pointer fields.
+Keep one native backing; do not duplicate reference counts or take ownership of
+borrowed objects without a lifetime rule. Quarantine retired views to avoid
+mapping stale pointers onto reused native allocations.
+
+Allocate views in a reserved arena. Handle only owned view faults and owned
+single-step completions. A production handler must be preinitialized, bounded,
+allocation-free and safe under loader-lock/reentrant conditions. A decoder is
+not an instruction emulator; specify allowed operand forms and exact semantics.
+
+Preserve original hardware atomics where an address-only remap is valid. Handle
+base/destination overlap, index registers, RIP-relative operands, pointer-valued
+loads/stores and vector/string operations explicitly. Reject operations that
+cannot preserve access width, alignment, ordering and atomicity. Test pending
+remap recovery on faults, async delivery, debugger interaction and other VEH
+registrations. Unknown exceptions must retain normal application semantics.
+
+Gate: aliasing, derived classes, arrays, handles, reclamation, nested faults,
+typed bulk copies and concurrent native updates pass. The lab's MOV/XADD subset
+is not a production implementation. Establish coverage for pointer-producing
+boundaries and raw aliases before claiming automatic admission is safe.
+
+P4. Loader integration and controlled diagnostics
+
+Planned RED4ext source touch points, maintained as root patches:
+  sources/red4ext/src/dll/App.cpp
+  sources/red4ext/src/dll/Systems/PluginSystem.cpp
+  sources/red4ext/src/dll/Addresses.cpp
+  sources/red4ext/src/dll/v1/Funcs.cpp
+  sources/red4ext/src/dll/Config.hpp and Config.cpp
+  sources/red4ext/src/dll/Hooks/ValidateScripts.cpp
+  sources/red4ext/src/dll/Utils.hpp and Utils.cpp
+
+Initialize the optional runtime before plugin LoadLibraryEx calls. Validate early
+module notification behavior on each platform; keep notification code limited
+to preallocated state publication. Select the ABI family before early engine
+interaction and reconcile Query results afterward. Retain normal rejection for
+unsupported runtime/domain combinations. A general override is not a bridge.
+
+Compatibility diagnostics should identify the ABI, operation/type and missing
+rule. Persist and flush them outside exception/loader-critical paths. Bound the
+fatal UI wait so an unanswered dialog cannot become a watchdog timeout. No
+background backend faults may be reported as successful plugin initialization.
+
+Gate: existing native plugins remain unchanged in behavior, loader/API exports
+remain compatible, unsupported operations give actionable diagnostics, and
+initializers, dependencies and worker entry points are covered by the contract.
+
+P5. Hook coverage, performance and game validation
+
+Proposed root files:
+  compat/src/HookRouter.cpp
+  tests/compatibility/benchmarks/
+
+Bridge known function-entry hooks and original trampolines through the same ABI
+schemas, preserving chain order. Private hook libraries, raw RVAs, historical
+pattern scans and mid-function patches are separate coverage requirements.
+Do not forward an arbitrary old code patch into the current executable.
+
+Use native identity paths and bounded value adapters before optimizing faults.
+If instruction caching/JIT is needed, require exception-state translation and
+unwind metadata to pass first. Neither tested DBI configuration is approved as
+the production default. Do not claim a backend fork is trivial.
+
+Measure actual operation frequencies and fixed gameplay scenes. Proposed initial
+performance target: no more than 10% additional CPU frame time and no more than
+2 ms at p95, whichever is stricter; revisit with measured user workloads. This
+is a proposed acceptance target, not observed performance. Avoid multiplying
+the fixture's throughput into an unmeasured FPS estimate.
+
+Gate: multiple unrelated unchanged real plugins work without plugin-specific
+adaptation rules. Test startup, gameplay, input restoration, session reloads,
+official mod reload, save/load and persisted data on backups. Also test native
+Windows, actual MO2/Proton launch, graphics/CET/other hooks and crash reporters.
+Installing test components or modifying game/MO2 files requires a separate
+explicit user request; no such installation is part of this research.
+
+Repository and release boundaries
+---------------------------------
+
+- Keep the feature experimental and disabled by default through P0-P4.
+- Root source projects remain at their Gitlink pins. Loader/SDK source changes
+  need ordered exported patch layers, never child commits or hand-edited hashes.
+- A plan does not authorize Git mutation, patch-helper object/index writes,
+  submodule initialization, staging, commits or publication.
+- Build the loader for loader changes; any shared SDK change requires all five
+  native builds and ABI checks. Preserve current runtime/layout/script invariants.
+- Defer package/release changes until P5 passes. Do not silently add a sixth
+  runtime archive or backend binary to the existing five-package release set.
+- Report script/resource/save-format limits separately from native ABI support.
+
+Open acceptance evidence
+------------------------
+
+Native Windows, early notification ordering, complete operation/boundary
+coverage, rich object lifetime semantics, production hook compatibility and
+gameplay/save/performance results remain open. Their exact tests and sequencing
+are specified above. No claim that all evidence gaps are closed is warranted.

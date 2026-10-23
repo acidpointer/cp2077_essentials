@@ -1,0 +1,19 @@
+{
+  "returncode": 5,
+  "command": [
+    "wine",
+    "<lab>/dynamorio/bin64/drrun.exe",
+    "-verbose",
+    "-root",
+    "<lab-win>\\dynamorio",
+    "-no_follow_children",
+    "-debug",
+    "-loglevel",
+    "2",
+    "-logdir",
+    "<lab-win>\\dr-debug-logs",
+    "--",
+    "<lab-win>\\callback_bridge.exe"
+  ],
+  "logfiles": []
+}

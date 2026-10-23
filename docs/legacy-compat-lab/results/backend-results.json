@@ -1,0 +1,32 @@
+[
+  {
+    "mode": "no-client",
+    "returncode": 5,
+    "command": [
+      "wine",
+      "<lab>/dynamorio/bin64/drrun.exe",
+      "-root",
+      "<lab-win>\\dynamorio",
+      "-no_follow_children",
+      "--",
+      "<lab-win>\\callback_bridge.exe"
+    ],
+    "output": "WARNING: overriding existing registration\n"
+  },
+  {
+    "mode": "empty-client",
+    "returncode": 5,
+    "command": [
+      "wine",
+      "<lab>/dynamorio/bin64/drrun.exe",
+      "-root",
+      "<lab-win>\\dynamorio",
+      "-no_follow_children",
+      "-c",
+      "<lab-win>\\dynamorio\\samples\\bin64\\empty.dll",
+      "--",
+      "<lab-win>\\callback_bridge.exe"
+    ],
+    "output": "WARNING: overriding existing registration\n"
+  }
+]

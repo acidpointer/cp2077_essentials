@@ -1,0 +1,32 @@
+002c:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+002c:fixme:winediag:loader_init wine-staging 11.20 is a testing version containing experimental patches.
+002c:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+002c:err:wineboot:process_run_key Error running cmd L"C:\\windows\\system32\\winemenubuilder.exe -a -r" (126).
+003c:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+0048:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+006c:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+0084:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+009c:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+0024:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+0024:fixme:winediag:loader_init wine-staging 11.20 is a testing version containing experimental patches.
+0024:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.
+INFO: default root: <lab-win>\dynamorio
+INFO: default toolconfig dir: <lab-win>\dynamorio/tools
+INFO: targeting application: "<lab-win>\callback_bridge.exe"
+INFO: app cmdline:  "<lab-win>\callback_bridge.exe"
+INFO: configuration directory is "<lab-win>\dr-config/dynamorio"
+00dc:trace:seh:libc_addr_cb found signal trampoline in /usr/lib/libc.so.6
+INFO: created child with pid 216 for <lab-win>\callback_bridge.exe
+INFO: waiting forever for app to exit...
+00dc:trace:seh:dispatch_exception code=c0000005 (EXCEPTION_ACCESS_VIOLATION) flags=0 addr=0000000000179828
+00dc:trace:seh:dispatch_exception  info[0]=0000000000000008
+00dc:trace:seh:dispatch_exception  info[1]=0000000000179828
+00dc:trace:seh:dispatch_exception rip=0000000000179828 rsp=000000000011e188 rbp=000000000011e290 eflags=00010216
+00dc:trace:seh:dispatch_exception rax=000000000000002f rbx=00000000001548d4 rcx=000000000011e1f0 rdx=00000000001548d4
+00dc:trace:seh:dispatch_exception rsi=0000000000000000 rdi=0000000000000000  r8=00000000000000d4  r9=0000000000000010
+00dc:trace:seh:dispatch_exception r10=00000000ffffffbf r11=00000000ffffffbf r12=0000000000000208 r13=00000000711af900
+00dc:trace:seh:dispatch_exception r14=0000000000000104 r15=000000010002d000 mxcsr=00001f80 cs=0033 ss=002b
+00dc:err:seh:NtRaiseException Unhandled exception code c0000005 flags 0 addr 0x179828
+0024:fixme:kernelbase:AppPolicyGetProcessTerminationMethod FFFFFFFFFFFFFFFA, 000000000011FEE0
+00e0:fixme:winediag:loader_init wine-staging 11.20 is a testing version containing experimental patches.
+00e0:fixme:winediag:loader_init Please mention your exact version when filing bug reports on winehq.org.

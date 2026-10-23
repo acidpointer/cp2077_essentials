@@ -1,0 +1,14 @@
+[
+  {
+    "runtime": "system-wine",
+    "returncode": 0,
+    "output": "BYPASS raw=7 current=42 faults=0\nFIELDS first=42 second=99 callback=99 faults=4 steps=4 SEH=1 unrelated_AV=1 CXX=1\nBASELINE native=20000 elapsed_ms=1.484\nATOMIC native=20000 faults=20004 steps=20004 elapsed_ms=85.624\n",
+    "guest_sha256": "5dd74b4ab04dfabf0a72d9737019324b877cd9f1f40e69cf92c743e94b11d427"
+  },
+  {
+    "runtime": "ge-steamrt4",
+    "returncode": 0,
+    "output": "pressure-vessel-wrap[203753]: W: No colon found in DISPLAY=\nntsync: up and running.\nBYPASS raw=7 current=42 faults=0\nFIELDS first=42 second=99 callback=99 faults=4 steps=4 SEH=1 unrelated_AV=1 CXX=1\nBASELINE native=20000 elapsed_ms=0.986\nATOMIC native=20000 faults=20004 steps=20004 elapsed_ms=83.368\n",
+    "guest_sha256": "5dd74b4ab04dfabf0a72d9737019324b877cd9f1f40e69cf92c743e94b11d427"
+  }
+]

@@ -1,0 +1,1117 @@
+[
+  {
+    "path": "bin64/balloon.exe",
+    "size": 242176,
+    "sha256": "18bc263f863c84b0e39c0b5bffca34cd1c9208bca5bac3138d3856722b0ee11f"
+  },
+  {
+    "path": "bin64/balloon.pdb",
+    "size": 4763648,
+    "sha256": "390035bd9a9412145e78139def8ec001ce0ab15dcd9e48fd17daffb16370fbef"
+  },
+  {
+    "path": "bin64/closewnd.exe",
+    "size": 144384,
+    "sha256": "803f63e3b97c1d36e9c7668a5ca3db0e31a40dade60c41df8a017cc5672c168c"
+  },
+  {
+    "path": "bin64/closewnd.pdb",
+    "size": 3821568,
+    "sha256": "a870a8b1c9242e69eebccfa83feb85f34f6b5bca997be02738d23cb664f8d139"
+  },
+  {
+    "path": "bin64/create_process.exe",
+    "size": 147456,
+    "sha256": "9b1ddd5ab98cd441373b19647e3025553a047963d95d961f77e879472b87f067"
+  },
+  {
+    "path": "bin64/create_process.pdb",
+    "size": 3854336,
+    "sha256": "e6e5caba1e8bbe1dfef6db810faeddb4fe7c9b4a8e899f8d53445cf26326ec58"
+  },
+  {
+    "path": "bin64/drconfig.exe",
+    "size": 282112,
+    "sha256": "46a00f24926a35d566f606be2de3f352d665e663e3a1f42f61ba01a57c2dacce"
+  },
+  {
+    "path": "bin64/drconfig.pdb",
+    "size": 5083136,
+    "sha256": "6e346810b596beb6d11e420629d4c0d3acbfd7f97899df318f86499c417f7f4c"
+  },
+  {
+    "path": "bin64/drconfiglib.dll",
+    "size": 285696,
+    "sha256": "bb893961e74f3575962875efb523221bed9191cdf0f5bc6a470dcd1c3b55058c"
+  },
+  {
+    "path": "bin64/drconfiglib.lib",
+    "size": 7898,
+    "sha256": "81572590761dbc36d3b21b1eeb822fedac44b254fde5bc5c2316fe77f2b13add"
+  },
+  {
+    "path": "bin64/DRcontrol.exe",
+    "size": 311296,
+    "sha256": "46d1953e9f05d8361317ddf13b2952eda64f351e0bec9e7307a6238370c1b049"
+  },
+  {
+    "path": "bin64/DRcontrol.pdb",
+    "size": 4894720,
+    "sha256": "91d8fa4c329699242e04068fc986d3b62272c3f874e64afc4669566647f31184"
+  },
+  {
+    "path": "bin64/drdisas.exe",
+    "size": 957952,
+    "sha256": "fdb71c26b254f6ee0a396f60487814ba9cbfbaba8658269bdc32e8912b5ad192"
+  },
+  {
+    "path": "bin64/drfrontendlib.lib",
+    "size": 185846,
+    "sha256": "6c111e9822c85894b8727cd316d3381068098e85117768fea8c5f744c5756706"
+  },
+  {
+    "path": "bin64/drinject.exe",
+    "size": 265728,
+    "sha256": "a560502d38f58089d3eb4165dd5bf97657007579c3ea72e0f00a9dcf6982ee1f"
+  },
+  {
+    "path": "bin64/drinject.pdb",
+    "size": 5091328,
+    "sha256": "c559ef45c5c428a3e1aac96afc5b0cccd91273636bf7c6920363ca14a9bc8faa"
+  },
+  {
+    "path": "bin64/drinjectlib.dll",
+    "size": 793088,
+    "sha256": "ad74a8ba26257766ae08595d6e4ce0b998831b9535d91699acabe27482468419"
+  },
+  {
+    "path": "bin64/drinjectlib.lib",
+    "size": 98038,
+    "sha256": "4ca6ecf8fa2f96a18d13fba067ada5225b891af240ff4ca27e30f7c1f68de462"
+  },
+  {
+    "path": "bin64/DRkill.exe",
+    "size": 228352,
+    "sha256": "63839682af52529adc7d867a621aa206b9dbc048e00e52a30cb713d748b73ab2"
+  },
+  {
+    "path": "bin64/DRkill.pdb",
+    "size": 4640768,
+    "sha256": "4e725469e6d03aec5c1a308c98fa90e151e99c61bdd812bbfab09808f501d060"
+  },
+  {
+    "path": "bin64/DRload.exe",
+    "size": 183296,
+    "sha256": "300722fa2c197422d9292f191617ebf48003fc7457f74ce3b6fd536379046079"
+  },
+  {
+    "path": "bin64/DRload.pdb",
+    "size": 4255744,
+    "sha256": "f20b88a42a18bbc97bef9484e2ad315ef5bcb27eda41a33f46603e59dc4d84c0"
+  },
+  {
+    "path": "bin64/drrun.exe",
+    "size": 281600,
+    "sha256": "ce109dfc9fc3485a1e530d411a35a2d59184ac69590d5255d8724fb9edb4aad5"
+  },
+  {
+    "path": "bin64/drrun.pdb",
+    "size": 5107712,
+    "sha256": "3a7b079d5f59960efadfb1edef936aee2861ff566400fbc80d813a32a058888e"
+  },
+  {
+    "path": "bin64/DRstats.exe",
+    "size": 2869760,
+    "sha256": "8431755f52c5aefab6ac5b8c243d7e57432bf45a5d4e381f7933afcb07c69051"
+  },
+  {
+    "path": "bin64/DRstats.pdb",
+    "size": 24940544,
+    "sha256": "d6545bed5a42fb42acd9f177f2d91ee92423af35a61a1c0e4f55bbcda142707c"
+  },
+  {
+    "path": "bin64/DRview.exe",
+    "size": 268288,
+    "sha256": "c7a2a8ee2451311b9bad5b6e8cf2af05b3382d44fc6e9b8cd8a269f9b78505f3"
+  },
+  {
+    "path": "bin64/DRview.pdb",
+    "size": 4861952,
+    "sha256": "56f3621c5d5c853a3fb97eb2691323c00d341b169ca3bf07fe538c888ff3cd40"
+  },
+  {
+    "path": "bin64/dummy.exe",
+    "size": 109568,
+    "sha256": "e0aa342b438784f77dfdb196f06681b0b938caa67414f3ba80594378e5fab205"
+  },
+  {
+    "path": "bin64/dummy.pdb",
+    "size": 3706880,
+    "sha256": "8491a8791a1969a77a6695e196c23d36c6e5b30a46ba8da15901e7531ee40c30"
+  },
+  {
+    "path": "bin64/dumpevts.pdb",
+    "size": 4083712,
+    "sha256": "149263b3d421f01cfc9fe1dc11a4279bbf48528252d4e79443fa8592c5076313"
+  },
+  {
+    "path": "bin64/load_syms64.txt",
+    "size": 2625,
+    "sha256": "92cc166e0f906b6d9ade5f8051d2dd4741d58f1faf3b764862ad633da7b2fc9d"
+  },
+  {
+    "path": "bin64/run_in_bg.pdb",
+    "size": 4083712,
+    "sha256": "757e06ba02377ae732176e47db98893afea77d73fda0a17bc6d71a0c8ece6f76"
+  },
+  {
+    "path": "bin64/svccntrl.exe",
+    "size": 161792,
+    "sha256": "eebafe8ac3320c33898d824eb161c322b76e13691f0def6adde7196a0369b438"
+  },
+  {
+    "path": "bin64/svccntrl.pdb",
+    "size": 3936256,
+    "sha256": "d76ba4814a63d8d75f839bff3c285ad61d79584c447b6537a1acc7ada3dce067"
+  },
+  {
+    "path": "bin64/winstats.exe",
+    "size": 172544,
+    "sha256": "29de2b68f522a6bec068550b9af5a31a287dae43740b0cd33b30d0473893ad95"
+  },
+  {
+    "path": "bin64/winstats.pdb",
+    "size": 4083712,
+    "sha256": "eaa407f7909d8689f76d697f234e20c3610bca77219f89ec13704c16831c57bf"
+  },
+  {
+    "path": "ext/lib64/release/dbghelp.dll",
+    "size": 2259288,
+    "sha256": "23d33e01020b6d1de7dd29cd737287042476a6e0a8deafdab68f01e61a801fcf"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup.dll",
+    "size": 29184,
+    "sha256": "b377a85ada314ec22aa1f6438cf2706a8f71c20bc6ca864e466f8d2f6cd5f95a"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup.lib",
+    "size": 3518,
+    "sha256": "13800043f23bddbd0c63b2069f8594b906af384b9b93e78870186d994cdb7fab"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup.pdb",
+    "size": 323584,
+    "sha256": "03892d7c11d43f9c5bf54c8c2c3d59d72b7f0f926df20ca3576e79fc4b0c61de"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup_drstatic.lib",
+    "size": 178276,
+    "sha256": "53e65aee56230258601297ccf443e0cf3132c58a12915ef5897e360216275323"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup_drstatic.pdb",
+    "size": 135168,
+    "sha256": "31ca3b71716fa4f52a050bbe56613eaf5a6587dd17e4cc63da2c2dc1d380be37"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup_static.lib",
+    "size": 178266,
+    "sha256": "1700aaf61958d678fef97d90ca3d3413e2cbac60722f29f710f547ef5dacff65"
+  },
+  {
+    "path": "ext/lib64/release/drbbdup_static.pdb",
+    "size": 135168,
+    "sha256": "173177d6b63d3c63d81d67ab8493cc6d01cb84c91e299f5265cb4d36346337e7"
+  },
+  {
+    "path": "ext/lib64/release/drcontainers.lib",
+    "size": 180362,
+    "sha256": "7f3cc1561792f7b37874899e215377b12bedbdc831c340c6ae141d7d278db545"
+  },
+  {
+    "path": "ext/lib64/release/drcontainers.pdb",
+    "size": 143360,
+    "sha256": "e8e7e9879c6d64590370e06cbe7933699d70d3299299fd1958a91e0116f62749"
+  },
+  {
+    "path": "ext/lib64/release/drcontainers_drstatic.lib",
+    "size": 180446,
+    "sha256": "ec863ea0d3359d6349f25ed99ef7634b5355f8980256823b2a24132cbc90b10c"
+  },
+  {
+    "path": "ext/lib64/release/drcontainers_drstatic.pdb",
+    "size": 143360,
+    "sha256": "2ef63f3182c89894f2bb7b199cbd56864bb55fe691bf5c3aad67082a53727ec2"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib.dll",
+    "size": 22528,
+    "sha256": "cff574bd992701b7f0ce035d491cb6809fa44447e2bf2bf6596ba91763c894b5"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib.lib",
+    "size": 5522,
+    "sha256": "ca9e6c1efaff91ac63c3a821ac849b8f5aae3c5b1c80f390bbdfb80cede5dba2"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib.pdb",
+    "size": 307200,
+    "sha256": "92885b6b121cae5dc8570787b6a1f21b2c062690288a3197277c0d04770c90cc"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib_drstatic.lib",
+    "size": 152214,
+    "sha256": "5c3b8e044c02800fb39d3528b75db2c553711e074811e1b8662ee12b68d3f07e"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib_drstatic.pdb",
+    "size": 143360,
+    "sha256": "b8c8655810f3e6db15f78f18cc0059eb34d0c5c08644ba9cf357913f389bb2c9"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib_static.lib",
+    "size": 152194,
+    "sha256": "55d1ebc8663a3c02cefeea9351b42f6eb946902c55a38b3e09f03349d0cded24"
+  },
+  {
+    "path": "ext/lib64/release/drcovlib_static.pdb",
+    "size": 143360,
+    "sha256": "a89c9c1e0370e85fc9a1987b39126456cb9142b750d3ca45c4fc3ad52c7b2f99"
+  },
+  {
+    "path": "ext/lib64/release/drmgr.dll",
+    "size": 51200,
+    "sha256": "23657225ce25b41cff6086bacf60db6e43e077a011b2baf89b29466f31581d37"
+  },
+  {
+    "path": "ext/lib64/release/drmgr.lib",
+    "size": 34666,
+    "sha256": "546870ad5b714b4ee40e3524c83f4fbc22d4b9483e8c53c6d2a47d53f88e8b18"
+  },
+  {
+    "path": "ext/lib64/release/drmgr.pdb",
+    "size": 405504,
+    "sha256": "6cd9c8695d9e894ff677bd70f4cfef5a741f3e2211d93f3160e2c43ab92cb461"
+  },
+  {
+    "path": "ext/lib64/release/drmgr_drstatic.lib",
+    "size": 369494,
+    "sha256": "3bfd8e80ff1a9688da352042586caae89afa77dade8a0ca3974471191a730e0b"
+  },
+  {
+    "path": "ext/lib64/release/drmgr_drstatic.pdb",
+    "size": 143360,
+    "sha256": "4dff7017e2a2bb0efbaa030e329e0d07c07b61e1cc0b742e8de7c89212ed884b"
+  },
+  {
+    "path": "ext/lib64/release/drmgr_static.lib",
+    "size": 369488,
+    "sha256": "fe221d390660ca99fde696b911fa7b6508b40484da5555bd000f70a4912f3ca2"
+  },
+  {
+    "path": "ext/lib64/release/drmgr_static.pdb",
+    "size": 143360,
+    "sha256": "1d789ca94799494083c88876bbf4cdde136dc51cc60c42430d3fa40ac59d7f2c"
+  },
+  {
+    "path": "ext/lib64/release/drreg.dll",
+    "size": 33280,
+    "sha256": "3031fc6f4fecda3c2b8c99063b06c4b67a34ee9af76a0adc7c85ff6585b980db"
+  },
+  {
+    "path": "ext/lib64/release/drreg.lib",
+    "size": 7310,
+    "sha256": "88b12600c78960f0932a5c1a8a2b6eda8a7fba40636041e91faa27bbdd17f5f1"
+  },
+  {
+    "path": "ext/lib64/release/drreg.pdb",
+    "size": 315392,
+    "sha256": "f3702c790e771aa0048f32c1390c570ed53e14bd6555afd9cba038749365f652"
+  },
+  {
+    "path": "ext/lib64/release/drreg_drstatic.lib",
+    "size": 175726,
+    "sha256": "0d1948b5897aa705324f698ff87cc6d86dfc4fc3125c48f969ae18ca0ca8d803"
+  },
+  {
+    "path": "ext/lib64/release/drreg_drstatic.pdb",
+    "size": 126976,
+    "sha256": "3bbda7266e0c08fa1beb152d4c23d98ddb5004673cf7d459dadd722a024c953b"
+  },
+  {
+    "path": "ext/lib64/release/drreg_static.lib",
+    "size": 175720,
+    "sha256": "64ebd3d657f51e122b39492c9187a1582ac4ac6d97a7df8c3e45b550997c9951"
+  },
+  {
+    "path": "ext/lib64/release/drreg_static.pdb",
+    "size": 126976,
+    "sha256": "d45e901faa9da7a2a5dbe87329706eb9aff1e39de420ad720166eede476f5a97"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp.dll",
+    "size": 9728,
+    "sha256": "cb761d6de06293a3f1657767c37a40ecd6986eba69b830917303d7ada611e4c0"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp.lib",
+    "size": 2630,
+    "sha256": "fbac1c4395389cfa97e64d82c829ca6513984f0d87352e5a901b1aeda95f3d42"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp.pdb",
+    "size": 233472,
+    "sha256": "e0f901aba99551d32abbf7fc26a52ea50cf4f48d468236bcbe601b9b339b078e"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp_drstatic.lib",
+    "size": 74302,
+    "sha256": "3347380b1e83f5dcf630851ae7983f0a2524617166685705d54a20f48d7d736f"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp_drstatic.pdb",
+    "size": 118784,
+    "sha256": "59720232a2372cb4c88928c4e0c53ebbcb4a79c02aefec711b5dcc4799088233"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp_static.lib",
+    "size": 74296,
+    "sha256": "411c4a59b544d5935b6292a2d2bd96b09501575424b2728a9d2e96dd166ef803"
+  },
+  {
+    "path": "ext/lib64/release/drstatecmp_static.pdb",
+    "size": 118784,
+    "sha256": "4527fe8fb294de8f04d2342629e99ad068b35e254b7136167ce1679264c41588"
+  },
+  {
+    "path": "ext/lib64/release/drsyms.dll",
+    "size": 326656,
+    "sha256": "bede75ee9b3f347729598f34a26bf1818dcc30415e16c97ee6d1af390c8a0583"
+  },
+  {
+    "path": "ext/lib64/release/drsyms.lib",
+    "size": 5698,
+    "sha256": "3b654184eb4ac49b3df675d445ff1e93dd06ceb4b54160da86ba316c6a69748c"
+  },
+  {
+    "path": "ext/lib64/release/drsyms.pdb",
+    "size": 5033984,
+    "sha256": "4c4380e75de19eea9fc2fe5f35329efa84aa49a4ba812166584d9d078b806ff1"
+  },
+  {
+    "path": "ext/lib64/release/drsyms_drstatic.lib",
+    "size": 522514,
+    "sha256": "b6719f23ae1eb689085089070b8ddc42a704bd7f0e6a51f206bef9b0c592a3ed"
+  },
+  {
+    "path": "ext/lib64/release/drsyms_drstatic.pdb",
+    "size": 184320,
+    "sha256": "9b288f64f529b26d3dd6d6cfc6577096f613dc3d3b82e69488ab1682632b0c6b"
+  },
+  {
+    "path": "ext/lib64/release/drsyms_static.lib",
+    "size": 522490,
+    "sha256": "fce1852c596f7aa568823c126061f1c7fe396c2a808162ca90afadbe715b6729"
+  },
+  {
+    "path": "ext/lib64/release/drsyms_static.pdb",
+    "size": 192512,
+    "sha256": "c2c82474b3997dec1ac046a46a57f5c41d85ade663063a50f3c1d92fafa3c870"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall.dll",
+    "size": 1956352,
+    "sha256": "ea8271c086b131d580532b3b2cf214bbf29a1b6cce1cf5c2f9f9f9ab018ac728"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall.lib",
+    "size": 8524,
+    "sha256": "7360800ce430266421e11631fe5a4c6e4470854ad8ab988f9ebb6bfe7ae11982"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall.pdb",
+    "size": 6565888,
+    "sha256": "80a65082a0fa391f9dd2ac595e54cf494e2f28047a9dd6b955a27005eea42972"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall_drstatic.lib",
+    "size": 6082488,
+    "sha256": "72121b431715edd01f221b5a4c0c7da7f49838d165b573cf0f9486343d00cb34"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall_drstatic.pdb",
+    "size": 995328,
+    "sha256": "650cc89870ce38f140d29b4757beaa73da0fce0a17822daccf35fb0ab27d01f5"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall_static.lib",
+    "size": 6082404,
+    "sha256": "9252583be609214e1ade48c121c10f076570eef82f8ae319f8c982dccbc8aa99"
+  },
+  {
+    "path": "ext/lib64/release/drsyscall_static.pdb",
+    "size": 995328,
+    "sha256": "b7bb5a6687854a20169e740b1f11d1b6b90ab616b661dcee1372a89ef7789058"
+  },
+  {
+    "path": "ext/lib64/release/drutil.dll",
+    "size": 11264,
+    "sha256": "3acaba3b349b1f3ad7288033a53f3bad41ed30fd7642df1c43610aeff3550eac"
+  },
+  {
+    "path": "ext/lib64/release/drutil.lib",
+    "size": 3830,
+    "sha256": "811d23602d38e2a0b9dfb52f2fb7aeb54b281c4df42534698bca834d86d28130"
+  },
+  {
+    "path": "ext/lib64/release/drutil.pdb",
+    "size": 225280,
+    "sha256": "15582ab166eadeeb4ac30aa7fa3c1ccf18889f37f0a7534264e79076b39af3ec"
+  },
+  {
+    "path": "ext/lib64/release/drutil_drstatic.lib",
+    "size": 52884,
+    "sha256": "5e15b9e8a19a7087c804c6e16ab478ae426efe02476b2b2c3b70674b8be860b1"
+  },
+  {
+    "path": "ext/lib64/release/drutil_drstatic.pdb",
+    "size": 110592,
+    "sha256": "db3de74632ad1abf976b1cd4c5b9b0bc5a606733898d9bf0b3288b5a1a306a5f"
+  },
+  {
+    "path": "ext/lib64/release/drutil_static.lib",
+    "size": 52878,
+    "sha256": "477df7d8eae86a3858044dffb12a868848ba3b6796172f01d9c3082e3745de56"
+  },
+  {
+    "path": "ext/lib64/release/drutil_static.pdb",
+    "size": 110592,
+    "sha256": "dadfea59b6888187ba6ec7d9cebf73e9f7ced4ea6dda405bb81a426180052423"
+  },
+  {
+    "path": "ext/lib64/release/drwrap.dll",
+    "size": 32768,
+    "sha256": "0c987f84786eaa5550359d895842006132bc4d66adc3d80d9a56030cd3b24ab3"
+  },
+  {
+    "path": "ext/lib64/release/drwrap.lib",
+    "size": 9290,
+    "sha256": "ccc39e4b0cf2b9dec5ff06bfb4cdcff9d9a9ed4ceb19d8e427754d6ffbe910af"
+  },
+  {
+    "path": "ext/lib64/release/drwrap.pdb",
+    "size": 348160,
+    "sha256": "e6569fb278bc36a6e5e7b5eac2aca23105d570d00a9065673d1020fbefef2560"
+  },
+  {
+    "path": "ext/lib64/release/drwrap_drstatic.lib",
+    "size": 177764,
+    "sha256": "7570da6bf61d1b01a9898eb433e2d36efecaddb0c8f76f843e4c210ded84ff36"
+  },
+  {
+    "path": "ext/lib64/release/drwrap_drstatic.pdb",
+    "size": 135168,
+    "sha256": "4f328ba8750471326f2c51e14100e5c5b099d37f673a2da4c8a11bb2d6658c76"
+  },
+  {
+    "path": "ext/lib64/release/drwrap_static.lib",
+    "size": 177748,
+    "sha256": "e194b2d6edee1128a1a09583db843483e51c0f66946fbb789eea6d586ae7dd4b"
+  },
+  {
+    "path": "ext/lib64/release/drwrap_static.pdb",
+    "size": 135168,
+    "sha256": "c47d0e0c4e9df9e123811e145c4e38fe225b3eeb01b0fc3925482876e1a58401"
+  },
+  {
+    "path": "ext/lib64/release/drx.dll",
+    "size": 50176,
+    "sha256": "7e134f736e680440135a533460c793a748d09d5277565fa3f776911e72611fb2"
+  },
+  {
+    "path": "ext/lib64/release/drx.lib",
+    "size": 7394,
+    "sha256": "400e20b7b2c36e4264992cd28db97b8e748400fac0d46be05acc5f35e23f82af"
+  },
+  {
+    "path": "ext/lib64/release/drx.pdb",
+    "size": 438272,
+    "sha256": "51f64a747bd9b6e820b8fdbeb4d141fcbb703081051f8e725f98602fb860a22a"
+  },
+  {
+    "path": "ext/lib64/release/drx_drstatic.lib",
+    "size": 361384,
+    "sha256": "692a708cfc5a6be57a7feec11d0cab5f7f009c1efb3397a20b649d72e6cef39b"
+  },
+  {
+    "path": "ext/lib64/release/drx_drstatic.pdb",
+    "size": 176128,
+    "sha256": "14f89550ac49d86a36eea4f7de48f958807ee25e812cb47e3b8a8bd8ab685f6e"
+  },
+  {
+    "path": "ext/lib64/release/drx_static.lib",
+    "size": 361348,
+    "sha256": "3d046737ef405aace78d40bdce46230219a7432a30f5c662d481e050f73dd5ca"
+  },
+  {
+    "path": "ext/lib64/release/drx_static.pdb",
+    "size": 176128,
+    "sha256": "e2cf368b87e2d3e5c44148ca523272d057f8fb1804b8cc0be1be7a4aa986fea2"
+  },
+  {
+    "path": "ext/lib64/release/dwarf.lib",
+    "size": 2505216,
+    "sha256": "04f6497d06173167a8819b88a8ef741231f46dfcb44359f9bb794bc2127b0eef"
+  },
+  {
+    "path": "ext/lib64/release/dwarf.pdb",
+    "size": 184320,
+    "sha256": "5639413587ffd02adfea3b33bd76b906aefc3c18f4d59582aeb4a924b3d8015b"
+  },
+  {
+    "path": "ext/lib64/release/elftc.lib",
+    "size": 868748,
+    "sha256": "3edb19e969f4145e8f7742ee210c9b2130bc6cdf58d6d07fd61b00102579fdcd"
+  },
+  {
+    "path": "ext/lib64/release/elftc.pdb",
+    "size": 118784,
+    "sha256": "e34211dd321c9503c07dfe55fbe41bd1fa73904563b38c447395d0dcf4a087b7"
+  },
+  {
+    "path": "lib32/debug/dynamorio.dll",
+    "size": 4913664,
+    "sha256": "03573c4a9764d81acb62907f5694a30a91a8419bdb04feff1260d07c1502a5a7"
+  },
+  {
+    "path": "lib32/drpreinject.dll",
+    "size": 131584,
+    "sha256": "4814bedd40d512d862c2e8bf9bc85d0c4312c379f4f5133cc65b323cf00240ba"
+  },
+  {
+    "path": "lib32/release/dynamorio.dll",
+    "size": 1317376,
+    "sha256": "e5e35159a02bd5670c5f146ba982c11beaf3b5ad229fc0eada8935be432080b3"
+  },
+  {
+    "path": "lib64/debug/drdecode.lib",
+    "size": 3692766,
+    "sha256": "177aceec3e25fac6822e362c6e5e055eb08eedf333a93ccbe8969ce42ab10ab5"
+  },
+  {
+    "path": "lib64/debug/dynamorio.dll",
+    "size": 5927424,
+    "sha256": "42b1c5d2bbdc0e09890df6dd68d83f751436432a6be6a4665dbf3e1d91c3d52d"
+  },
+  {
+    "path": "lib64/debug/dynamorio.lib",
+    "size": 202378,
+    "sha256": "ff1fe59c810eebff4811972b893934a5cb47776e0173e9fb22b91d5b3319cb7a"
+  },
+  {
+    "path": "lib64/debug/dynamorio.pdb",
+    "size": 6369280,
+    "sha256": "1ac3bb61575084da9b391f6a2fcda2bb3d9e0566eb7873e5db562fe759ecfa75"
+  },
+  {
+    "path": "lib64/debug/dynamorio_static.lib",
+    "size": 22065250,
+    "sha256": "9e61f9e84e13781a493f797a4bfbea9970a89da4abac9b2d70379d8fa5f715ba"
+  },
+  {
+    "path": "lib64/drpreinject.dll",
+    "size": 150528,
+    "sha256": "a01902dd8d80a09abddddf37cfcd202b70131e14e5325b65f63bee722600b1c2"
+  },
+  {
+    "path": "lib64/release/drdecode.lib",
+    "size": 3529402,
+    "sha256": "7b8f76a9fae7b0d523ed3003f9976c0f56364827bd13adf230b640541cbee3a3"
+  },
+  {
+    "path": "lib64/release/dynamorio.dll",
+    "size": 1682944,
+    "sha256": "b6477af7add405e21b8d57a34d4e75221843c9fb21f8908e158ba01e4e79377d"
+  },
+  {
+    "path": "lib64/release/dynamorio.lib",
+    "size": 202378,
+    "sha256": "ff1fe59c810eebff4811972b893934a5cb47776e0173e9fb22b91d5b3319cb7a"
+  },
+  {
+    "path": "lib64/release/dynamorio.pdb",
+    "size": 5312512,
+    "sha256": "ee07a7379cd0ac1e44ca24975deb7a8fa63b108cfe8746ad4c76e6834b7323e5"
+  },
+  {
+    "path": "lib64/release/dynamorio_static.lib",
+    "size": 14773306,
+    "sha256": "33c909d004a349f1fb8cbe4375b659cd7e626bf81226d7fbb00d2e607e3375b1"
+  },
+  {
+    "path": "samples/bin64/bbbuf.dll",
+    "size": 106496,
+    "sha256": "254aaf7c92d5e727bbe38d89febe676f7f29da8e45067e6466ddd543de23d376"
+  },
+  {
+    "path": "samples/bin64/bbbuf.lib",
+    "size": 2082,
+    "sha256": "40b4bb36dc4f1896b86b2eaa1f44df4d7e880f79cf540dc1ed2afb46ef8395e0"
+  },
+  {
+    "path": "samples/bin64/bbbuf.pdb",
+    "size": 3624960,
+    "sha256": "f6bc67e68dad8078a6b2a7f25b654321dacbcb3c443ed4a5a0bcaff072a165d5"
+  },
+  {
+    "path": "samples/bin64/bbcount.dll",
+    "size": 105984,
+    "sha256": "9bb3224de4ef7036024863c6eac9f951d13b144de893bae3e9e63563c7dcf83c"
+  },
+  {
+    "path": "samples/bin64/bbcount.lib",
+    "size": 2110,
+    "sha256": "c0adaf88ddbaed1fbbe97fc42327b1b89d6aa41cc266c09fc0308ed881926815"
+  },
+  {
+    "path": "samples/bin64/bbcount.pdb",
+    "size": 3624960,
+    "sha256": "2cc9858daabfc97b8c05a4104205ba22c9a4654054cfe4fd74babb8432599339"
+  },
+  {
+    "path": "samples/bin64/bbsize.dll",
+    "size": 105472,
+    "sha256": "c62f428ee942242a3b0a0e955533ec85d96d8aedbb294afbe41fd2228bd906ee"
+  },
+  {
+    "path": "samples/bin64/bbsize.lib",
+    "size": 2096,
+    "sha256": "2e314358d85894ee32dc30da0d2f45dc75d9ad6fb60233b25210cb29ca3a320a"
+  },
+  {
+    "path": "samples/bin64/bbsize.pdb",
+    "size": 3624960,
+    "sha256": "0b9e9b5bf60c9d210a7b0daac8d0be430f7c1363f42b2db1817e007bd5e2e415"
+  },
+  {
+    "path": "samples/bin64/cbr.dll",
+    "size": 108032,
+    "sha256": "d2797d3ea286626ffc08a182c05e83f52aab90cd6c8b45290b6ce0c6942d512f"
+  },
+  {
+    "path": "samples/bin64/cbr.lib",
+    "size": 2054,
+    "sha256": "d20a0c00c296a2e4958e9da2448de6e2136e77fb3d86a0ef265af514f041e713"
+  },
+  {
+    "path": "samples/bin64/cbr.pdb",
+    "size": 3624960,
+    "sha256": "522b2ef8909055ad3933956905a09d41ff7bb4417c32acc9b827e0bf2f7a1338"
+  },
+  {
+    "path": "samples/bin64/cbrtrace.dll",
+    "size": 107520,
+    "sha256": "53fb819a7daca67770e747f7528075c73dc5a5aa064b8810d22cc49cafe83799"
+  },
+  {
+    "path": "samples/bin64/cbrtrace.lib",
+    "size": 2124,
+    "sha256": "04b590264a30eb5720040ad3489b16c9807b34c25f4c8f4cea248bae4053f7ca"
+  },
+  {
+    "path": "samples/bin64/cbrtrace.pdb",
+    "size": 3682304,
+    "sha256": "1bd2a4f3aba11b6135d69c2e5dd7e3ad91e549c1b2397fe3739a2c3946299071"
+  },
+  {
+    "path": "samples/bin64/countcalls.dll",
+    "size": 108032,
+    "sha256": "f01f9fbea3da0c73b7f14a9bda516a4df29469bf7ce7bba3b3801ec3c3485fb0"
+  },
+  {
+    "path": "samples/bin64/countcalls.lib",
+    "size": 2152,
+    "sha256": "077316aed225a73a970d852840de39a61b47bfc62244da9a4cf7633ccab7ce12"
+  },
+  {
+    "path": "samples/bin64/countcalls.pdb",
+    "size": 3641344,
+    "sha256": "3dc0ecf1fd4f175eeecfd0e0cba831d27cc5c0a1a965e46eba6c5f91a4a450f0"
+  },
+  {
+    "path": "samples/bin64/div.dll",
+    "size": 105472,
+    "sha256": "8c85968ebb4fd927e500bae4afc643086b51c2f646af854cda4d261f11a602d3"
+  },
+  {
+    "path": "samples/bin64/div.lib",
+    "size": 2054,
+    "sha256": "24840e383dbb46e86b6d3547ee84fa34ced10d93589076d85aa838025636170f"
+  },
+  {
+    "path": "samples/bin64/div.pdb",
+    "size": 3616768,
+    "sha256": "2154ba7f1cd0c215c2771c53a9250778ad1fff1af4dccce34d6a7b1a66f403ea"
+  },
+  {
+    "path": "samples/bin64/dynamorio.dll",
+    "size": 1682944,
+    "sha256": "b6477af7add405e21b8d57a34d4e75221843c9fb21f8908e158ba01e4e79377d"
+  },
+  {
+    "path": "samples/bin64/empty.dll",
+    "size": 103936,
+    "sha256": "72db3973e0d7e59d160786d76793541fa73f5c9171e1705cda15c4b06cbb66b9"
+  },
+  {
+    "path": "samples/bin64/empty.lib",
+    "size": 2082,
+    "sha256": "16ab07e4117fc359de17b061e7f678747844cf8d0650104a2f59488ca774f8d1"
+  },
+  {
+    "path": "samples/bin64/empty.pdb",
+    "size": 3600384,
+    "sha256": "8711c03838a71a0b951dbc23d076a95247b71071ceaeb059cc6148e42c093b44"
+  },
+  {
+    "path": "samples/bin64/hot_bbcount.dll",
+    "size": 110592,
+    "sha256": "2719e50dd5ee7b38f209ad9e370e9f3e4c64a23bc587342376a34187f13274c5"
+  },
+  {
+    "path": "samples/bin64/hot_bbcount.lib",
+    "size": 2166,
+    "sha256": "b8e2b4c099b3c13fccdfd3ef04ee1cc592f32ea3f76ece149d1790eefb7f8bec"
+  },
+  {
+    "path": "samples/bin64/hot_bbcount.pdb",
+    "size": 3674112,
+    "sha256": "f83730edfbeb5539ee2bd7bc7430b6368995e5051e4773b3438103a460c698b2"
+  },
+  {
+    "path": "samples/bin64/inc2add.dll",
+    "size": 106496,
+    "sha256": "8372745a0ecf88429547d1b02b538db988b04cfa014d675daae0171a4033a0ee"
+  },
+  {
+    "path": "samples/bin64/inc2add.lib",
+    "size": 2110,
+    "sha256": "e2c3d72573528f8a9b822de4768d2f0f406421e22ff2110b0260c182d2efd287"
+  },
+  {
+    "path": "samples/bin64/inc2add.pdb",
+    "size": 3624960,
+    "sha256": "a8d8a41c1e714706551fc53b8ac2ee1c65b5eb156ad28b9daa3047ddd46f6b67"
+  },
+  {
+    "path": "samples/bin64/inline.dll",
+    "size": 110592,
+    "sha256": "66d93e4f41a808d63076ccdf01b89bc815f8eb05264a50ee64d6344fd59180df"
+  },
+  {
+    "path": "samples/bin64/inline.lib",
+    "size": 2096,
+    "sha256": "50de9bb14a9958382348e1c87c9db44721dd3bf3363bccbd80cfc6701d2eab4c"
+  },
+  {
+    "path": "samples/bin64/inline.pdb",
+    "size": 3649536,
+    "sha256": "4127203584bbf243735792e906a21e57c85401f6e7698dd166839ebdf928df1e"
+  },
+  {
+    "path": "samples/bin64/inscount.dll",
+    "size": 132608,
+    "sha256": "00b7ce03301bcc9a584e480b675323da5cf52c2bd17e8209e81b0b1c8fecaf4a"
+  },
+  {
+    "path": "samples/bin64/inscount.lib",
+    "size": 2124,
+    "sha256": "4268d51a029748e71895d9546ee09d4aea3f67d1b03aad77278a0d0464041096"
+  },
+  {
+    "path": "samples/bin64/inscount.pdb",
+    "size": 4222976,
+    "sha256": "43d3508c9895aa4281bd2f633d8871c7732b643f3234a5b5202ee35d13324e3b"
+  },
+  {
+    "path": "samples/bin64/instrace_simple.dll",
+    "size": 146432,
+    "sha256": "10d691194352a203166fe0d018b2aca40dde1e1b5fc3dff35fbdc2829b57df09"
+  },
+  {
+    "path": "samples/bin64/instrace_simple.lib",
+    "size": 2302,
+    "sha256": "b57ffc83d2181d0f01adfd24d35192562f28f68a83572dea36bd8363ddcabf0b"
+  },
+  {
+    "path": "samples/bin64/instrace_simple.pdb",
+    "size": 3813376,
+    "sha256": "39f4b063e2d1172ad36471958f00eb110d89a67f6b54bb131e6e512773a0b9da"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_binary.dll",
+    "size": 111616,
+    "sha256": "7182c38b183b767af8ad50702caed1bf41cb4d60226b4d386a0d3b7e6d8e9b1c"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_binary.lib",
+    "size": 2362,
+    "sha256": "e538676e370349af2039db5a5a148a8da3e3a76f96920057cba628a0d2a44924"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_binary.pdb",
+    "size": 3715072,
+    "sha256": "70bc17f565b773c7ada94974d3512065ac7a19da6a415fe994bd425f5c23f70a"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_text.dll",
+    "size": 146944,
+    "sha256": "84692609e45327370f05572517ed1838c048eaf7eb3bc386b726470f84a4a675"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_text.lib",
+    "size": 2332,
+    "sha256": "22820e9efc0e594764b32a4dc49b118bf42a103b2c1c019867ee5082de114aa8"
+  },
+  {
+    "path": "samples/bin64/instrace_x86_text.pdb",
+    "size": 3813376,
+    "sha256": "21bd66e44250204e3a6232634d090127cde96019417bbdaf477de1dd4ef22fa2"
+  },
+  {
+    "path": "samples/bin64/instrcalls.dll",
+    "size": 108544,
+    "sha256": "06e027ad680755fa2efaee0babea219b84e6276966330e0f413a6bb1be81c033"
+  },
+  {
+    "path": "samples/bin64/instrcalls.lib",
+    "size": 2152,
+    "sha256": "9509948c940e9d3a1507fe9c6bdfb0889c95f3d01be6fab0cdbad57e435f3b08"
+  },
+  {
+    "path": "samples/bin64/instrcalls.pdb",
+    "size": 3690496,
+    "sha256": "ead2f842246887a220322292e48efd8b3683d48b96fd471dd55b1515257a3df1"
+  },
+  {
+    "path": "samples/bin64/memtrace_simple.dll",
+    "size": 150016,
+    "sha256": "a4f9bc4e6b1c3f6aef63d3448e8df1578896d93fef3571498b650109ed3272d9"
+  },
+  {
+    "path": "samples/bin64/memtrace_simple.lib",
+    "size": 2302,
+    "sha256": "f2d1ce3480435104c38ada7e9217ae557b3129d7f9675bb668a289028347807f"
+  },
+  {
+    "path": "samples/bin64/memtrace_simple.pdb",
+    "size": 3829760,
+    "sha256": "e71e0971645db8d6a30111e1dc5a0a2ba586421175826770267b37ec4c4ddcf0"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_binary.dll",
+    "size": 114176,
+    "sha256": "ad46a5b22f0b47038c899fe3902a558498f08468e3392cc187e9f976209c1fe2"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_binary.lib",
+    "size": 2362,
+    "sha256": "f996a14b52fbc4e0df6254a2d24610857483e85204c9fa9a17aef7194c6b8098"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_binary.pdb",
+    "size": 3731456,
+    "sha256": "9a67c23c50d6eff80cd08554e9f58f5e4522b4904cd2d2532bb62c87a3e804a0"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_text.dll",
+    "size": 149504,
+    "sha256": "704cfc1aef2567b21264c8ede398b4bf3125e32c4b0d1cb8a56d0bdaf6cea2c1"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_text.lib",
+    "size": 2332,
+    "sha256": "ad9ceb8b4d6efe88a1131bbe27c577b1d5c6a50799e4b36f83c4f4649fa06fd9"
+  },
+  {
+    "path": "samples/bin64/memtrace_x86_text.pdb",
+    "size": 3846144,
+    "sha256": "363464c6e4c093e952c7233a0f49a1585dfc2affc8142abf2620df2105c05684"
+  },
+  {
+    "path": "samples/bin64/memval_simple.dll",
+    "size": 148992,
+    "sha256": "863931c5323bf2f40fcd0fc046ec3ac0b78ce8a70cc1cd8ffd20a2502e52b3f8"
+  },
+  {
+    "path": "samples/bin64/memval_simple.lib",
+    "size": 2272,
+    "sha256": "1674c016dcc36abaf8b93c47083cd7d0234662b371d73dbddac25f6eeba9745e"
+  },
+  {
+    "path": "samples/bin64/memval_simple.pdb",
+    "size": 3829760,
+    "sha256": "845cfda35f09b619742270c2e602cb7e3d45e464290bbfee4f2ec753fc9d012f"
+  },
+  {
+    "path": "samples/bin64/modxfer.dll",
+    "size": 110592,
+    "sha256": "d2ef99c44641bd030657c1d9d00c6879b90ac6f223885ee87ecc4b5669be2dbb"
+  },
+  {
+    "path": "samples/bin64/modxfer.lib",
+    "size": 2110,
+    "sha256": "d391ec540715c5441350ae8194a945c2c6bcdaee3e7b460a067d807e8611cbe8"
+  },
+  {
+    "path": "samples/bin64/modxfer.pdb",
+    "size": 3698688,
+    "sha256": "0731fa546a211fb00abf0adb5771fdbb4c978ee2ba0dba78d964f5358b9a1a37"
+  },
+  {
+    "path": "samples/bin64/modxfer_app2lib.dll",
+    "size": 106496,
+    "sha256": "38aa258a433c9916f434206e756587ab7597d6208d9ea344e2614406f1455c45"
+  },
+  {
+    "path": "samples/bin64/modxfer_app2lib.lib",
+    "size": 2302,
+    "sha256": "ab249ada87682f65c2b4333ce6302d708ab7226aee5fbbc5297ebf705df65d36"
+  },
+  {
+    "path": "samples/bin64/modxfer_app2lib.pdb",
+    "size": 3624960,
+    "sha256": "8062bddedef8f73a98eb67115298d5a652b972920077decb1dfdf67ca6d9729b"
+  },
+  {
+    "path": "samples/bin64/opcodes.dll",
+    "size": 106496,
+    "sha256": "6994627a69bc2ec355ef2b1f01ff6e399bf35569fa3ed09275db3f27e817e645"
+  },
+  {
+    "path": "samples/bin64/opcodes.lib",
+    "size": 2110,
+    "sha256": "3418ec8d35080a6eb44c2de7afaa770c76db7ae50ae704caf025943821d36d87"
+  },
+  {
+    "path": "samples/bin64/opcodes.pdb",
+    "size": 3624960,
+    "sha256": "d41edbed1df35e9f208896c8cfb9e8c3e47f54879e3f67d2dead426e1508fe9d"
+  },
+  {
+    "path": "samples/bin64/opcode_count.dll",
+    "size": 256512,
+    "sha256": "22b6c03c84173264f49e6c96728534d09ab538f6f4bcc17fff98b30acd13c96d"
+  },
+  {
+    "path": "samples/bin64/opcode_count.lib",
+    "size": 2258,
+    "sha256": "183cfc1a30ce70e612762493d356357aa0feb50ea3c09efe06bbbaa4cdb53b7a"
+  },
+  {
+    "path": "samples/bin64/opcode_count.pdb",
+    "size": 5771264,
+    "sha256": "546b9501873ed942752e515b63f79ef4d58f4e11df407f7b69e265a4c7c21149"
+  },
+  {
+    "path": "samples/bin64/prefetch.dll",
+    "size": 105472,
+    "sha256": "9ca47b1b377e34f3d4f89ee2c2ca009ccf2983b9efa35586b524373990f22412"
+  },
+  {
+    "path": "samples/bin64/prefetch.lib",
+    "size": 2124,
+    "sha256": "ac6a3fec18e28c3510fd1e71d5862bc7f9dbf8e6409204a8cc72e59ea2d359ba"
+  },
+  {
+    "path": "samples/bin64/prefetch.pdb",
+    "size": 3608576,
+    "sha256": "df2359d526adbcbdcc53d81891fe1571dd6b48e0b4100a73f0a3bd8803d108d1"
+  },
+  {
+    "path": "samples/bin64/signal.dll",
+    "size": 104960,
+    "sha256": "f87e9b79a441271a444577603f7938d73267780e4d74b685da1e97cc62c36b96"
+  },
+  {
+    "path": "samples/bin64/signal.lib",
+    "size": 2096,
+    "sha256": "0be23f3a80b4ef31813aec73190a23f1521002f1abf459c717105a66f676bb6e"
+  },
+  {
+    "path": "samples/bin64/signal.pdb",
+    "size": 3616768,
+    "sha256": "611b6e567543ebf38fef2e5490b40f84059805371db5568a400fa0bdc7c5315e"
+  },
+  {
+    "path": "samples/bin64/stats.dll",
+    "size": 140288,
+    "sha256": "385716dccb5e6d45590ce6f723ca9711b64560bdb0f0571f383dd56c45557770"
+  },
+  {
+    "path": "samples/bin64/stats.lib",
+    "size": 2082,
+    "sha256": "5c1eb806c9ed23de0f6b300dbc5f1d352373ee8a782afac26f764c9cecb2e415"
+  },
+  {
+    "path": "samples/bin64/stats.pdb",
+    "size": 3772416,
+    "sha256": "e5f7319ad5c01be96f82121e555547c33ac23ace14e0c8cfd28e455b0f87fdcd"
+  },
+  {
+    "path": "samples/bin64/stl_test.dll",
+    "size": 260096,
+    "sha256": "301250339a1071493a788e057f0b8ed18f75c2c80bb2af47843012994aa3a13e"
+  },
+  {
+    "path": "samples/bin64/stl_test.lib",
+    "size": 2090,
+    "sha256": "4108d29c563a591e1fc6189a952d569ecd506b226e86e4f13ad92cc9285997f7"
+  },
+  {
+    "path": "samples/bin64/stl_test.pdb",
+    "size": 5869568,
+    "sha256": "3c6a2bf0a0e07fcb544de7a7c07874f3f1f93fcb9fc7bdf3ceaef8383f393a2d"
+  },
+  {
+    "path": "samples/bin64/syscall.dll",
+    "size": 108032,
+    "sha256": "6bf0ff33fb696ae9e9ab454efd00529b4dac05c9b34d323d586dd92b228f6432"
+  },
+  {
+    "path": "samples/bin64/syscall.lib",
+    "size": 2110,
+    "sha256": "2aa829b88c568f3b53093347f5fb642675f9919e84f5d382b5c8b5dcba5cb19a"
+  },
+  {
+    "path": "samples/bin64/syscall.pdb",
+    "size": 3624960,
+    "sha256": "fbe86184a51ac4d4ba0bc06c7488fdd71ba688964f08a9ea4edb354b01beb321"
+  },
+  {
+    "path": "samples/bin64/tracedump.exe",
+    "size": 157696,
+    "sha256": "94a5c3936f0ddb149cf2087833916e1fcfa964219a7e29114811911179e1f4bc"
+  },
+  {
+    "path": "samples/bin64/tracedump.pdb",
+    "size": 3952640,
+    "sha256": "4722b7af655c39aeb8978e227c1c052f1dc2137f2aff4fed962739a3a830c255"
+  },
+  {
+    "path": "samples/bin64/wrap.dll",
+    "size": 105984,
+    "sha256": "2f8b0783b94efc917aa078ee86d03625227ec3732da62c3d51906e5ae7c9e800"
+  },
+  {
+    "path": "samples/bin64/wrap.lib",
+    "size": 2068,
+    "sha256": "26d4633dccc344bd07b4879f1276403e2f533e195850f62253121aebc504e496"
+  },
+  {
+    "path": "samples/bin64/wrap.pdb",
+    "size": 3624960,
+    "sha256": "d59f0e4a7d30cf809035a916e2888951e2cb3c60605a6b75507f585818ed174f"
+  }
+]

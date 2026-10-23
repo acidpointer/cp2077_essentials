@@ -1,0 +1,36 @@
+{
+  "guest_sha256_before": "0b43a46fa98acc60397cc7fad5ce83e5e4eaf4f00395956752a9d73e35a76034",
+  "guest_sha256_after": "0b43a46fa98acc60397cc7fad5ce83e5e4eaf4f00395956752a9d73e35a76034",
+  "tests": [
+    {
+      "mode": "--init",
+      "returncode": 0,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\n"
+    },
+    {
+      "mode": "--stalk",
+      "returncode": 0,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\nRESULT first=7 second=99 host=42 entered=6 translated=0 seh=1\n"
+    },
+    {
+      "mode": "--translate",
+      "returncode": 0,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\nRESULT first=42 second=99 host=99 entered=6 translated=3 seh=1\n"
+    },
+    {
+      "mode": "--seh-native",
+      "returncode": 0,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\nnative SEH caught=1\n"
+    },
+    {
+      "mode": "--seh",
+      "timeout": 20,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\n"
+    },
+    {
+      "mode": "--threads",
+      "returncode": 0,
+      "output": "before Gum init\nGum initialized; Stalker supported=1\nTHREADS native_count=20000 translated=20000 entered=80000\n"
+    }
+  ]
+}

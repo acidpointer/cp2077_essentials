@@ -1,0 +1,253 @@
+Legacy ABI compatibility: evidence audit
+=======================================
+
+Date: 2026-10-24
+Scope: shared compatibility for unchanged plugins, not individual DLL patches.
+Companion plan: docs/legacy-plugin-compat-plan.txt
+
+Conclusion
+----------
+
+Several mechanisms are now demonstrated in isolated laboratory programs.
+Others were disproved in the tested configurations or remain unimplemented.
+There is no evidence for production-ready, universal compatibility. Research
+cannot close gameplay, native-Windows, performance or save-compatibility gaps
+without the implementation and the corresponding integration tests.
+
+The current candidate combines versioned entry thunks, explicitly bounded value
+marshalling and live protected object views. Shared schemas describe engine/SDK
+ABIs, types and operations; plugin names and file hashes are not adaptation keys.
+
+Experiments and provenance
+--------------------------
+
+Compiler: clang-cl 23.1.3, x86_64-pc-windows-msvc, Microsoft headers/libraries
+from the existing build/toolchains/xwin installation. Fixtures use /MT and /O2.
+The final hardware-SEH fixture additionally uses /EHa and noinline test helpers.
+This fixture setting does not change production plugin compiler flags.
+
+Environments actually exercised:
+  - System Wine 11.20 (Staging), isolated temporary prefix.
+  - GE-Proton11-11's Wine 11.0 (Staging) binary inside SteamLinuxRuntime_4,
+    isolated temporary prefix, ntsync active.
+
+The second environment uses the Wine build and runtime family found in the
+game's Proton log. It does not exercise the Proton launcher, MO2, CP2077,
+graphics, CET or the production RED4ext loader. Native Windows was unavailable.
+
+Tool artifacts:
+  - DynamoRIO cronbuild-11.91.20741, published 2026-10-17. Required Windows
+    loader/runtime/sample files were selectively extracted using ZIP ranges.
+    The full archive digest was recorded from release metadata, not verified
+    by downloading the complete archive. Selected files have local SHA256s.
+  - Frida Gum 17.24.3 Windows x86_64 devkit. Downloaded tar.xz SHA256 matched
+    the official release asset digest:
+    772e192de02b25713ce98649813e5512f7ccb8f388a700bd904976923d2aa6c8
+
+Tracked research sources and records are preserved in:
+  docs/legacy-compat-lab/
+They include compiler drivers, fixture sources, result JSON, selected artifact
+metadata and checksums. The bundle README documents path substitutions and
+optional reconstruction in generated storage. The original local records remain
+in the ignored .research/legacy-compat/ directory. No downloaded backend, Wine
+prefix or compiled research DLL is a release payload. These historical artifacts
+do not replace a production harness or the implementation acceptance gates.
+
+Final field-access fixture DLL SHA256:
+  5dd74b4ab04dfabf0a72d9737019324b877cd9f1f40e69cf92c743e94b11d427
+This identifies the experiment input; it is not a compatibility allowlist.
+
+Evidence ledger
+---------------
+
+E01. Loader API compatibility does not imply engine ABI compatibility.
+Status: established by local source inspection.
+Evidence: Api/v1/Sdk.hpp exposes a narrow service table. Relocation-inl.hpp
+returns raw addresses to compiled helpers. Scripting/Functions.hpp allocates
+sizeof(T) in plugin code. Calls and direct accesses bypass loader services.
+Consequence: a call-only shim cannot cover all existing SDK code.
+
+E02. SDK semantic version alone cannot select the historical engine layout.
+Status: established for the compared snapshots.
+Evidence: both the SDK's pre-2.5 parent and 2.5 base CMakeLists.txt declare
+VERSION 1.0.0, despite the function/callback/frame ABI changes. PluginInfo has
+sdk/runtime fields but no complete SDK revision or private-layout manifest.
+Consequence: use explicit source-runtime ABI families, validate declared
+metadata where available, and never infer an ABI solely from sdk=1.0.0.
+
+E03. Query is too late to establish control over all initialization.
+Status: established by source, documentation and fixture.
+Evidence: PluginSystem::Load invokes LoadLibraryEx before Query. Observed:
+  Before LoadLibrary
+  DLL static initializer
+  DllMain attach
+  After LoadLibrary, before Query
+  Query reached
+Consequence: initialize the compatibility machinery before LoadLibraryEx.
+For early engine interactions an ABI family must already be selected; no
+generic safe execution of arbitrary Query/DllMain code was demonstrated.
+
+E04. Early module notification exists, with severe callback restrictions.
+Status: documented mechanism; not tested in the laboratory harness.
+Evidence: Microsoft's LdrRegisterDllNotification documentation specifies
+notification before dynamic linking. Its callback documentation forbids calls
+into other modules. The API is also documented as subject to change/removal.
+Consequence: if adopted, notification may only publish preallocated module
+range records. Decoder work, logging and backend initialization belong outside
+the notification callback. Availability and ordering require platform tests.
+
+E05. The game's address list cannot generate a complete adapter automatically.
+Status: measured on the installed 2.5 address database, read-only.
+  Entries:                                      1,118,540
+  Entries carrying a symbol name:                       84
+  Unique primary hashes:                        1,032,136
+  Duplicate primary-hash groups:                    6,735
+  Groups with distinct offsets:                    5,954
+  Groups with distinct secondary hashes:           4,237
+  Maximum primary-hash multiplicity:                3,578
+Fields present: hash, secondary hash, offset, optional symbol.
+The database supplies no general function prototypes or object layouts.
+Consequence: require reviewed ABI schemas and resolve compatibility entries
+with secondary identity/uniqueness checks. Existing loader behavior is not
+changed by this audit. Duplicate groups are not evidence that every SDK hash
+currently used by the essentials set resolves incorrectly.
+
+E06. RTTI supplies useful, incomplete type evidence.
+Status: established by local SDK declarations.
+Evidence: IType exposes names/sizes; CClass exposes reflected properties;
+CProperty carries a type, parent, offset and flags including inValueHolder.
+Core SDK types also contain padding, unknown fields and erased pointers.
+Consequence: generate known mappings from headers/RTTI, with explicit semantic
+annotations. Allocation sizes and numeric displacements do not identify types.
+
+E07. Old/new fixed callbacks can be bridged with ownership preserved.
+Status: isolated Win64 test passed in both environments.
+Actual SDK Callback<T,32> and Callback<T,64> have size/handler pairs
+0x28/+0x20 and 0x48/+0x40. An adapter retained an old callback in a host owner,
+then exercised handler-level copy, move, assignment, invocation and destruction.
+Observed: calls=3, copies=2, live payloads after destruction=0.
+Limit: this does not prove module-unload safety or every handler/signature.
+
+The initial test also exposed a Clang compile failure when instantiating the
+SDK Callback copy constructor: its const source buffer is passed to a void*
+helper. The bridge test uses the ABI's handler operations directly. This is
+recorded separately; no SDK fix or new patch layer was made here.
+
+E08. Dynamic instruction translation can mediate some unchanged guest code.
+Status: restricted Frida Gum test passed in both environments.
+A generated DLL contains legacy field reads/writes at +0x10. A host descriptor
+maps that field to +0x20. Stalker transformed the executing copy, without
+modifying the DLL on disk. Observed first read=42, second read=99, native=99,
+three translated accesses. A separate two-thread LOCK XADD test reached exactly
+20,000 increments with 20,000 translated operations.
+Limits: synthetic layout, explicit host descriptor, selected MOV/XADD operand
+forms. No automatic type recovery, full SDK or arbitrary instruction support.
+
+E09. The tested code-cache backend is not exception-transparent.
+Status: reproducible failure in the tested Frida configuration.
+Explicit RaiseException was caught without tracing. With Stalker enabled the
+probe did not complete within 20 seconds, in both system Wine and GE/Steam
+Runtime 4. This failure blocks selecting that configuration for production.
+Cause within Frida/Wine is not established; this does not prove that every
+possible configuration or native-Windows run must fail.
+
+E10. The tested DynamoRIO Windows build failed before fixture main.
+Status: reproduced on system Wine, including diagnostic/debug run.
+No-client and empty-client runs returned low exit status 5. After correcting
+an incomplete extraction, the failure remained. Diagnostic logging showed
+the child taking an unhandled execute access violation at 0x179828 before
+the fixture printed its main-function output. This was not a fixture assertion.
+Limits: no conclusion about native Windows, Linux DynamoRIO controlling Wine,
+other DynamoRIO versions, or the underlying injection failure's root cause.
+
+E11. Protected views can mediate accesses at original instruction addresses.
+Status: restricted Win64 prototype passed in both environments.
+A PAGE_NOACCESS guest view triggers a vectored handler. A predecoded supported
+instruction is retried with its RCX memory base mapped to native storage and
+the trap flag set. The single-step handler restores the guest RCX. The original
+MOV or LOCK XADD executes in hardware; plugin instruction addresses stay intact.
+The view remains inaccessible to other threads throughout this process.
+Observed:
+  fields first=42, second=99; native callback re-entry observed=99;
+  ordinary explicit SEH caught; unrelated native access violation caught;
+  C++ exception caught with destructor observed;
+  two workers: native_count=20,000, total mapped accesses=20,004,
+  matching single-step completions=20,004.
+The final hardware-SEH fixture used /EHa. An earlier optimized /EHsc variant
+failed its added hardware-AV control and is not counted as backend evidence.
+
+Limits: fixed mapping, four-byte MOV and RCX-based XADD only. No pointer-field
+conversion, SSE/AVX, REP strings, arbitrary base/index forms, hardware debugger,
+interrupted-remap recovery, view reclamation or production engine objects.
+The prototype uses bundled Capstone after Gum initialization but no Stalker.
+A production handler must avoid allocation, unsafe locks and external decoder
+initialization on the fault path. Zydis is a candidate for investigation.
+
+E12. Protected views do not catch every incorrect legacy access.
+Status: negative control demonstrated in both environments.
+The same guest function received an accessible raw native pointer. It read
+the old-offset sentinel 7 instead of the current field 42, with zero view faults.
+Consequence: a protected-view backend alone cannot claim process-wide safety.
+Every pointer-producing boundary must be covered; raw RVAs, native aliases and
+unreviewed hooks need an additional coverage mechanism or remain unsupported.
+
+E13. Fault mediation is expensive on the measured path.
+Status: measured once per environment with a matching native fixture baseline.
+20,000 increments across two newly created workers:
+  System Wine: native 1.484 ms; protected view 85.624 ms.
+  GE/Steam Runtime 4: native 0.986 ms; protected view 83.368 ms.
+These wall times include worker startup and are not an FPS benchmark or a
+general overhead ratio. They rule out assuming that every engine access can
+use this path cheaply. Use native identity paths and bounded marshalling where
+their contracts permit; measure actual workloads before choosing optimizations.
+
+E14. Complete lifetime, aliasing and hook semantics remain unproved.
+Status: implementation/integration evidence required.
+Still needed: interior/base pointers, reverse pointer conversion, arrays,
+typed bulk copies, weak/strong handles, ABA/reuse, retained async callbacks,
+module unload, mixed ABI domains, call-chain ordering and original trampolines.
+Function matching does not establish semantic equivalence. Arbitrary patches
+inside changed engine functions need more than address translation.
+
+E15. Issue-free game behavior and saves remain unproved.
+Status: real implementation and runtime tests required.
+No production plugin was admitted by the laboratory code. No game startup,
+gameplay, graphics, save/load or save-compatibility test was performed. A native
+shim also cannot establish compatibility of changed scripts/resources by itself.
+
+Decision
+--------
+
+The mechanisms justify a shared ABI prototype. They do not justify removing
+the loader's runtime gate or publishing a compatibility DLL. The most promising
+initial design uses cheap typed call adapters and bounded values, with protected
+views as a correctness backend for supported changed live objects. Instruction
+translation remains an independently gated coverage/performance option.
+
+Evidence gaps E04 and E14-E15 cannot honestly be called closed. E09-E10 identify
+failed configurations rather than unexplained compatibility success. E12 is a
+demonstrated safety boundary that the implementation plan must address.
+
+Primary sources
+---------------
+
+- Microsoft DLL entry points and initialization ordering:
+  https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-entry-point-function
+- Microsoft early loader notification and callback restrictions:
+  https://learn.microsoft.com/en-us/windows/win32/devnotes/ldrregisterdllnotification
+  https://learn.microsoft.com/en-us/windows/win32/devnotes/ldrdllnotification
+- Microsoft x64 calls and generated-code unwind requirements:
+  https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention
+  https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtladdfunctiontable
+- Microsoft vectored handlers and memory protection:
+  https://learn.microsoft.com/en-us/windows/win32/api/errhandlingapi/nf-errhandlingapi-addvectoredexceptionhandler
+  https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
+- DynamoRIO transformation and wrapping requirements:
+  https://dynamorio.org/API_BT.html
+  https://dynamorio.org/group__drwrap.html
+- Frida Stalker transformation and excluded-range callback behavior:
+  https://frida.re/docs/stalker/
+- Decoder candidate, no runtime pin selected:
+  https://github.com/zyantific/zydis
+- Header-generated call adapters and reverse callbacks, architectural precedent:
+  https://raw.githubusercontent.com/FEX-Emu/FEX/main/ThunkLibs/README.md

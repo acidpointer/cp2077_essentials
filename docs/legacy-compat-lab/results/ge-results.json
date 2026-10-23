@@ -1,0 +1,27 @@
+[
+  {
+    "test": "callback",
+    "returncode": 0,
+    "output": "pressure-vessel-wrap[187751]: W: No colon found in DISPLAY=\nwine: created the configuration directory '<lab>/ge-wine-prefix'\nntsync: up and running.\nPASS callback bridge: old=0x28 new=0x48 calls=3 copies=2 live=0\n"
+  },
+  {
+    "test": "translate",
+    "returncode": 0,
+    "output": "pressure-vessel-wrap[187918]: W: No colon found in DISPLAY=\nntsync: up and running.\nbefore Gum init\nGum initialized; Stalker supported=1\nRESULT first=42 second=99 host=99 entered=6 translated=3 seh=1\n"
+  },
+  {
+    "test": "threads",
+    "returncode": 0,
+    "output": "pressure-vessel-wrap[188054]: W: No colon found in DISPLAY=\nntsync: up and running.\nbefore Gum init\nGum initialized; Stalker supported=1\nTHREADS native_count=20000 translated=20000 entered=80000\n"
+  },
+  {
+    "test": "seh-native",
+    "returncode": 0,
+    "output": "pressure-vessel-wrap[188192]: W: No colon found in DISPLAY=\nntsync: up and running.\nbefore Gum init\nGum initialized; Stalker supported=1\nnative SEH caught=1\n"
+  },
+  {
+    "test": "seh",
+    "timeout": true,
+    "output": "pressure-vessel-wrap[188329]: W: No colon found in DISPLAY=\nntsync: up and running.\nbefore Gum init\nGum initialized; Stalker supported=1\n"
+  }
+]

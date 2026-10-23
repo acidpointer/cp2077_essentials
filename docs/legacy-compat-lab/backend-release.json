@@ -1,0 +1,13 @@
+{
+  "tag_name": "cronbuild-11.91.20741",
+  "published_at": "2026-10-17T02:31:37Z",
+  "html_url": "https://github.com/DynamoRIO/dynamorio/releases/tag/cronbuild-11.91.20741",
+  "assets": [
+    {
+      "name": "DynamoRIO-Windows-11.91.20741.zip",
+      "size": 467359202,
+      "digest": "sha256:ecfd77718b82ea5cd6c066ffb021d0bddd698987b627ffa2dce9540a8353c4be",
+      "browser_download_url": "https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-11.91.20741/DynamoRIO-Windows-11.91.20741.zip"
+    }
+  ]
+}

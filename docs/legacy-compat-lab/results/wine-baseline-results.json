@@ -1,0 +1,12 @@
+[
+  {
+    "target": "callback_bridge.exe",
+    "returncode": 0,
+    "output": "MESA-EGL: warning: pci id for fd 54: 10de:2d05, driver (null)\npci id for fd 55: 10de:2d05, driver (null)\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\npci id for fd 56: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 54: 10de:2d05, driver (null)\npci id for fd 51: 10de:2d05, driver (null)\npci id for fd 55: 10de:2d05, driver (null)\npci id for fd 52: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\npci id for fd 56: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\nMESA-EGL: warning: pci id for fd 54: 10de:2d05, driver (null)\npci id for fd 51: 10de:2d05, driver (null)\npci id for fd 52: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\npci id for fd 51: 10de:2d05, driver (null)\npci id for fd 52: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\npci id for fd 51: 10de:2d05, driver (null)\npci id for fd 52: 10de:2d05, driver (null)\nMESA-EGL: warning: egl: failed to create dri2 screen\nMESA-EGL: warning: pci id for fd 50: 10de:2d05, driver (null)\nPASS callback bridge: old=0x28 new=0x48 calls=3 copies=2 live=0\n"
+  },
+  {
+    "target": "load_order_host.exe",
+    "returncode": 0,
+    "output": "Before LoadLibrary\nDLL static initializer\nDllMain attach\nAfter LoadLibrary, before Query\nQuery reached\n"
+  }
+]

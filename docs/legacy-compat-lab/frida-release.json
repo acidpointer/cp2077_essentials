@@ -1,0 +1,13 @@
+{
+  "tag_name": "17.24.3",
+  "published_at": "2026-10-19T09:26:22Z",
+  "html_url": "https://github.com/frida/frida/releases/tag/17.24.3",
+  "assets": [
+    {
+      "name": "frida-gum-devkit-17.24.3-windows-x86_64.tar.xz",
+      "size": 8810280,
+      "digest": "sha256:772e192de02b25713ce98649813e5512f7ccb8f388a700bd904976923d2aa6c8",
+      "browser_download_url": "https://github.com/frida/frida/releases/download/17.24.3/frida-gum-devkit-17.24.3-windows-x86_64.tar.xz"
+    }
+  ]
+}

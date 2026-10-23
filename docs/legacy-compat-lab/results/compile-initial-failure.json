@@ -1,0 +1,27 @@
+[
+  {
+    "output": "callback_bridge.exe",
+    "command": [
+      "clang-cl",
+      "/nologo",
+      "/std:c++20",
+      "/EHsc",
+      "/MT",
+      "/O2",
+      "/imsvc<repo>/build/toolchains/xwin/crt/include",
+      "/imsvc<repo>/build/toolchains/xwin/sdk/include/ucrt",
+      "/imsvc<repo>/build/toolchains/xwin/sdk/include/shared",
+      "/imsvc<repo>/build/toolchains/xwin/sdk/include/um",
+      "/I<repo>/sources/red4ext-sdk/include",
+      "callback_bridge.cpp",
+      "/Fe:callback_bridge.exe",
+      "/Fo:callback_bridge.cpp.obj",
+      "/link",
+      "/libpath:<repo>/build/toolchains/xwin/crt/lib/x86_64",
+      "/libpath:<repo>/build/toolchains/xwin/sdk/lib/ucrt/x86_64",
+      "/libpath:<repo>/build/toolchains/xwin/sdk/lib/um/x86_64"
+    ],
+    "exit_code": 1,
+    "log": "clang-cl: warning: unable to find a Visual Studio installation; try running Clang from a developer command prompt [-Wmsvc-not-found]\nIn file included from callback_bridge.cpp:5:\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(111,24): error: cannot initialize a parameter of type 'void *' with an lvalue of type 'const uint8_t[32]' (aka 'const unsigned char[32]')\n  111 |         CopyTargetFrom(aOther.buffer);\n      |                        ^~~~~~~~~~~~~\n<repo>/build/toolchains/xwin/crt/include/xutility(463,66): note: in instantiation of member function 'RED4ext::Callback<void (*)(), 32>::Callback' requested here\n  463 |     _MSVC_CONSTEXPR return ::new (static_cast<void*>(_Location)) _Ty(_STD forward<_Types>(_Args)...);\n      |                                                                  ^\n<repo>/build/toolchains/xwin/crt/include/memory(2913,26): note: in instantiation of function template specialization 'std::_Ref_count_obj2<RED4ext::Callback<void (*)(), 32>>::_Ref_count_obj2<const RED4ext::Callback<void (*)(), 32> &>' requested here\n 2913 |     const auto _Rx = new _Ref_count_obj2<_Ty>(_STD forward<_Types>(_Args)...);\n      |                          ^\ncallback_bridge.cpp(27,23): note: in instantiation of function template specialization 'std::make_shared<RED4ext::Callback<void (*)(), 32>, const RED4ext::Callback<void (*)(), 32> &>' requested here\n   27 |     auto owner = std::make_shared<OldCallback>(legacy);\n      |                       ^\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(190,31): note: passing argument to parameter 'aTarget' here\n  190 |     void CopyTargetFrom(void* aTarget)\n      |                               ^\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(111,24): error: cannot initialize a parameter of type 'void *' with an lvalue of type 'const uint8_t[64]' (aka 'const unsigned char[64]')\n  111 |         CopyTargetFrom(aOther.buffer);\n      |                        ^~~~~~~~~~~~~\ncallback_bridge.cpp(43,23): note: in instantiation of member function 'RED4ext::Callback<void (*)()>::Callback' requested here\n   43 |         auto copied = bridged;\n      |                       ^\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(190,31): note: passing argument to parameter 'aTarget' here\n  190 |     void CopyTargetFrom(void* aTarget)\n      |                               ^\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(126,28): error: cannot initialize a parameter of type 'void *' with an lvalue of type 'const uint8_t[64]' (aka 'const unsigned char[64]')\n  126 |             CopyTargetFrom(aOther.buffer);\n      |                            ^~~~~~~~~~~~~\ncallback_bridge.cpp(46,18): note: in instantiation of member function 'RED4ext::Callback<void (*)()>::operator=' requested here\n   46 |         assigned = bridged;\n      |                  ^\n<repo>/sources/red4ext-sdk/include/RED4ext/Callback.hpp(190,31): note: passing argument to parameter 'aTarget' here\n  190 |     void CopyTargetFrom(void* aTarget)\n      |                               ^\n3 errors generated.\n"
+  }
+]

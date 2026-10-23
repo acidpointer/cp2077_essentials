@@ -1,0 +1,294 @@
+Legacy plugin compatibility runtime: feasibility research
+=======================================================
+
+Date: 2026-10-24
+Target investigated: CP2077 2.5 / 3.0.88.46235
+Initial guest ABI candidate: CP2077 2.31 / 3.0.80.51928
+Status: preliminary architecture, followed by isolated Win64/Wine experiments.
+Current evidence and implementation decisions:
+  docs/legacy-plugin-compat-evidence.txt
+  docs/legacy-plugin-compat-plan.txt
+No compatibility runtime has been integrated or tested in CP2077.
+
+Objective
+---------
+
+Run existing native mods without rebuilding them or maintaining a list of
+individually patched DLLs. Maintain compatibility at the engine/SDK ABI level,
+so one supported version pair can serve many unrelated plugins.
+
+Finding
+-------
+
+The initial candidate was a hybrid engine ABI virtualization runtime:
+
+  unchanged legacy DLLs
+           |
+  legacy SDK calls, object views, virtual tables, callbacks and hooks
+           |
+  generated ABI adapters + selective dynamic binary translation
+           |
+  current REDengine objects and functions
+
+Follow-up experiments changed the recommended starting point. Generated call
+adapters, bounded value marshalling and protected typed object views should be
+investigated first. Whole-thread code-cache translation failed an exception
+test in the tested Frida configuration; the DynamoRIO probe failed before the
+application's main function. Protected views passed the restricted mechanism
+tests while keeping original code addresses, but were much slower than native
+access and did not catch raw native pointers. The evidence report records these
+limits. This document's component descriptions are proposals, not validated
+end-to-end capabilities.
+
+Call adapters alone cannot cover existing SDK plugins, because inline SDK
+code accesses engine objects and allocates ABI-sized storage inside each DLL.
+Dynamic binary instrumentation provides a way to mediate those instructions
+without changing the original DLL on disk. Neither instrumentation nor CPU
+emulation supplies the required engine semantics automatically.
+
+The proposed maintenance unit is an engine/SDK ABI family and a target game
+build. There is no plugin-name or DLL-hash allowlist in the design. Compiler
+variation, private SDK forks and ambiguous guest ABI declarations remain
+coverage problems; runtime and SDK version fields do not prove the exact
+layout of every embedded type.
+
+Existing evidence in this workspace
+-----------------------------------
+
+Relevant sources:
+  sources/red4ext/src/dll/Addresses.cpp
+  sources/red4ext/src/dll/Systems/PluginSystem.cpp
+  sources/red4ext-sdk/include/RED4ext/Api/v1/Sdk.hpp
+  sources/red4ext-sdk/include/RED4ext/Api/v1/Runtime.hpp
+  sources/red4ext-sdk/include/RED4ext/Relocation-inl.hpp
+  sources/red4ext-sdk/include/RED4ext/Scripting/Functions.hpp
+  sources/red4ext-sdk/include/RED4ext/Scripting/Stack-inl.hpp
+  sources/red4ext-sdk/include/RED4ext/RTTISystem.hpp
+  sources/red4ext-sdk/include/RED4ext/RTTITypes.hpp
+  sources/red4ext-sdk/include/RED4ext/RTTI/IType.hpp
+  docs/PATCH_2_5.md
+
+The address resolver is a real interception point. It returns raw addresses;
+plugins subsequently call them and perform virtual calls and field accesses
+themselves. The v1 Scripts service supplies script paths and reference-type
+annotations, rather than mediating all native function registration.
+
+The installed game address database contains primary hashes, secondary hashes,
+offsets, and symbol names for some entries. It is useful for identifying engine
+entry points, but does not provide complete signatures, layouts or semantics.
+
+RTTI exposes names, sizes and reflected properties. Historical SDK headers
+provide additional layouts for ABI types. Neither describes every private
+engine member or all plugin-defined memory.
+
+Read-only comparison of the SDK's pre-2.5 parent with the patched working tree:
+  CBaseFunction:        0xB0 -> 0xF0
+  CClassFunction:       0xC0 -> 0x100
+  CClassStaticFunction: 0xC0 -> 0x100
+  function parent:     +0xB0 -> +0xF0
+  fixed callback handler: +0x20 -> +0x40
+  root stack frames gained state with nontrivial destruction.
+
+Earlier disassembly of installed RedRCFInput demonstrates a 0xC0 allocation
+before CClassStaticFunction_ctor, and a callback handler stored at +0x20 before
+AddRegisterCallback/AddPostRegisterCallback. RedFunctions has the same old
+function allocation pattern. These illustrate shared ABI requirements; they
+are not proposed plugin-specific adaptation rules.
+
+External precedents and their limits
+-----------------------------------
+
+1. FEX Library Thunking
+   https://raw.githubusercontent.com/FEX-Emu/FEX/main/ThunkLibs/README.md
+
+   Documents guest-to-host calls, reverse callbacks, header-driven generation,
+   and custom implementations. This supports the adapter-generator part of
+   the proposal. FEX's architecture translation and particular thunk libraries
+   are not an implementation of REDengine version compatibility.
+
+2. DynamoRIO
+   https://github.com/DynamoRIO/dynamorio
+   https://dynamorio.org/API_BT.html
+   https://dynamorio.org/page_drwrap.html
+   https://dynamorio.org/page_deploy.html
+
+   Supports runtime transformation of unmodified applications, instruction
+   manipulation, wrapping, and state translation. Windows deployment exists.
+   Its state-restoration requirements matter for exceptions and faults.
+   It is a candidate backend, not evidence that CP2077, Proton, MO2 and other
+   injected tools will coexist correctly. Those combinations are untested.
+
+3. Umbra
+   https://drmemory.org/page_umbra.html
+
+   Supplies shadow-memory metadata and instrumentation primitives. It does not
+   infer object types or implement arbitrary old-to-new C++ object layouts.
+
+4. Frida Gum / Stalker
+   https://frida.re/docs/stalker/
+
+   Supports instruction transformers and cached translated blocks. Its excluded
+   ranges can hide nested callbacks, so excluding the game cannot be treated
+   as sufficient callback coverage. Useful as an alternate experimental backend.
+
+5. Ghidra Version Tracking
+   https://github.com/NationalSecurityAgency/ghidra/blob/master/Ghidra/Features/VersionTracking/src/main/help/help/topics/VersionTrackingPlugin/Version_Tracking_Intro.html
+
+   Provides cross-version code/data matching. Its own documentation explains
+   that proposed matches may be wrong. It can help construct engine version
+   maps; similarity is not proof of equivalent function semantics.
+
+6. Actual game ABI evidence
+   https://github.com/wopss/RED4ext.SDK/pull/227
+   https://github.com/wopss/RED4ext.SDK/pull/228
+
+   Documents the core ABI changes and wider retail class layout changes.
+
+Proposed components
+-------------------
+
+A. Versioned ABI descriptions and adapter generator
+
+Compile historical and current SDK headers to extract record layouts, base
+classes, virtual slots and function signatures. Combine them with reflected
+game schemas and reviewed private-engine descriptions. Generate conversions
+where the correspondence is structural. Maintain explicit rules for semantic
+changes, removed functions and changed ownership contracts.
+
+The map is shared by plugins. Update it when an engine/SDK ABI changes.
+Do not identify types from an allocation size or displacement alone: 0xC0 can
+describe many unrelated allocations.
+
+B. Boundary interception
+
+Provide ABI-specific entry thunks through address resolution and recognized
+engine entry points. Convert arguments, results, virtual dispatch, callback
+registration and ownership in both directions. Establish the execution domain
+before guest initialization and preserve it across callbacks and worker threads.
+DLL static initializers and dependent DLLs must be covered too.
+
+C. Legacy object views with stable identity
+
+Maintain a canonical relation between guest addresses and live native objects.
+The guest sees its historical field layout and virtual interface. The engine
+receives only native pointers and correctly constructed native objects.
+
+For an old function allocation, keep the guest's old-sized storage and create
+separate native backing at the constructor boundary. Pair their identities;
+do not pass the small allocation to the new constructor. Translate subsequent
+field accesses and pointer publication. Constructor/destructor/allocator
+ownership must remain consistent on both sides.
+
+Pure copy-in/copy-out mirrors are insufficient for retained pointers and
+concurrent game updates. The runtime needs mediated live reads/writes or a
+proven synchronization scheme. It must handle interior pointers, inheritance,
+arrays, pointer comparisons, plugin-defined native classes and shared handles.
+
+D. Selective instruction translation
+
+Transform guest code that directly touches mediated memory. Track object types
+from known signatures, constructors, registrations, RTTI and allocation history.
+Use runtime metadata for ambiguous accesses. Preserve memory-access width,
+ordering, atomic operations and fault behavior. Bulk memory operations and
+shared CRT helpers must not bypass this mediation.
+
+Plugin code remains unchanged on disk. Translated blocks can be cached in
+memory. Initially prioritize correctness; optimize accesses with proven type
+and lifetime information later. A backend may still control execution of the
+whole process even if expensive transformations apply mainly to guest code.
+No in-game performance estimate has been measured.
+
+E. Hook compatibility
+
+Virtualize hooks on known engine function boundaries with known signatures.
+Map the historical function identity to the current implementation and bridge
+the original-call trampoline and reverse callback. Maintain hook chains and
+ordering across ABI domains.
+
+Arbitrary instruction patches and mid-function hooks require register/state
+correspondence, not just matching function addresses. Pattern scanners may
+also depend on historical machine bytes. Supporting those operations could
+require a historical code view and additional engine-level translations.
+This is a separate, substantially harder coverage tier. Raw code writes must
+be recognized before they corrupt the current game; unknown operations cannot
+be silently forwarded.
+
+F. Script and resource compatibility
+
+Native ABI virtualization does not repair removed redscript APIs, changed quest
+behavior, incompatible resources or save formats. A broader mod compatibility
+package would additionally need versioned script aliases/wrappers or compiler
+transforms and, where needed, resource conversions. These can also be shared
+by game version rather than maintained per mod.
+
+Approaches that do not remove the central problem
+------------------------------------------------
+
+- Globally accepting old runtime declarations changes admission only.
+- Address remapping alone does not translate data layouts or ownership.
+- Generic CPU emulation executes the same incorrect layout assumptions unless
+  augmented with engine-aware translation.
+- Another process provides isolation, but raw pointers and synchronous hooks
+  still need the same semantic bridge plus communication and lifetime rules.
+- Loading old SDK code alongside new SDK code leaves their engine interaction
+  assumptions unchanged.
+- A newer API for future plugins does not retrofit existing inlined code.
+
+Research and implementation gates
+---------------------------------
+
+1. Establish instrumentation feasibility first: an empty backend client, correct
+   exception unwinding, thread creation and callbacks, and coexistence with the
+   game's graphics stack and existing hooks. Test Windows and Proton separately.
+   Do not start with automatic admission of old production plugins.
+
+2. Build ABI descriptions and a stand-alone host harness for two versions.
+   Use unchanged legacy fixture DLLs built against different SDK snapshots and
+   compiler configurations. Fixtures exercise shared ABI operations, not named
+   production plugins.
+
+3. Implement call thunks and live object views. Prove function construction,
+   callback copy/move/destruction, stack-frame lifetimes, direct field access,
+   virtual dispatch, pointer aliasing, arrays, bulk copies and atomic handles.
+   Use guarded native allocations and native reference implementations.
+
+4. Prove generality on multiple unrelated old plugins without adding a plugin
+   name, file hash, RVA patch or vendor-specific recognition rule. A withheld
+   plugin is a useful additional check. New rules should describe engine/SDK
+   operations applicable to the whole ABI family. Record unsupported operations.
+
+5. Expand to function hooks, plugin-defined types and mixed ABI domains. Measure
+   frame time, stalls, memory use and callback overhead. Then test actual startup,
+   gameplay, input restoration, repeated reloads and save/load on backed-up saves.
+   Static reconstruction and successful builds are not playtesting.
+
+An audit mode should report the first unmapped operation and its inferred type
+context. It is a coverage aid, not a proof that unexecuted paths are compatible.
+Unknown behavior must be stopped before unsafe native execution; catching a
+crash afterward cannot establish that a save or engine state remained intact.
+
+Decision
+--------
+
+Research supports a staged prototype of ABI virtualization, beginning with
+2.31-to-2.5 SDK operations. Its value would be amortizing compatibility work
+across many unchanged mods. The follow-up plan uses a hybrid of entry thunks,
+value marshalling and protected views, with instruction translation remaining
+a separately gated audit/optimization option. It is larger than a conventional
+loader shim.
+
+No existing ready-made tool found in this investigation supplies the complete
+REDengine bridge. Existing projects establish useful mechanisms, not end-to-end
+correctness. Coverage of arbitrary private pointers, custom machine-code hooks,
+and removed game behavior remains unresolved. No defensible claim of universal
+or issue-free compatibility can be made from this research.
+
+If preserving arbitrary legacy behavior is mandatory, running the corresponding
+historical game version remains the reference environment. Reproducing all of
+that behavior inside a newer game approaches engine emulation/reimplementation.
+
+During research, no production native source, lockfile, patch, installed game
+or MO2 file was changed. Laboratory sources and records are preserved under
+docs/legacy-compat-lab/ and described in the evidence report. Research performed
+no Git mutations or game launches; committing these artifacts is a separate
+user-authorized action.

@@ -1,0 +1,15 @@
+{
+  "entries": 1118540,
+  "named_entries": 84,
+  "unique_primary_hashes": 1032136,
+  "duplicate_primary_hashes": 6735,
+  "max_primary_multiplicity": 3578,
+  "entry_keys": [
+    "hash",
+    "offset",
+    "secondary hash",
+    "symbol"
+  ],
+  "primary_groups_with_distinct_offsets": 5954,
+  "primary_groups_with_distinct_secondary_hashes": 4237
+}

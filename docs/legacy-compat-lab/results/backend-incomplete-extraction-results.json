@@ -1,0 +1,32 @@
+[
+  {
+    "mode": "no-client",
+    "returncode": 5,
+    "command": [
+      "wine",
+      "<lab>/dynamorio/bin64/drrun.exe",
+      "-root",
+      "<lab-win>\\dynamorio",
+      "-no_follow_children",
+      "--",
+      "<lab-win>\\callback_bridge.exe"
+    ],
+    "output": "WARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib64\\drpreinject.dll: is this an incomplete installation?\nWARNING: <lab-win>\\dynamorio does not appear to be a valid DynamoRIO root\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib64\\drpreinject.dll: is this an incomplete installation?\nWARNING: <lab-win>\\dynamorio does not appear to be a valid DynamoRIO root\n<WARNING: Running on unknown Windows 10+ version>\n"
+  },
+  {
+    "mode": "empty-client",
+    "returncode": 5,
+    "command": [
+      "wine",
+      "<lab>/dynamorio/bin64/drrun.exe",
+      "-root",
+      "<lab-win>\\dynamorio",
+      "-no_follow_children",
+      "-c",
+      "<lab-win>\\dynamorio\\samples\\bin64\\empty.dll",
+      "--",
+      "<lab-win>\\callback_bridge.exe"
+    ],
+    "output": "WARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib64\\drpreinject.dll: is this an incomplete installation?\nWARNING: <lab-win>\\dynamorio does not appear to be a valid DynamoRIO root\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\drpreinject.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\release\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib32\\debug\\dynamorio.dll: is this an incomplete installation?\nWARNING: cannot find <lab-win>\\dynamorio/lib64\\drpreinject.dll: is this an incomplete installation?\nWARNING: <lab-win>\\dynamorio does not appear to be a valid DynamoRIO root\n<WARNING: Running on unknown Windows 10+ version>\n"
+  }
+]
