@@ -57,7 +57,11 @@ commit inside an upstream submodule without a separate explicit request.
 | Plugin targets, generated headers and link libs | `cmake/Plugins.cmake` |
 | Allocator/native dependencies | `cmake/Dependencies.cmake` |
 | Required ABI assertions | `cmake/AbiChecks.cpp` |
-| Payload composition and ZIP creation | `scripts/package.py` |
+| Payload composition, original versions and ZIP names | `scripts/package.py` |
+| Tag-triggered release build and publication | `.github/workflows/release.yml` |
+| Flat GitHub assets, checksums and release notes | `scripts/release.py` |
+| Read-only official submodule/source boundary audit | `scripts/check-sources.py` |
+| Release naming, payload and preservation tests | `tests/test_release.py` |
 | Atomic distribution collection | `scripts/distribution.py` |
 | Artifact checks / CLI | `scripts/verification.py`, `scripts/verify-build.py` |
 | Patch workflow regression tests | `tests/test_patches.py` |
@@ -225,6 +229,20 @@ with only the two disabled-feature hashes missing.
 A release uses the four runtime ZIPs, SHA256SUMS and manifest.json. Standard
 RED4ext layout and symbols are separate optional extras. The collector verifies
 a candidate before replacing the old distribution and rejects mixed provenance.
-Do not upload toolchain downloads, caches, logs, game data or migration backups.
+Release archive names contain original mod versions and meaningful layout
+suffixes only; provenance belongs in manifests. Do not add commit, fingerprint,
+timestamp or `dirty` suffixes. Debug archives retain `-debug` for clarity.
+`SHA256SUMS` covers runtime, standard-layout and symbol archives.
+
+The tag workflow checks official source boundaries, tests and builds the full
+Release set in an Arch container, then publishes nine ZIPs and checksums using
+the repository token. Stable tags use `vX.Y.Z`; RC tags produce prereleases.
+It never overwrites an existing release. Local `scripts/release.py <tag>` only
+prepares flat assets, but its verifier writes Git objects via patch helpers;
+do not run it without explicit permission for those mutations. A request to
+edit release automation does not authorize a commit, tag, push or live release.
+
+Do not upload toolchain downloads, caches, game data or migration backups.
+Failed CI build logs may be retained as workflow diagnostic artifacts.
 Report actual validation and remaining runtime limits; do not equate a rebuild
 with an in-game test.

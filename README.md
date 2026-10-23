@@ -141,9 +141,26 @@ base require a deliberate port; they are not automatically resolved.
 `SHA256SUMS` and `manifest.json`. Alternative RED4ext layout and PDBs are under
 `standard/` and `symbols/`.
 
-Package names and manifests identify both the upstream source and the saved
-patch set, including the shared SDK. A distribution is verified before it
-replaces the previous one; packages with incompatible provenance cannot be mixed.
+Archive names contain the original mod version, target game version and any
+installation layout. Release filenames have no commit, patch fingerprint,
+timestamp or `dirty` suffix:
+
+| Archive | Purpose |
+| --- | --- |
+| `RED4ext-1.30.0-game2.5-mo2-rootbuilder.zip` | MO2 with Root Builder |
+| `RED4ext-1.30.0-game2.5-game-root.zip` | Manual game-root installation; alternative to Root Builder |
+| `ArchiveXL-1.27.5-game2.5.zip` | ArchiveXL runtime |
+| `Codeware-1.20.6-game2.5.zip` | Codeware runtime |
+| `TweakXL-1.11.5-game2.5.zip` | TweakXL runtime |
+| `<mod>-<version>-game2.5-symbols.zip` | Optional debugging symbols |
+
+Debug builds additionally include `-debug` to distinguish them from installable
+Release packages. Exact upstream revisions, patch checksums and shared SDK
+identity remain in the manifest. A distribution is verified before it replaces
+the previous one; packages with incompatible provenance cannot be mixed.
+`SHA256SUMS` covers all nine archives, including standard layout and symbols.
+After updating older tooling, run the full build once to refresh package names
+and metadata; old cached package records are rejected.
 
 ```bash
 python3 scripts/verify-build.py
@@ -156,6 +173,50 @@ ArchiveXL's unchanged packed resource comes from checksum-pinned official
 ArchiveXL 1.27.5. Every DLL is compiled locally. Upload only the runtime ZIPs,
 checksums and manifest for a release; standard-layout and symbol archives are
 optional extras. Preserve the startup-only test status and known limitations.
+
+## GitHub releases
+
+[The release workflow](.github/workflows/release.yml) runs when a tag matching
+`vX.Y.Z` is pushed. Tags `vX.Y.Z-rc` and `vX.Y.Z-rc.N` publish prereleases.
+The essentials tag identifies the complete set; archive filenames retain each
+mod's original version.
+
+On an Ubuntu-hosted runner, an Arch Linux container installs LLVM, CMake and
+the other Linux dependencies, then checks out the root and its five official
+submodules at the recorded commits. It runs the source audit and regression
+tests, applies our saved patches and builds all four Release packages. Nested
+dependencies are initialized selectively by the existing bootstrap; no copied
+upstream trees or prebuilt plugin DLLs are committed or used as build inputs.
+The unchanged, checksum-pinned ArchiveXL resource asset is the documented
+exception for packaged resources.
+
+Only after verification succeeds does the workflow publish a GitHub release
+with nine ZIPs, their individual checksums, `SHA256SUMS` and `manifest.json`.
+GitHub assets are flat: the release manifest uses matching flat filenames,
+while local `dist/release/` retains its `standard/` and `symbols/` directories.
+The automatically generated release notes include installation choices,
+original mod versions, attribution and the current runtime limitations.
+
+The workflow uses the repository's `GITHUB_TOKEN` with `contents: write`;
+no personal access token is needed. It creates a new release and does not
+overwrite a published one. Use a new version tag for subsequent releases.
+The tag must include the committed workflow and tooling. Creating commits,
+tags and pushes remains a maintainer action unless explicitly requested.
+
+```bash
+# Read-only check of tracked source boundaries and official submodule pins.
+python3 scripts/check-sources.py
+
+# Prepare GitHub assets locally after a complete Release build; no upload.
+python3 scripts/release.py v1.0.0
+```
+
+Release preparation verifies source identities through the existing patch
+helper, which writes temporary Git indexes/objects. Agents must obtain explicit
+authorization for those Git mutations under [AGENTS.md](AGENTS.md).
+Build logs are retained as a workflow artifact for seven days on failure.
+CI-built binaries still require in-game testing; automation does not establish
+gameplay or save compatibility.
 
 See [AGENTS.md](AGENTS.md) for the file map and maintenance rules, and
 [the investigation](docs/PATCH_2_5.md) for the original 2.5 crash evidence.

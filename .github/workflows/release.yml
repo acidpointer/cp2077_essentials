@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish essentials
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Validate release tag
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc(\.[0-9]+)?)?$ ]]; then
+            echo 'Use vX.Y.Z, vX.Y.Z-rc or vX.Y.Z-rc.N.' >&2
+            exit 1
+          fi
+
+      - name: Install Linux build tools
+        run: |
+          pacman -Syu --noconfirm --needed \
+            ca-certificates cmake clang lld llvm git python curl tar \
+            coreutils ninja github-cli
+          clang-cl --version
+          cmake --version
+
+      - name: Checkout official upstream submodules
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          submodules: true
+          persist-credentials: false
+
+      - name: Audit source layout
+        run: python3 scripts/check-sources.py
+
+      - name: Test patch and release tooling
+        run: python3 -m unittest discover -s tests -v
+
+      - name: Build all Release packages
+        run: ./build-linux.sh --config Release --jobs 2
+
+      - name: Prepare verified release assets
+        run: |
+          python3 scripts/check-sources.py
+          python3 scripts/release.py "$GITHUB_REF_NAME"
+          cd build/github-release
+          sha256sum --check SHA256SUMS
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t assets < build/github-release/assets.txt
+          args=(
+            release create "$GITHUB_REF_NAME" "${assets[@]}"
+            --repo "$GITHUB_REPOSITORY"
+            --verify-tag
+            --title "Cyberpunk 2077 Essentials $GITHUB_REF_NAME"
+            --notes-file build/github-release/notes.md
+            --generate-notes
+          )
+          if [[ "$GITHUB_REF_NAME" == *-rc* ]]; then
+            args+=(--prerelease)
+          fi
+          gh "${args[@]}"
+
+      - name: Retain logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-build-logs
+          path: build/logs/
+          if-no-files-found: ignore
+          retention-days: 7

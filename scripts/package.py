@@ -9,24 +9,50 @@ import common as c
 import patches
 
 
+def original_version(project, source, build):
+    if project == 'red4ext':
+        text = (build / 'src/loader/Resource.rc').read_text()
+        pattern = r'VALUE "ProductVersion", "([0-9]+\.[0-9]+\.[0-9]+)'
+    else:
+        text = (source / 'xmake.lua').read_text()
+        pattern = r'set_version\("([0-9]+\.[0-9]+\.[0-9]+)"'
+    match = re.search(pattern, text)
+    if not match:
+        raise ValueError(f'{project}: missing original numeric mod version.')
+    return match[1]
+
+
+def archive_name(project, version, config, kind):
+    if not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version):
+        raise ValueError(f'{project}: invalid original mod version {version!r}.')
+    if config not in ['Release', 'Debug']:
+        raise ValueError(f'Unsupported package configuration: {config}')
+    suffixes = {'runtime': '-mo2-rootbuilder' if project == 'red4ext' else '',
+                'symbols': '-symbols'}
+    if project == 'red4ext':
+        suffixes['standard'] = '-game-root'
+    if kind not in suffixes:
+        raise ValueError(f'{project}: unsupported archive kind {kind}.')
+    mode = '-debug' if config == 'Debug' else ''
+    return f'{c.NAMES[project]}-{version}-game2.5{mode}{suffixes[kind]}.zip'
+
+
 def create(project, config):
     root = c.ROOT
     name = c.NAMES[project]
     source = root / c.config()['projects'][project]['path']
     sdk = patches.identity('red4ext-sdk', require_saved=True)
     identity = patches.identity(project, require_saved=True)
-    token = c.fingerprint({'source': identity, 'sdk': sdk})[:10]
     build = root / 'build' / ('red4ext' if project == 'red4ext' else 'plugins') / config.lower()
     out = root / 'build/packages' / config.lower() / project
     out.mkdir(parents=True, exist_ok=True)
+    version = original_version(project, source, build)
     if project == 'red4ext':
-        version = re.search(r'VALUE "ProductVersion", "([^"+]+)', (build / 'src/loader/Resource.rc').read_text())[1]
         prefix = ''
         install = build / 'install'
         runtime = {p: (install / p).read_bytes() for p in ['bin/x64/winmm.dll', 'red4ext/RED4ext.dll', 'red4ext/LICENSE.txt', 'red4ext/THIRD_PARTY_LICENSES.txt']}
         symbols = {p: (install / p).read_bytes() for p in ['bin/x64/winmm.pdb', 'red4ext/RED4ext.pdb']}
     else:
-        version = re.search(r'set_version\("([^"]+)"', (source / 'xmake.lua').read_text())[1]
         prefix = f'red4ext/plugins/{name}/'
         runtime = {}
         def include(path, archive_name):
@@ -85,14 +111,14 @@ def create(project, config):
                     include(path, 'r6/config/redsUserHints/' + path.name)
         pdb = build / 'bin' / f'{name}.pdb'
         symbols = {prefix + pdb.name: pdb.read_bytes()}
-    base = f'{name}-{version}-game2.5-{config.lower()}-{identity["upstream_commit"][:7]}-p{token}'
-    groups = [('runtime', '-mo2-rootbuilder' if project == 'red4ext' else '', runtime, 'Root/' if project == 'red4ext' else ''),
-              ('symbols', '-symbols', symbols, '')]
+    groups = [('runtime', runtime, 'Root/' if project == 'red4ext' else ''),
+              ('symbols', symbols, '')]
     if project == 'red4ext':
-        groups += [('standard', '', runtime, '')]
-    record = {'project': name, 'config': config, 'source': identity, 'sdk': sdk, 'files': {}}
-    for kind, suffix, contents, root_prefix in groups:
-        dest = out / (base + suffix + '.zip')
+        groups += [('standard', runtime, '')]
+    record = {'project': name, 'version': version, 'config': config,
+              'source': identity, 'sdk': sdk, 'files': {}}
+    for kind, contents, root_prefix in groups:
+        dest = out / archive_name(project, version, config, kind)
         with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as archive:
             for path, data in sorted(contents.items()):
                 archive.writestr(root_prefix + path, data)

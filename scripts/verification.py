@@ -8,6 +8,7 @@ import zipfile
 
 import common as c
 import patches
+import package
 
 
 def exports(dll):
@@ -42,8 +43,14 @@ def distribution(folder):
             raise ValueError(f'{project}: stale artifact provenance; rebuild it.')
         config = manifest['config'].lower()
         build = c.ROOT / 'build' / ('red4ext' if project == 'red4ext' else 'plugins') / config
+        source = c.ROOT / c.config()['projects'][project]['path']
+        version = package.original_version(project, source, build)
+        if record.get('version') != version or record.get('config') != manifest['config']:
+            raise ValueError(f'{project}: package version/configuration differs; repackage it.')
         for kind, item in record['files'].items():
             path = folder / item['file']
+            if path.name != package.archive_name(project, version, manifest['config'], kind):
+                raise ValueError(f'{path}: unexpected archive name; repackage it.')
             if c.sha(path) != item['sha256']:
                 raise ValueError(f'{path}: SHA256 mismatch')
             with zipfile.ZipFile(path) as archive:

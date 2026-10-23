@@ -61,7 +61,8 @@ def collect(config, selected, override=None):
         manifest = {'schema': 2, 'game_version': '2.5', 'game_file_version': '3.0.88.46235',
                     'config': config, 'sdk': sdk, 'projects': result}
         c.atomic_json(stage / 'manifest.json', manifest)
-        sums = ''.join(f'{record["files"]["runtime"]["sha256"]}  {record["files"]["runtime"]["file"]}\n' for record in result.values())
+        sums = ''.join(f'{item["sha256"]}  {item["file"]}\n'
+                       for record in result.values() for item in record['files'].values())
         c.atomic_bytes(stage / 'SHA256SUMS', sums.encode())
         verification.distribution(stage)
         previous = pathlib.Path(temporary) / 'previous'
