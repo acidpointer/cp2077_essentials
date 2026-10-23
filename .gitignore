@@ -1,0 +1,37 @@
+# Generated builds, downloads, migration backups and release archives.
+/build/
+/dist/
+/cmake-build-*/
+
+# Local CMake configuration and generated files.
+/CMakeUserPresets.json
+/CMakeCache.txt
+/CMakeFiles/
+/cmake_install.cmake
+/install_manifest.txt
+/compile_commands.json
+/.cache/
+
+# Python bytecode, virtual environments and tool caches.
+__pycache__/
+*.py[cod]
+/.venv/
+/venv/
+/.pytest_cache/
+/.mypy_cache/
+/.ruff_cache/
+/.coverage
+/htmlcov/
+
+# Local environment, editors and desktop metadata.
+/.env
+/.env.*
+!/.env.example
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+/steam-*.log

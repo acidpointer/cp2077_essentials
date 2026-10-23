@@ -1,0 +1,818 @@
+diff --git a/lib/Support/RED4ext/RED4extProvider.cpp b/lib/Support/RED4ext/RED4extProvider.cpp
+index 07022dcc951c02a21d89b01e90a3bff71756f734..351832dee2efbd68f551cb9b47f3d5fb44bad22e 100644
+--- a/lib/Support/RED4ext/RED4extProvider.cpp
++++ b/lib/Support/RED4ext/RED4extProvider.cpp
+@@ -58,6 +58,9 @@ bool Support::RED4extProvider::HookAttach(uintptr_t aAddress, void* aCallback)
+ 
+ bool Support::RED4extProvider::HookAttach(uintptr_t aAddress, void* aCallback, void** aOriginal)
+ {
++    if (!aAddress)
++        return false;
++
+     return m_sdk->hooking->Attach(m_plugin, reinterpret_cast<void*>(aAddress), aCallback, aOriginal);
+ }
+ 
+@@ -68,5 +71,11 @@ bool Support::RED4extProvider::HookDetach(uintptr_t aAddress)
+ 
+ uintptr_t Support::RED4extProvider::ResolveAddress(uint32_t aAddressID)
+ {
+-    return RED4ext::UniversalRelocBase::Resolve(aAddressID);
++    // UniversalRelocBase::Resolve terminates the game on an unknown hash. Return 0 instead, so only the
++    // features that depend on an address missing from the current game version fail to load.
++    using ResolveFunc = uintptr_t (*)(uint32_t);
++    static const auto resolve = reinterpret_cast<ResolveFunc>(
++        GetProcAddress(GetModuleHandleW(L"RED4ext.dll"), "RED4ext_ResolveAddress"));
++
++    return resolve ? resolve(aAddressID) : 0;
+ }
+diff --git a/src/App/Archives/ArchiveService.cpp b/src/App/Archives/ArchiveService.cpp
+index edf26ef3bec5c1df17f13f3ee6618b424dc29dd1..c41e26c903d6b367a3de5f6cfa706a39b189afe8 100644
+--- a/src/App/Archives/ArchiveService.cpp
++++ b/src/App/Archives/ArchiveService.cpp
+@@ -68,7 +68,7 @@ void App::ArchiveService::OnInitializeArchives(Red::ResourceDepot* aDepot)
+ 
+         if (!archivePaths.IsEmpty())
+         {
+-            Raw::ResourceDepot::LoadArchives(nullptr, group, archivePaths, loadedResources, false);
++            Raw::ResourceDepot::LoadArchives(nullptr, group, archivePaths, loadedResources, 0, 0);
+         }
+     }
+ 
+@@ -83,7 +83,7 @@ void App::ArchiveService::OnInitializeArchives(Red::ResourceDepot* aDepot)
+         }
+ 
+         auto& group = ResolveArchiveGroup(aDepot, "");
+-        Raw::ResourceDepot::LoadArchives(nullptr, group, archivePaths, loadedResources, false);
++        Raw::ResourceDepot::LoadArchives(nullptr, group, archivePaths, loadedResources, 0, 0);
+     }
+ 
+     for (const auto& archivePath : loadedArchives)
+diff --git a/src/App/Extensions/Attachment/Extension.cpp b/src/App/Extensions/Attachment/Extension.cpp
+index ac7027001a4b86511bd88116c170064500faddf4..649a618eeebe2e8a6f2ba91a8e07e229b35c82fe 100644
+--- a/src/App/Extensions/Attachment/Extension.cpp
++++ b/src/App/Extensions/Attachment/Extension.cpp
+@@ -248,7 +248,7 @@ void App::AttachmentExtension::OnCheckFeetState(Red::game::ui::CharacterCustomiz
+ bool App::AttachmentExtension::OnGetSuffixValue(Raw::AppearanceChanger::GetSuffixValuePtr aOriginalFunc,
+                                                 const Red::ItemID& aItemID, uint64_t a2,
+                                                 Red::Handle<Red::GameObject>& aOwner,
+-                                                Red::TweakDBID aSuffixRecordID,
++                                                const Red::TweakDBID& aSuffixRecordID,
+                                                 Red::CString& aResult)
+ {
+     if (aOwner && a2 && aSuffixRecordID == InnerSleevesSuffix)
+diff --git a/src/App/Extensions/Attachment/Extension.hpp b/src/App/Extensions/Attachment/Extension.hpp
+index ecdd42a264c7c0e0bf3981adc4d98e046956d723..5e06d6012ac6f1c363e3377b4200d80e06a063cc 100644
+--- a/src/App/Extensions/Attachment/Extension.hpp
++++ b/src/App/Extensions/Attachment/Extension.hpp
+@@ -37,7 +37,7 @@ private:
+                                  Red::CharacterBodyPartState& aFlatState);
+     static bool OnGetSuffixValue(Raw::AppearanceChanger::GetSuffixValuePtr aOriginalFunc,
+                                  const Red::ItemID& aItemID, uint64_t a2, Red::Handle<Red::GameObject>& aOwner,
+-                                 Red::TweakDBID aSuffixRecordID, Red::CString& aResult);
++                                 const Red::TweakDBID& aSuffixRecordID, Red::CString& aResult);
+ 
+     static bool IsVisualTagActive(Red::Handle<Red::Entity>& aOwner, Red::TweakDBID aBaseSlotID, Red::CName aVisualTag,
+                                   Red::TweakDBID aEquippedItemID = {});
+diff --git a/src/App/Extensions/Customization/Extension.cpp b/src/App/Extensions/Customization/Extension.cpp
+index 96360d5fc70a3a4bb95e8a6f9840f968370f8cca..567a7065539b0f74efeb54641fafcb3583891819 100644
+--- a/src/App/Extensions/Customization/Extension.cpp
++++ b/src/App/Extensions/Customization/Extension.cpp
+@@ -889,6 +889,10 @@ void App::CustomizationExtension::FixCustomizationComponents(const Red::Handle<R
+     if (!ResourceMetaExtension::InScope(ResourceMetaExtension::CustomizationApp, aResource->path))
+         return;
+ 
++    // Game 2.5 has customization appearances without parts overrides
++    if (aDefinition->partsOverrides.IsEmpty())
++        return;
++
+     for (auto& override : aDefinition->partsOverrides[0].componentsOverrides)
+     {
+         for (const auto& component : aComponents)
+diff --git a/src/App/Extensions/InkSpawner/Extension.cpp b/src/App/Extensions/InkSpawner/Extension.cpp
+index 5f9633addeb6607578f19d2c054f35d95ad4e01a..47531a3e631e8efa48504f60938221e3dfc00a2d 100644
+--- a/src/App/Extensions/InkSpawner/Extension.cpp
++++ b/src/App/Extensions/InkSpawner/Extension.cpp
+@@ -88,7 +88,8 @@ uintptr_t App::InkSpawnerExtension::OnSpawnExternal(Red::ink::WidgetLibraryResou
+ 
+ bool App::InkSpawnerExtension::OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource& aLibrary,
+                                                  Red::InkSpawningInfo& aSpawningInfo,
+-                                                 Red::CName aItemName)
++                                                 Red::CName aItemName,
++                                                 bool aFlag)
+ {
+     auto* itemNameStr = aItemName.ToString();
+     auto* controllerSep = strchr(itemNameStr, ControllerSeparator);
+@@ -98,7 +99,7 @@ bool App::InkSpawnerExtension::OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource
+         aItemName = Red::FNV1a64(reinterpret_cast<const uint8_t*>(itemNameStr), controllerSep - itemNameStr);
+     }
+ 
+-    return Raw::InkWidgetLibrary::AsyncSpawnFromLocal(aLibrary, aSpawningInfo, aItemName);
++    return Raw::InkWidgetLibrary::AsyncSpawnFromLocal(aLibrary, aSpawningInfo, aItemName, aFlag);
+ }
+ 
+ bool App::InkSpawnerExtension::OnAsyncSpawnExternal(Red::ink::WidgetLibraryResource& aLibrary,
+diff --git a/src/App/Extensions/InkSpawner/Extension.hpp b/src/App/Extensions/InkSpawner/Extension.hpp
+index 0c1f5d53bead1faf12155da6868edf5f2c038583..75c4b2d4b901e30fcad45d32d8ed2d07df85e087 100644
+--- a/src/App/Extensions/InkSpawner/Extension.hpp
++++ b/src/App/Extensions/InkSpawner/Extension.hpp
+@@ -24,7 +24,8 @@ private:
+ 
+     static bool OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource& aLibrary,
+                                   Red::InkSpawningInfo& aSpawningInfo,
+-                                  Red::CName aItemName);
++                                  Red::CName aItemName,
++                                  bool aFlag);
+ 
+     static bool OnAsyncSpawnExternal(Red::ink::WidgetLibraryResource& aLibrary,
+                                      Red::InkSpawningInfo& aSpawningInfo,
+diff --git a/src/App/Extensions/WorldStreaming/Extension.cpp b/src/App/Extensions/WorldStreaming/Extension.cpp
+index f3b65e413c09840fd1d9d31296ab12f71df5e2c3..600d232afaa11fa3b4385d538e16123947b33613 100644
+--- a/src/App/Extensions/WorldStreaming/Extension.cpp
++++ b/src/App/Extensions/WorldStreaming/Extension.cpp
+@@ -18,6 +18,19 @@ constexpr auto NoCollisionPreset = Red::CName("No Collision");
+ 
+ Red::Handle<Red::worldStaticMeshNode> s_dummyNode;
+ Core::Map<Red::ResourcePath, Core::Map<int64_t, Red::CName*>> s_collisionNodeOverrides;
++
++// Game 2.5 keeps the resolved node pointer in the setup (+0x50, written by the node fix-up),
++// the packed node index is only a fallback and is bounds checked.
++Red::worldNode* ResolveNode(Red::StreamingSectorNodeBuffer& aBuffer, Red::CompiledNodeInstanceSetupInfo* aNodeSetup)
++{
++    if (aNodeSetup->node)
++        return aNodeSetup->node;
++
++    if (aNodeSetup->nodeIndex < aBuffer.nodes.Size())
++        return aBuffer.nodes[static_cast<uint32_t>(aNodeSetup->nodeIndex)].instance;
++
++    return nullptr;
++}
+ }
+ 
+ std::string_view App::WorldStreamingExtension::GetName()
+@@ -170,7 +183,16 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+     for (const auto& nodeMutation : aSectorMod.nodeMutations)
+     {
+         auto* nodeSetup = buffer.nodeSetups.GetInstance(nodeMutation.nodeIndex);
+-        auto* nodeDefinition = buffer.nodes[nodeSetup->nodeIndex].instance;
++        auto* nodeDefinition = ResolveNode(buffer, nodeSetup);
++
++        if (!nodeDefinition)
++        {
++            LogError(R"([{}] {}: The target node #{} can't be resolved (node index {} of {}).)",
++                     ExtensionName, aSectorMod.mod, nodeMutation.nodeIndex,
++                     static_cast<uint32_t>(nodeSetup->nodeIndex), buffer.nodes.Size());
++            nodeValidationPassed = false;
++            continue;
++        }
+ 
+         if (nodeMutation.nodeType != nodeDefinition->GetNativeType()->name)
+         {
+@@ -183,51 +205,30 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             continue;
+         }
+ 
++        // Game 2.5 changed the layouts of collision and instanced mesh nodes (the instance transforms are now
++        // cooked), so element level edits can't be applied safely yet. Whole node edits still work.
+         if (!nodeMutation.elementMutations.empty())
+         {
+-            if (nodeMutation.nodeType == CollisionNodeType)
+-            {
+-                auto& actors = Raw::CollisionNode::Actors::Ref(nodeDefinition);
+-                if (actors.GetSize() != nodeMutation.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} actor(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeMutation.nodeIndex,
+-                             actors.GetSize(), nodeMutation.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-            }
+-            else if (nodeMutation.nodeType == InstancedMeshNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition);
+-                if (meshNode->worldTransformsBuffer.numElements != nodeMutation.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} instance(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeMutation.nodeIndex,
+-                             meshNode->worldTransformsBuffer.numElements, nodeMutation.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-            }
+-            else if (nodeMutation.nodeType == InstancedDestructibleNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedDestructibleMeshNode>(nodeDefinition);
+-                if (meshNode->cookedInstanceTransforms.numElements != nodeMutation.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} instance(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeMutation.nodeIndex,
+-                             meshNode->cookedInstanceTransforms.numElements, nodeMutation.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-            }
++            LogError(R"([{}] {}: The target node #{} has type {}, element edits for this type are not supported on game 2.5.)",
++                     ExtensionName, aSectorMod.mod, nodeMutation.nodeIndex, nodeMutation.nodeType.ToString());
++            nodeValidationPassed = false;
++            continue;
+         }
+     }
+ 
+     for (const auto& nodeDeletion : aSectorMod.nodeDeletions)
+     {
+         auto* nodeSetup = buffer.nodeSetups.GetInstance(nodeDeletion.nodeIndex);
+-        auto* nodeDefinition = buffer.nodes[nodeSetup->nodeIndex].instance;
++        auto* nodeDefinition = ResolveNode(buffer, nodeSetup);
++
++        if (!nodeDefinition)
++        {
++            LogError(R"([{}] {}: The target node #{} can't be resolved (node index {} of {}).)",
++                     ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex,
++                     static_cast<uint32_t>(nodeSetup->nodeIndex), buffer.nodes.Size());
++            nodeValidationPassed = false;
++            continue;
++        }
+ 
+         if (nodeDeletion.nodeType != nodeDefinition->GetNativeType()->name)
+         {
+@@ -239,63 +240,14 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             continue;
+         }
+ 
++        // Game 2.5 changed the layouts of collision and instanced mesh nodes (the instance transforms are now
++        // cooked), so element level edits can't be applied safely yet. Whole node edits still work.
+         if (!nodeDeletion.elementDeletions.empty())
+         {
+-            if (nodeDeletion.nodeType == CollisionNodeType)
+-            {
+-                auto& actors = Raw::CollisionNode::Actors::Ref(nodeDefinition);
+-                if (actors.GetSize() != nodeDeletion.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} actor(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex,
+-                             actors.GetSize(), nodeDeletion.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-                if (!nodeDeletion.elementDeletions.empty())
+-                {
+-                    auto& shapes = Raw::CollisionNode::Shapes::Ref(nodeDefinition);
+-                    for (const auto& elementDeletion : nodeDeletion.elementDeletions)
+-                    {
+-                        if (elementDeletion.subElementIndex >= 0)
+-                        {
+-                            auto& actor = actors.beginPtr[elementDeletion.elementIndex];
+-                            if (elementDeletion.subElementIndex >= actor.numShapes)
+-                            {
+-                                LogError(R"([{}] {}: The target node #{} actor #{} has {} shape(s), but the mod expects {} or more.)",
+-                                         ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex, elementDeletion.elementIndex,
+-                                         actor.numShapes, elementDeletion.subElementIndex + 1);
+-                                nodeValidationPassed = false;
+-                                continue;
+-                            }
+-                        }
+-                    }
+-                }
+-            }
+-            else if (nodeDeletion.nodeType == InstancedMeshNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition);
+-                if (meshNode->worldTransformsBuffer.numElements != nodeDeletion.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} instance(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex,
+-                             meshNode->worldTransformsBuffer.numElements, nodeDeletion.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-            }
+-            else if (nodeDeletion.nodeType == InstancedDestructibleNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedDestructibleMeshNode>(nodeDefinition);
+-                if (meshNode->cookedInstanceTransforms.numElements != nodeDeletion.expectedElements)
+-                {
+-                    LogError(R"([{}] {}: The target node #{} has {} instance(s), but the mod expects {}.)",
+-                             ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex,
+-                             meshNode->cookedInstanceTransforms.numElements, nodeDeletion.expectedElements);
+-                    nodeValidationPassed = false;
+-                    continue;
+-                }
+-            }
++            LogError(R"([{}] {}: The target node #{} has type {}, element edits for this type are not supported on game 2.5.)",
++                     ExtensionName, aSectorMod.mod, nodeDeletion.nodeIndex, nodeDeletion.nodeType.ToString());
++            nodeValidationPassed = false;
++            continue;
+         }
+     }
+ 
+@@ -307,7 +259,7 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+     for (const auto& nodeMutation : aSectorMod.nodeMutations)
+     {
+         auto* nodeSetup = buffer.nodeSetups.GetInstance(nodeMutation.nodeIndex);
+-        auto* nodeDefinition = buffer.nodes[nodeSetup->nodeIndex].instance;
++        auto* nodeDefinition = ResolveNode(buffer, nodeSetup);
+ 
+         if (nodeMutation.modifyPosition)
+         {
+@@ -330,10 +282,6 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             {
+                 meshDefinition->mesh.path = nodeMutation.resourcePath;
+             }
+-            else if (auto* instancedMeshDefinition = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition))
+-            {
+-                instancedMeshDefinition->mesh.path = nodeMutation.resourcePath;
+-            }
+             else if (auto* entityDefinition = Red::Cast<Red::worldEntityNode>(nodeDefinition))
+             {
+                 entityDefinition->entityTemplate.path = nodeMutation.resourcePath;
+@@ -374,10 +322,6 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             {
+                 meshDefinition->meshAppearance = nodeMutation.appearanceName;
+             }
+-            else if (auto* instancedMeshDefinition = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition))
+-            {
+-                instancedMeshDefinition->meshAppearance = nodeMutation.appearanceName;
+-            }
+             else if (auto* entityDefinition = Red::Cast<Red::worldEntityNode>(nodeDefinition))
+             {
+                 entityDefinition->appearanceName = nodeMutation.appearanceName;
+@@ -412,164 +356,12 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             }
+         }
+ 
+-        if (!nodeMutation.elementMutations.empty())
+-        {
+-            if (nodeMutation.nodeType == CollisionNodeType)
+-            {
+-                auto& actors = Raw::CollisionNode::Actors::Ref(nodeDefinition);
+-                for (const auto& elementMutation : nodeMutation.elementMutations)
+-                {
+-                    auto* instance = actors.beginPtr + elementMutation.elementIndex;
+-
+-                    if (elementMutation.modifyPosition)
+-                    {
+-                        instance->transform.Position = elementMutation.position;
+-                    }
+-
+-                    if (elementMutation.modifyOrientation)
+-                    {
+-                        instance->transform.Orientation = elementMutation.orientation;
+-                    }
+-                }
+-                continue;
+-            }
+-
+-            if (nodeMutation.nodeType == InstancedMeshNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition);
+-                auto* instances = std::bit_cast<Red::RenderProxyTransformData*>(&meshNode->worldTransformsBuffer.sharedDataBuffer->buffer.buffer.data);
+-                auto startIndex = meshNode->worldTransformsBuffer.startIndex;
+-                for (const auto& elementMutation : nodeMutation.elementMutations)
+-                {
+-                    auto* instance = instances->Get(startIndex + elementMutation.elementIndex);
+-
+-                    if (elementMutation.modifyPosition)
+-                    {
+-                        instance->transform.Position = elementMutation.position;
+-                    }
+-
+-                    if (elementMutation.modifyOrientation)
+-                    {
+-                        instance->transform.Orientation = elementMutation.orientation;
+-                    }
+-
+-                    if (elementMutation.modifyScale)
+-                    {
+-                        instance->scale = elementMutation.scale;
+-                    }
+-                }
+-                continue;
+-            }
+-
+-            if (nodeMutation.nodeType == InstancedDestructibleNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedDestructibleMeshNode>(nodeDefinition);
+-                auto* instances = std::bit_cast<Red::TransformBuffer*>(&meshNode->cookedInstanceTransforms.sharedDataBuffer->buffer.buffer.data);
+-                auto startIndex = meshNode->cookedInstanceTransforms.startIndex;
+-                auto inverseTransform = nodeSetup->transform.Inverse();
+-                for (const auto& elementMutation : nodeMutation.elementMutations)
+-                {
+-                    auto* instance = instances->Get(startIndex + elementMutation.elementIndex);
+-                    auto newTransform = nodeSetup->transform;
+-
+-                    if (elementMutation.modifyPosition)
+-                    {
+-                        newTransform.position = elementMutation.position;
+-                    }
+-
+-                    if (elementMutation.modifyOrientation)
+-                    {
+-                        newTransform.orientation = elementMutation.orientation;
+-                    }
+-
+-                    *instance = newTransform * inverseTransform;
+-                }
+-                continue;
+-            }
+-        }
+     }
+ 
+     for (const auto& nodeDeletion : aSectorMod.nodeDeletions)
+     {
+         auto* nodeSetup = buffer.nodeSetups.GetInstance(nodeDeletion.nodeIndex);
+-        auto* nodeDefinition = buffer.nodes[nodeSetup->nodeIndex].instance;
+-
+-        if (!nodeDeletion.elementDeletions.empty())
+-        {
+-            if (nodeDeletion.nodeType == CollisionNodeType)
+-            {
+-                auto& actors = Raw::CollisionNode::Actors::Ref(nodeDefinition);
+-                auto& shapes = Raw::CollisionNode::Shapes::Ref(nodeDefinition);
+-                auto& presets = Raw::CollisionNode::Presets::Ref(nodeDefinition);
+-                uint8_t noCollisionIndex = 0xFF;
+-
+-                for (const auto& elementDeletion : nodeDeletion.elementDeletions)
+-                {
+-                    auto& actor = actors.beginPtr[elementDeletion.elementIndex];
+-                    if (elementDeletion.subElementIndex >= 0 && actor.numShapes > 1)
+-                    {
+-                        if (elementDeletion.subElementIndex < actor.numShapes)
+-                        {
+-                            if (noCollisionIndex == 0xFF)
+-                            {
+-                                noCollisionIndex = presets.GetSize();
+-                                auto overrideSize = noCollisionIndex + 1;
+-
+-                                auto& override = s_collisionNodeOverrides[aSector->path][nodeDeletion.nodeIndex];
+-                                if (!override)
+-                                {
+-                                    auto data = Red::Memory::DefaultAllocator::Get()->Alloc(sizeof(Red::CName) *
+-                                                                                            overrideSize);
+-                                    override = static_cast<Red::CName*>(data.memory);
+-                                    override[noCollisionIndex] = NoCollisionPreset;
+-
+-                                    std::copy(presets.begin(), presets.end(), override);
+-                                }
+-
+-                                presets.beginPtr = override;
+-                                presets.endPtr = override + overrideSize;
+-                            }
+-
+-                            auto& shape = shapes.beginPtr[actor.shapeStartIndex + elementDeletion.subElementIndex];
+-                            shape.presetIndex = noCollisionIndex;
+-                        }
+-                    }
+-                    else
+-                    {
+-                        actor.transform.Position.z.Bits = DelZ;
+-                    }
+-                }
+-                continue;
+-            }
+-
+-            if (nodeDeletion.nodeType == InstancedMeshNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition);
+-                auto* instances = std::bit_cast<Red::RenderProxyTransformData*>(&meshNode->worldTransformsBuffer.sharedDataBuffer->buffer.buffer.data);
+-                auto startIndex = meshNode->worldTransformsBuffer.startIndex;
+-                for (const auto& elementDeletion : nodeDeletion.elementDeletions)
+-                {
+-                    auto* instance = instances->Get(startIndex + elementDeletion.elementIndex);
+-                    instance->scale.X = 0;
+-                    instance->scale.Y = 0;
+-                    instance->scale.Z = 0;
+-                }
+-                continue;
+-            }
+-
+-            if (nodeDeletion.nodeType == InstancedDestructibleNodeType)
+-            {
+-                auto* meshNode = Red::Cast<Red::worldInstancedDestructibleMeshNode>(nodeDefinition);
+-                auto* instances = std::bit_cast<Red::TransformBuffer*>(&meshNode->cookedInstanceTransforms.sharedDataBuffer->buffer.buffer.data);
+-                auto startIndex = meshNode->cookedInstanceTransforms.startIndex;
+-                for (const auto& elementDeletion : nodeDeletion.elementDeletions)
+-                {
+-                    auto* instance = instances->Get(startIndex + elementDeletion.elementIndex);
+-                    instance->position.Z = -2000;
+-                }
+-                continue;
+-            }
+-        }
++        auto* nodeDefinition = ResolveNode(buffer, nodeSetup);
+ 
+         if (nodeDeletion.nodeType == StaticMeshNodeType)
+         {
+@@ -579,22 +371,6 @@ bool App::WorldStreamingExtension::PatchSector(Red::world::StreamingSector* aSec
+             continue;
+         }
+ 
+-        if (nodeDeletion.nodeType == InstancedMeshNodeType)
+-        {
+-            auto* meshNode = Red::Cast<Red::worldInstancedMeshNode>(nodeDefinition);
+-            auto* instances = std::bit_cast<Red::RenderProxyTransformData*>(&meshNode->worldTransformsBuffer.sharedDataBuffer->buffer.buffer.data);
+-            auto startIndex = meshNode->worldTransformsBuffer.startIndex;
+-            auto numElements = meshNode->worldTransformsBuffer.numElements;
+-            for (auto i = 0; i < numElements; ++i)
+-            {
+-                auto* instance = instances->Get(startIndex + i);
+-                instance->scale.X = 0;
+-                instance->scale.Y = 0;
+-                instance->scale.Z = 0;
+-            }
+-            continue;
+-        }
+-
+         if (nodeDeletion.nodeType == AdvertisementNodeType)
+         {
+             nodeSetup->scale.X = 0;
+diff --git a/src/App/Patches/WorldWidgetLimitPatch.cpp b/src/App/Patches/WorldWidgetLimitPatch.cpp
+index 02ca0c8aedd3a42d73452da63c1fe8b07ca7530e..e4b440eb333670aaa75ae80fa9c0155416c0f84b 100644
+--- a/src/App/Patches/WorldWidgetLimitPatch.cpp
++++ b/src/App/Patches/WorldWidgetLimitPatch.cpp
+@@ -3,7 +3,7 @@
+ void App::WorldWidgetLimitPatch::OnBootstrap()
+ {
+     auto& code = Core::RawPtr<Red::AddressLib::InkWorldLayer_UpdateComponents, uint8_t[0x100]>::Ref();
+-    uint8_t op[] = {0x83, 0xFB, 0x0A, 0x73, 0x16};
++    uint8_t op[] = {0x83, 0xFB, 0x0A, 0x73}; // cmp ebx, 10; jae (2.31: +0x16, 2.5: +0x07)
+     bool success = false;
+ 
+     DWORD oldProtect = 0;
+diff --git a/src/Red/Addresses/Library.hpp b/src/Red/Addresses/Library.hpp
+index f786304f251a7782fd8a4b6cd30a371bb702718d..b2deba4ee4531efe077493a5b316635ea175ff7a 100644
+--- a/src/Red/Addresses/Library.hpp
++++ b/src/Red/Addresses/Library.hpp
+@@ -12,7 +12,7 @@ constexpr uint32_t AnimatedComponent_InitializeAnimations = 2855474741;
+ constexpr uint32_t AppearanceChanger_ComputePlayerGarment = 3243419919;
+ constexpr uint32_t AppearanceChanger_GetBaseMeshOffset = 4219677283;
+ constexpr uint32_t AppearanceChanger_GetSuffixes = 63057648;
+-constexpr uint32_t AppearanceChanger_GetSuffixValue = 1003499294;
++constexpr uint32_t AppearanceChanger_GetSuffixValue = 3294244838; // 2.5 (2.31: 1003499294)
+ constexpr uint32_t AppearanceChanger_RegisterPart = 3169139695;
+ constexpr uint32_t AppearanceChanger_SelectAppearanceName = 2770550105;
+ 
+@@ -57,7 +57,7 @@ constexpr uint32_t CharacterCustomizationState_GetBodyAppearances2 = 56573295;
+ constexpr uint32_t CharacterCustomizationState_GetArmsAppearances1 = 110771572;
+ constexpr uint32_t CharacterCustomizationState_GetArmsAppearances2 = 4059182261;
+ 
+-constexpr uint32_t CharacterCustomizationSystem_Initialize = 2341291776;
++constexpr uint32_t CharacterCustomizationSystem_Initialize = 2343126786; // 2.5 (2.31: 2341291776)
+ constexpr uint32_t CharacterCustomizationSystem_Uninitialize = 402202441;
+ constexpr uint32_t CharacterCustomizationSystem_GetResource = 4275058446;
+ constexpr uint32_t CharacterCustomizationSystem_EnsureState = 787099588;
+@@ -69,7 +69,7 @@ constexpr uint32_t CharacterCustomizationSystem_InitializeOptionsFromState = 116
+ constexpr uint32_t CMesh_PostLoad = 2272530537;
+ constexpr uint32_t CMesh_GetAppearance = 773462733;
+ constexpr uint32_t CMesh_FindAppearance = 3007126651;
+-constexpr uint32_t CMesh_LoadMaterialsAsync = 701648326;
++constexpr uint32_t CMesh_LoadMaterialsAsync = 479081020; // 2.5 (2.31: 701648326)
+ constexpr uint32_t CMesh_AddStubAppearance = 555290091;
+ constexpr uint32_t CMesh_ShouldPreloadAppearances = 503977943;
+ 
+@@ -92,7 +92,7 @@ constexpr uint32_t EntitySpawner_SpawnFromTemplate = 2509382878;
+ constexpr uint32_t EntityTemplate_OnLoad = 2741376473;
+ constexpr uint32_t EntityTemplate_FindAppearance = 36838056;
+ 
+-constexpr uint32_t FactoryIndex_LoadFactoryAsync = 1886854234;
++constexpr uint32_t FactoryIndex_LoadFactoryAsync = 1931943018; // 2.5 (2.31: 1886854234)
+ constexpr uint32_t FactoryIndex_ResolveResource = 3040549301;
+ 
+ constexpr uint32_t GameApplication_InitResourceDepot = 2923109755;
+@@ -112,14 +112,14 @@ constexpr uint32_t GarmentAssemblerState_ChangeCustomItem = 956641309;
+ 
+ constexpr uint32_t ImpostorComponent_OnAttach = 4002093843;
+ 
+-constexpr uint32_t InkSpawner_FinishAsyncSpawn = 2698985195;
++constexpr uint32_t InkSpawner_FinishAsyncSpawn = 4097515464; // 2.5 (2.31: 2698985195)
+ 
+-constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromExternal = 1396063719;
+-constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromLocal = 118698863;
++constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromExternal = 225197914; // 2.5 (2.31: 1396063719)
++constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromLocal = 2342073570; // 2.5 (2.31: 118698863)
+ constexpr uint32_t InkWidgetLibrary_SpawnFromExternal = 506278179;
+ constexpr uint32_t InkWidgetLibrary_SpawnFromLocal = 1158555307;
+ 
+-constexpr uint32_t InkWorldLayer_UpdateComponents = 1693194103;
++constexpr uint32_t InkWorldLayer_UpdateComponents = 2254060789; // 2.5 (2.31: 1693194103)
+ 
+ constexpr uint32_t ItemFactoryAppearanceChangeRequest_LoadTemplate = 1291460507;
+ constexpr uint32_t ItemFactoryAppearanceChangeRequest_LoadAppearance = 3392610574;
+@@ -135,7 +135,7 @@ constexpr uint32_t JournalManager_TrackQuest = 3274382593;
+ 
+ constexpr uint32_t JournalRootFolderEntry_Initialize = 1945256833;
+ 
+-constexpr uint32_t JournalTree_ProcessJournalIndex = 837162664;
++constexpr uint32_t JournalTree_ProcessJournalIndex = 837162664; // not found on 2.5
+ 
+ constexpr uint32_t Localization_LoadOnScreens = 3550098299;
+ constexpr uint32_t Localization_LoadSubtitles = 772484645;
+@@ -143,7 +143,7 @@ constexpr uint32_t Localization_LoadVoiceOvers = 4223669659;
+ constexpr uint32_t Localization_LoadLipsyncs = 1488657506;
+ 
+ constexpr uint32_t MappinSystem_GetMappinData = 3299551353;
+-constexpr uint32_t MappinSystem_GetPoiData = 620961393;
++constexpr uint32_t MappinSystem_GetPoiData = 2918455690; // 2.5 (2.31: 620961393)
+ constexpr uint32_t MappinSystem_OnStreamingWorldLoaded = 140387944;
+ 
+ constexpr uint32_t MeshAppearance_LoadMaterialSetupAsync = 1419388740;
+@@ -160,20 +160,20 @@ constexpr uint32_t QuestsSystem_OnGameRestored = 2048921710;
+ 
+ constexpr uint32_t QuestRootInstance_Start = 797843833;
+ 
+-constexpr uint32_t ResourceDepot_InitializeArchives = 2885423437;
+-constexpr uint32_t ResourceDepot_LoadArchives = 2517385486;
++constexpr uint32_t ResourceDepot_InitializeArchives = 2892763485; // 2.5 (2.31: 2885423437)
++constexpr uint32_t ResourceDepot_LoadArchives = 3573367139; // 2.5 (2.31: 2517385486)
+ constexpr uint32_t ResourceDepot_RequestResource = 2450934495;
+ constexpr uint32_t ResourceDepot_CheckResource = 43194193;
+ 
+ constexpr uint32_t ResourceLoader_RequestResource = 2365013187; // res::ResourceLoader::IssueLoadingRequest
+-constexpr uint32_t ResourceLoader_OnUpdate = 1303056161;
++constexpr uint32_t ResourceLoader_OnUpdate = 1303056161; // not found on 2.5
+ 
+ constexpr uint32_t ResourcePath_Create = 3998356057;
+ 
+ constexpr uint32_t ResourceSerializer_Load = 2577814646;
+ constexpr uint32_t ResourceSerializer_Deserialize = 2901686778;
+ constexpr uint32_t ResourceSerializer_PostLoad = 1350901460;
+-constexpr uint32_t ResourceSerializer_OnDependenciesReady = 1185093671;
++constexpr uint32_t ResourceSerializer_OnDependenciesReady = 3892979844; // 2.5 (2.31: 1185093671)
+ constexpr uint32_t ResourceSerializer_OnResourceReady = 1147149338;
+ 
+ constexpr uint32_t StreamingSector_PostLoad = 3972601611;
+@@ -188,5 +188,5 @@ constexpr uint32_t TPPRepresentationComponent_OnItemUnequipped = 1933319146;
+ constexpr uint32_t TPPRepresentationComponent_RegisterAffectedItem = 3037343626;
+ constexpr uint32_t TPPRepresentationComponent_IsAffectedSlot = 678894266;
+ 
+-constexpr uint32_t TweakDB_Load = 3602585178; // game::data::TweakDB::LoadOptimized
++constexpr uint32_t TweakDB_Load = 63182599; // game::data::TweakDB::LoadOptimized, 2.5 (2.31: 3602585178)
+ }
+diff --git a/src/Red/AppearanceChanger.hpp b/src/Red/AppearanceChanger.hpp
+index 0988a37c0c5ca9f167827ef759cdba298e1b3ab0..ff352bb4ae3776981f5d38733996bee9dac6acd0 100644
+--- a/src/Red/AppearanceChanger.hpp
++++ b/src/Red/AppearanceChanger.hpp
+@@ -62,7 +62,7 @@ constexpr auto GetSuffixValue = Core::RawFunc<
+     /* type = */ bool (*)(const Red::ItemID& aItemID,
+                           uint64_t a2, // Must be non-zero
+                           Red::Handle<Red::GameObject>& aOwner,
+-                          Red::TweakDBID aSuffixRecordID,
++                          const Red::TweakDBID& aSuffixRecordID, // 2.5: by reference
+                           Red::CString& aResult)>();
+ using GetSuffixValuePtr = decltype(GetSuffixValue)::Callable;
+ 
+diff --git a/src/Red/InkSpawner.hpp b/src/Red/InkSpawner.hpp
+index 761bace4f8377809542fec0631624fff97979b6d..af7eb1680ffc46396f09fdbc3438ac5aa64375aa 100644
+--- a/src/Red/InkSpawner.hpp
++++ b/src/Red/InkSpawner.hpp
+@@ -18,20 +18,14 @@ struct InkSpawningRequest
+ RED4EXT_ASSERT_OFFSET(InkSpawningRequest, itemName, 0x48);
+ RED4EXT_ASSERT_OFFSET(InkSpawningRequest, rootWidget, 0x60);
+ 
++// Game 2.5: FinishAsyncSpawn reads the request from [ctx+0x10] (2.31 had it at +0x18)
+ struct InkSpawningContext
+ {
+-    virtual void sub_00() = 0;
+-    virtual void sub_08() = 0;
+-    virtual void sub_10() = 0;
+-    virtual void sub_18() = 0;
+-    virtual void sub_20() = 0;
+-    virtual void sub_28() = 0;
+-
+-    SharedPtr<void>               unk08;   // 08
+-    SharedPtr<InkSpawningRequest> request; // 18
++    uint8_t unk00[0x10];                   // 00
++    SharedPtr<InkSpawningRequest> request; // 10
+ };
+-RED4EXT_ASSERT_SIZE(InkSpawningContext, 0x28);
+-RED4EXT_ASSERT_OFFSET(InkSpawningContext, request, 0x18);
++RED4EXT_ASSERT_SIZE(InkSpawningContext, 0x20);
++RED4EXT_ASSERT_OFFSET(InkSpawningContext, request, 0x10);
+ 
+ struct InkSpawningInfo
+ {
+@@ -57,7 +51,8 @@ constexpr auto AsyncSpawnFromLocal = Core::RawFunc<
+     /* type = */ bool (*)(
+         Red::ink::WidgetLibraryResource& aLibrary,
+         Red::InkSpawningInfo& aSpawningInfo,
+-        Red::CName aItemName)>();
++        Red::CName aItemName,
++        bool aFlag)>(); // 2.5 added the bool
+ 
+ constexpr auto SpawnFromExternal = Core::RawFunc<
+     /* addr = */ Red::AddressLib::InkWidgetLibrary_SpawnFromExternal,
+diff --git a/src/Red/ResourceDepot.hpp b/src/Red/ResourceDepot.hpp
+index a39d962ccab3d2dd2f761abe366c42b1080785af..1f6a44f037e78443a6a6b252f8994f649f81b939 100644
+--- a/src/Red/ResourceDepot.hpp
++++ b/src/Red/ResourceDepot.hpp
+@@ -12,7 +12,8 @@ constexpr auto LoadArchives = Core::RawFunc<
+                           Red::ArchiveGroup& aGroup,
+                           const Red::DynArray<Red::CString>& aArchivePaths,
+                           Red::DynArray<Red::ResourcePath>& aLoadedResourcePaths,
+-                          bool aMemoryResident)>{};
++                          uint32_t aMemoryResident,
++                          uint8_t aMode)>{}; // 2.5: base archives pass 2, mods pass 0
+ 
+ constexpr auto RequestResource = Core::RawFunc<
+     /* addr = */ Red::AddressLib::ResourceDepot_RequestResource,
+diff --git a/src/Red/ResourceLoader.hpp b/src/Red/ResourceLoader.hpp
+index 1a748a81b51d9af75f3f9d1e530ec3cc0547f8ef..25b6d4c08e70bf307e19b9e7ef2440c4deba5751 100644
+--- a/src/Red/ResourceLoader.hpp
++++ b/src/Red/ResourceLoader.hpp
+@@ -6,12 +6,13 @@ struct ResourceRequest
+ {
+     ResourcePath path; // 00
+     uint64_t unk08{};  // 08
+-    uint64_t unk10{};  // 10
+-    int32_t unk18{-1}; // 18
+-    int32_t unk1C{};   // 1C
+-    uint64_t unk20{};  // 20
++    uint64_t unk10{};  // 10 (2.5: flags, see RED4ext::ResourceRequest)
++    uint64_t unk18{};  // 18
++    int32_t unk20{-1}; // 20 (2.5: archive handle, 2.31: 18)
++    int32_t unk24{};   // 24
++    uint64_t unk28{};  // 28
+ };
+-RED4EXT_ASSERT_SIZE(ResourceRequest, 0x28);
++RED4EXT_ASSERT_SIZE(ResourceRequest, 0x30);
+ RED4EXT_ASSERT_OFFSET(ResourceRequest, path, 0x0);
+ }
+ 
+diff --git a/src/Red/StreamingSector.hpp b/src/Red/StreamingSector.hpp
+index 1c09def94f45822358b9e43497f90e1bb81f2e43..500f4847a01ba629c808c88ca46f2fc4a7d31f92 100644
+--- a/src/Red/StreamingSector.hpp
++++ b/src/Red/StreamingSector.hpp
+@@ -15,19 +15,20 @@ struct __declspec(align(0x10)) CompiledNodeInstanceSetupInfo
+     uint64_t globalNodeID;             // 58
+     uint64_t proxyNodeID;              // 60
+     ResourcePath unk68;                // 68
+-    float secondaryRefPointDistance;   // 70
+-    float streamingDistance;           // 74
+-    uint16_t nodeIndex;                // 78
+-    uint16_t unk7A;                    // 7A
+-    uint16_t unk7C;                    // 7C
+-    uint16_t unk7E;                    // 7E
+-    uint64_t unk80;                    // 80
+-    uint64_t unk88;                    // 88
++    uint64_t nodeIndex : 19;           // 70 (2.31: uint16 at 0x78)
++    uint64_t unk70_19 : 29;            // 70
++    uint64_t unk70_48 : 16;            // 70
++    float secondaryRefPointDistance;   // 78 (2.31: 70)
++    float streamingDistance;           // 7C (2.31: 74)
++    uint32_t unk80;                    // 80
++    uint8_t unk84;                     // 84 (2.31: 88)
++    uint8_t unk85[0x90 - 0x85];        // 85
+ };
+ RED4EXT_ASSERT_SIZE(CompiledNodeInstanceSetupInfo, 0x90);
+ RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, node, 0x50);
+ RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, globalNodeID, 0x58);
+-RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, nodeIndex, 0x78);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, proxyNodeID, 0x60);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, secondaryRefPointDistance, 0x78);
+ 
+ struct CompiledNodeInstanceSetupInfoBuffer : DataBuffer
+ {
+@@ -54,14 +55,16 @@ struct CompiledNodeInstanceSetupInfoBuffer : DataBuffer
+ };
+ RED4EXT_ASSERT_SIZE(CompiledNodeInstanceSetupInfoBuffer, 0x28);
+ 
++// Game 2.5: a setup data version dword was inserted at +0x28, so the arrays moved by 8 (see Codeware PR #63)
+ struct StreamingSectorNodeBuffer
+ {
+     CompiledNodeInstanceSetupInfoBuffer nodeSetups; // 00
+-    DynArray<Handle<worldNode>> nodes;              // 28
+-    DynArray<NodeRef> nodeRefs;                     // 38
++    uint32_t setupVersion;                          // 28
++    DynArray<Handle<worldNode>> nodes;              // 30 (2.31: 28)
++    DynArray<NodeRef> nodeRefs;                     // 40 (2.31: 38)
+ };
+-RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodes, 0x28);
+-RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodeRefs, 0x38);
++RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodes, 0x30);
++RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodeRefs, 0x40);
+ 
+ struct CollisionActor
+ {
+diff --git a/src/Red/TweakDB.hpp b/src/Red/TweakDB.hpp
+index 172f4c7dd80baf1767e03700b3a8753440a91f05..f21e1d5c03ac47b37573830b3923f4aa06309d4a 100644
+--- a/src/Red/TweakDB.hpp
++++ b/src/Red/TweakDB.hpp
+@@ -194,5 +194,5 @@ namespace Raw
+ {
+ constexpr auto LoadTweakDB = Core::RawFunc<
+     /* addr = */ Red::AddressLib::TweakDB_Load,
+-    /* type = */ void (*)(Red::TweakDB*, Red::CString&)>();
++    /* type = */ void (*)(Red::TweakDB*, bool, Red::CString&)>(); // 2.5 added the bool
+ }
+diff --git a/src/pch.hpp b/src/pch.hpp
+index 3369f200d9a98b4b370f89a987ae28e4779c6137..3e7edd4f4765b123734fc28f95f2a08b107ffda1 100644
+--- a/src/pch.hpp
++++ b/src/pch.hpp
+@@ -77,7 +77,7 @@
+ #include <RED4ext/Scripting/Natives/Generated/game/IHitShape.hpp>
+ #include <RED4ext/Scripting/Natives/Generated/game/ITransactionSystem.hpp>
+ #include <RED4ext/Scripting/Natives/Generated/game/JournalManager.hpp>
+-#include <RED4ext/Scripting/Natives/Generated/game/JournalPointOfInterestMapPin.hpp>
++#include <RED4ext/Scripting/Natives/Generated/game/JournalPointOfInterestMappin.hpp>
+ #include <RED4ext/Scripting/Natives/Generated/game/JournalQuestMapPin.hpp>
+ #include <RED4ext/Scripting/Natives/Generated/game/JournalResource.hpp>
+ #include <RED4ext/Scripting/Natives/Generated/game/JournalRootFolderEntry.hpp>

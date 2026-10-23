@@ -1,0 +1,3741 @@
+diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
+index 7bd9f7a0ac4249cbb85c6802ff57d62a692e0850..c8bc311a7e8817f3b59f260c348b85151c22af1c 100644
+--- a/lib/Red/TypeInfo/Definition.hpp
++++ b/lib/Red/TypeInfo/Definition.hpp
+@@ -35,6 +35,15 @@ concept HasSystemGetter = requires(T*)
+     { T::Get() } -> std::convertible_to<Handle<T>>;
+ };
+ 
++// A system whose GameInstance getter is declared by the game's own scripts with one optional
++// GameInstance parameter (game 2.5: `GetCallbackSystem(opt gi: GameInstance)`), so the getter must
++// consume that parameter from the stack frame.
++template<typename T>
++concept HasGameInstanceGetterParam = requires(T*)
++{
++    { T::GetterTakesGameInstance } -> std::convertible_to<bool>;
++} && T::GetterTakesGameInstance;
++
+ template<typename TSpec>
+ concept HasMinValueGetter = requires
+ {
+@@ -939,6 +948,12 @@ struct SystemBuilder
+     static inline void ScriptGetter(Red::IScriptable* aContext, Red::CStackFrame* aFrame,
+                                     Red::Handle<Red::IScriptable>* aRet, int64_t)
+     {
++        if constexpr (Detail::HasGameInstanceGetterParam<TSystem>)
++        {
++            ScriptGameInstance gameInstance{};
++            Red::GetParameter(aFrame, &gameInstance);
++        }
++
+         ++aFrame->code;
+ 
+         if (aRet)
+@@ -974,6 +989,11 @@ struct SystemBuilder
+         auto getterFunc = CClassStaticFunction::Create(gameType, getterNameStr.data(), getterNameStr.data(), &ScriptGetter);
+         getterFunc->SetReturnType(CNamePool::Add(systemRefStr.data()));
+ 
++        if constexpr (Detail::HasGameInstanceGetterParam<TSystem>)
++        {
++            getterFunc->AddParam(GetTypeName<ScriptGameInstance>(), "gi", false, true);
++        }
++
+         gameType->staticFuncs.PushBack(getterFunc);
+     }
+ 
+@@ -981,7 +1001,12 @@ struct SystemBuilder
+     {
+         auto engine = CGameEngine::Get();
+ 
+-        if (!engine || !engine->framework)
++        // The engine drains the post-register queue from CRTTISystem::GetType on whatever thread calls it
++        // (game 2.5: vtable +0x00 -> 0x279E78 -> 0x27AAD8), so a deferred pass usually lands on a job thread.
++        // The game instance's system containers are plain HashMaps/DynArrays that the main thread writes while
++        // it builds the game instance, so they are only touched from the main thread: any other thread
++        // queues the pass again, and the main thread's next GetType runs it.
++        if (!engine || !engine->framework || !engine->framework->gameInstance || !TypeInfoRegistrar::IsMainThread())
+         {
+             TypeInfoRegistrar::AddDescribeCallback(&RegisterSystem);
+             return;
+@@ -1004,7 +1029,7 @@ struct SystemBuilder
+ 
+         gameInstance->systemMap.Insert(systemType, systemInstance);
+         gameInstance->systemImplementations.Insert(systemType, systemType);
+-        gameInstance->systemInstances.EmplaceBack(systemInstance);
++        gameInstance->systemInstances.EmplaceBack(static_cast<const Handle<IScriptable>&>(systemInstance));
+     }
+ 
+     static inline Handle<TSystem> BuildSystem()
+diff --git a/lib/Red/TypeInfo/Registrar.hpp b/lib/Red/TypeInfo/Registrar.hpp
+index cc6f3c98d20b8bc5cc8ed106b6d97d11d3864139..9f7c433267585aa601cea378abf429cb759042f9 100644
+--- a/lib/Red/TypeInfo/Registrar.hpp
++++ b/lib/Red/TypeInfo/Registrar.hpp
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include <atomic>
++
+ namespace Red
+ {
+ class TypeInfoRegistrar
+@@ -15,6 +17,8 @@ public:
+ 
+     static inline void RegisterDiscovered()
+     {
++        // Called at plugin bootstrap, on the game's main thread.
++        s_mainThread = GetCurrentThreadId();
+         QueuePendingRegisterCallbacks();
+         QueuePendingDescribeCallbacks();
+     }
+@@ -35,6 +39,12 @@ public:
+         }
+     }
+ 
++    static inline bool IsMainThread()
++    {
++        const auto mainThread = s_mainThread.load();
++        return mainThread == 0 || mainThread == GetCurrentThreadId();
++    }
++
+ private:
+     static inline void QueuePendingRegisterCallbacks()
+     {
+@@ -84,5 +94,6 @@ private:
+ 
+     static inline std::vector<Callback> s_registerCallbacks;
+     static inline std::vector<Callback> s_describeCallbacks;
++    static inline std::atomic<uint32_t> s_mainThread{0};
+ };
+ }
+diff --git a/scripts/Base/Addons/CrowdMemberComponent.reds b/scripts/Base/Addons/CrowdMemberComponent.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..c938b59413c210012f1369122fbe65396a4d31b9
+--- /dev/null
++++ b/scripts/Base/Addons/CrowdMemberComponent.reds
+@@ -0,0 +1,4 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(CrowdMemberComponent)
++public native let forceCrowdToIgnore: Bool;
+diff --git a/scripts/Base/Addons/JournalTarot.reds b/scripts/Base/Addons/JournalTarot.reds
+index 49b8818c246e8eae2c61760eeaf1914ba9f62338..cdaaba3d26271038c6edfb9181f4aa111384d919 100644
+--- a/scripts/Base/Addons/JournalTarot.reds
++++ b/scripts/Base/Addons/JournalTarot.reds
+@@ -11,3 +11,6 @@ public native let description: LocalizationString;
+ 
+ @addField(JournalTarot)
+ public native let imagePart: CName;
++
++@addField(JournalTarot)
++public native let isMinorArcana: Bool;
+diff --git a/scripts/Base/Addons/MainMenuGameController.reds b/scripts/Base/Addons/MainMenuGameController.reds
+index 3e2b625d6d309ba3769da83f5e563ade6327896b..b82ce1df1859e773738ff290652d07ca550d0480 100644
+--- a/scripts/Base/Addons/MainMenuGameController.reds
++++ b/scripts/Base/Addons/MainMenuGameController.reds
+@@ -2,3 +2,6 @@
+ 
+ @addField(MainMenuGameController)
+ public native let backgroundContainer: inkCompoundRef;
++
++@addField(MainMenuGameController)
++public native let NeedToDisplayStartupUpdateModsPopup: gameuiSendModInfoToUpdateCallback;
+diff --git a/scripts/Base/Addons/ModioBrowserMenuGameController.reds b/scripts/Base/Addons/ModioBrowserMenuGameController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b75f2989e0de671281dfc7004bed9423bef426de
+--- /dev/null
++++ b/scripts/Base/Addons/ModioBrowserMenuGameController.reds
+@@ -0,0 +1,76 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(ModioBrowserMenuGameController)
++public native let MenuUpdate: gameuiMenuIntIntCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let ModDetailsUpdate: gameuiMenuIntCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let LogoDownloadRequested: gameuiMenuIntCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let ButtonHintsUpdateRequested: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let NewModSelected: gameuiSendSelectedModInfoCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let ProcessedModProgressUpdate: gameuiSendProcessedModProgressInfoCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let ListOfModsToDisplayUpdated: gameuiSendModGridInfoCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let PagesLayoutChanged: gameuiUpdatePageLayoutCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let SwitchBetweenBrowserAndCollectionMenu: inkBoolCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let RequestLogoForWidget: gameuiRequestMediaForWidgetCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let RequestedGalleryOnServer: gameuiMenuIntCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let RequestGalleryForWidget: gameuiRequestMediaForWidgetCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let AllLanguagesCheckboxClicked: gameuiAllLanguagesCheckboxCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let SearchbarUpdate: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let CheckIfEnabledModsListChanged: inkBoolCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let RateLimitedErrorReceived: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let RateLimitedErrorLifted: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let UpdateModVerificationPopupCount: gameuiSendModUpdateVerificationInfo;
++
++@addField(ModioBrowserMenuGameController)
++public native let ModTagsReceived: gameuiFilterTagsReceivedCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let DelayedSpawnForFilters: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let DelayedSliderAdjustForDrawer: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let HiddenModListUpdated: gameuiReceivedHiddenModsListCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let AskedForNewModList: inkEmptyCallback;
++
++@addField(ModioBrowserMenuGameController)
++public native let bIsInBrowserMode: Bool;
++
++@addField(ModioBrowserMenuGameController)
++public native let bHasAtLeastOneModDisabled: Bool;
+diff --git a/scripts/Base/Addons/ModioModInfos.reds b/scripts/Base/Addons/ModioModInfos.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..c05fd612f72c456dfd78963c27bfa6279233d54d
+--- /dev/null
++++ b/scripts/Base/Addons/ModioModInfos.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(ModioModInfos)
++public native let bIsModInstalled: Bool;
++
++@addField(ModioModInfos)
++public native let tags: array<String>;
+diff --git a/scripts/Base/Addons/UpdateModsPopupController.reds b/scripts/Base/Addons/UpdateModsPopupController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..891f130fcb0b3100f45b456129492dd5943bae24
+--- /dev/null
++++ b/scripts/Base/Addons/UpdateModsPopupController.reds
+@@ -0,0 +1,4 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(UpdateModsPopupController)
++public native let ReceivedModLogo: gameuiModLogoInfoReceivedCallback;
+diff --git a/scripts/Base/Addons/gameuiCreditsController.reds b/scripts/Base/Addons/gameuiCreditsController.reds
+index 9ea3a1df4019a326b0a9a5eada0052d2d4a1c736..a44b894017bc1354a41ba6ad3aa840ea37f8335f 100644
+--- a/scripts/Base/Addons/gameuiCreditsController.reds
++++ b/scripts/Base/Addons/gameuiCreditsController.reds
+@@ -1,10 +1,19 @@
+ // CODE GENERATED. DO NOT EDIT.
+ 
+ @addField(gameuiCreditsController)
+-public native let creditsResourcePS4: ResourceRef; // rRef<inkCreditsResource>
++public native let creditsResourceXBOX: ResourceRef; // rRef<inkCreditsResource>
+ 
+ @addField(gameuiCreditsController)
+-public native let creditsResourceXBOXPC: ResourceRef; // rRef<inkCreditsResource>
++public native let creditsResourcePC: ResourceRef; // rRef<inkCreditsResource>
++
++@addField(gameuiCreditsController)
++public native let creditsResourceEmporium: ResourceRef; // rRef<inkCreditsResource>
++
++@addField(gameuiCreditsController)
++public native let creditsResourceMac: ResourceRef; // rRef<inkCreditsResource>
++
++@addField(gameuiCreditsController)
++public native let creditsResourcePS5: ResourceRef; // rRef<inkCreditsResource>
+ 
+ @addField(gameuiCreditsController)
+ public native let scrollingSpeed: Float;
+diff --git a/scripts/Base/Addons/gameuiGlamdocGameController.reds b/scripts/Base/Addons/gameuiGlamdocGameController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..f897cfa99b34f15cd9f6708fa037bffb9ed3ce98
+--- /dev/null
++++ b/scripts/Base/Addons/gameuiGlamdocGameController.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(gameuiGlamdocGameController)
++public native let previewSceneName: CName;
++
++@addField(gameuiGlamdocGameController)
++public native let timeToWaitToRevealPreview: Float;
+diff --git a/scripts/Base/Addons/gameuiSaveHandlingController.reds b/scripts/Base/Addons/gameuiSaveHandlingController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..a7d35f30b8c3cc6575f6088affb84f9cc29b7701
+--- /dev/null
++++ b/scripts/Base/Addons/gameuiSaveHandlingController.reds
+@@ -0,0 +1,4 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(gameuiSaveHandlingController)
++public native let NeedToDisplayLoadMenuUpdateModsPopup: gameuiLoadUISendModInfoToUpdateCallback;
+diff --git a/scripts/Base/Addons/inkCircle.reds b/scripts/Base/Addons/inkCircle.reds
+deleted file mode 100644
+index 61a79a0c4edc44515e6ff60acc8d49582071e087..0000000000000000000000000000000000000000
+--- a/scripts/Base/Addons/inkCircle.reds
++++ /dev/null
+@@ -1,4 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-@addField(inkCircle)
+-public native let segmentsNumber: Uint32;
+diff --git a/scripts/Base/Addons/inkContainerNavigationController.reds b/scripts/Base/Addons/inkContainerNavigationController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..11fec808bba388e0b9a064c9d5141a931e2d3c0f
+--- /dev/null
++++ b/scripts/Base/Addons/inkContainerNavigationController.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(inkContainerNavigationController)
++public native let overrideEntries: array<inkNavigationOverrideEntry>;
++
++@addField(inkContainerNavigationController)
++public native let useGlobalInput: Bool;
+diff --git a/scripts/Base/Addons/inkGlamdocPuppetPreviewGameController.reds b/scripts/Base/Addons/inkGlamdocPuppetPreviewGameController.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..6037b0f9fe81305070ee3d3d81dccd67102f86f7
+--- /dev/null
++++ b/scripts/Base/Addons/inkGlamdocPuppetPreviewGameController.reds
+@@ -0,0 +1,22 @@
++// CODE GENERATED. DO NOT EDIT.
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let sceneName: CName;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let cameraRef: NodeRef;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let image: inkImageRef;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let animLib: inkWidgetLibraryReference;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let animName: CName;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let animRoot: wref<inkWidget>;
++
++@addField(inkGlamdocPuppetPreviewGameController)
++public native let animProxy: ref<inkAnimProxy>;
+diff --git a/scripts/Base/Addons/inkISystemRequestsHandler.reds b/scripts/Base/Addons/inkISystemRequestsHandler.reds
+index 4b75b9f77dcf013e749657945186f3b0b969df2e..a7dc6099f3935bad5ff669e4096f56b66b7e71d0 100644
+--- a/scripts/Base/Addons/inkISystemRequestsHandler.reds
++++ b/scripts/Base/Addons/inkISystemRequestsHandler.reds
+@@ -21,6 +21,9 @@ public native let SaveTransferUpdate: inkSaveTransferRequestUpdate;
+ @addField(inkISystemRequestsHandler)
+ public native let ServersSearchResult: inkSystemServerRequesResult;
+ 
++@addField(inkISystemRequestsHandler)
++public native let TelemetryDataRemovalCallback: inkTelemetryDataRemovalCallback;
++
+ @addField(inkISystemRequestsHandler)
+ public native let AdditionalContentPurchaseResult: inkAdditionalContentPurchaseCallback;
+ 
+@@ -67,4 +70,4 @@ public native let FavoritesLoadedReady: inkFavoriteLoadResult;
+ public native let DeleteSreenshotComplete: inkDeleteScreenshotResult;
+ 
+ @addField(inkISystemRequestsHandler)
+-public native let MarketingConsentPopupTypeResult: inkMarketingConsentPopupTypeResult;
++public native let GogSignInCallback: inkGogSignInCallback;
+diff --git a/scripts/Base/Addons/inkImage.reds b/scripts/Base/Addons/inkImage.reds
+index b66622d35fb6c95ba1bae15c8488aba7ea412e66..e36bfe5edfd5add9a7ba385d3a3c447f47ddf754 100644
+--- a/scripts/Base/Addons/inkImage.reds
++++ b/scripts/Base/Addons/inkImage.reds
+@@ -6,12 +6,6 @@ public native let useExternalDynamicTexture: Bool;
+ @addField(inkImage)
+ public native let externalDynamicTexture: CName;
+ 
+-@addField(inkImage)
+-public native let useNineSliceScale: Bool;
+-
+-@addField(inkImage)
+-public native let nineSliceScale: inkMargin;
+-
+ @addField(inkImage)
+ public native let mirrorType: inkBrushMirrorType;
+ 
+@@ -35,9 +29,3 @@ public native let contentHAlign: inkEHorizontalAlign;
+ 
+ @addField(inkImage)
+ public native let contentVAlign: inkEVerticalAlign;
+-
+-@addField(inkImage)
+-public native let tileHAlign: inkEHorizontalAlign;
+-
+-@addField(inkImage)
+-public native let tileVAlign: inkEVerticalAlign;
+diff --git a/scripts/Base/Addons/inkInventoryPuppetPreviewGameController.reds b/scripts/Base/Addons/inkInventoryPuppetPreviewGameController.reds
+index 86a0e5c764e725a10d04ca3e7f5748cbe736c3c9..4c94474499ce4ce987dc678ae467f2c818f8ad03 100644
+--- a/scripts/Base/Addons/inkInventoryPuppetPreviewGameController.reds
++++ b/scripts/Base/Addons/inkInventoryPuppetPreviewGameController.reds
+@@ -5,3 +5,18 @@ public native let sceneName: CName;
+ 
+ @addField(inkInventoryPuppetPreviewGameController)
+ public native let cameraRef: NodeRef;
++
++@addField(inkInventoryPuppetPreviewGameController)
++public native let image: inkImageRef;
++
++@addField(inkInventoryPuppetPreviewGameController)
++public native let animLib: inkWidgetLibraryReference;
++
++@addField(inkInventoryPuppetPreviewGameController)
++public native let animName: CName;
++
++@addField(inkInventoryPuppetPreviewGameController)
++public native let animRoot: wref<inkWidget>;
++
++@addField(inkInventoryPuppetPreviewGameController)
++public native let animProxy: ref<inkAnimProxy>;
+diff --git a/scripts/Base/Addons/inkMask.reds b/scripts/Base/Addons/inkMask.reds
+index 9ff6475ff22e4a5ee63467654693a7a6434f594e..9b2276e8bd9d6d34c630af334bca64829c821f3c 100644
+--- a/scripts/Base/Addons/inkMask.reds
++++ b/scripts/Base/Addons/inkMask.reds
+@@ -5,15 +5,3 @@ public native let textureAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+ 
+ @addField(inkMask)
+ public native let texturePart: CName;
+-
+-@addField(inkMask)
+-public native let dynamicTextureMask: CName;
+-
+-@addField(inkMask)
+-public native let dataSource: inkMaskDataSource;
+-
+-@addField(inkMask)
+-public native let invertMask: Bool;
+-
+-@addField(inkMask)
+-public native let maskTransparency: Float;
+diff --git a/scripts/Base/Addons/inkScrollController.reds b/scripts/Base/Addons/inkScrollController.reds
+index 335352eed3169f8440e382b02b2ba9a3ceb5ec94..2596a1b3a014e9dc56c14782d03073ce831adb8d 100644
+--- a/scripts/Base/Addons/inkScrollController.reds
++++ b/scripts/Base/Addons/inkScrollController.reds
+@@ -44,3 +44,6 @@ public native let viewportSize: Vector2;
+ 
+ @addField(inkScrollController)
+ public native let contentSize: Vector2;
++
++@addField(inkScrollController)
++public native let resetToDesiredOnSetup: Bool;
+diff --git a/scripts/Base/Addons/inkShape.reds b/scripts/Base/Addons/inkShape.reds
+index a809f1b14704d9140769a975f2a42c14f75a1c05..650e9be251ab366f2ac491d0629fb9b29883a601 100644
+--- a/scripts/Base/Addons/inkShape.reds
++++ b/scripts/Base/Addons/inkShape.reds
+@@ -2,45 +2,3 @@
+ 
+ @addField(inkShape)
+ public native let shapeResource: ResourceRef; // rRef<inkShapeCollectionResource>
+-
+-@addField(inkShape)
+-public native let shapeName: CName;
+-
+-@addField(inkShape)
+-public native let shapeVariant: inkEShapeVariant;
+-
+-@addField(inkShape)
+-public native let keepInBounds: Bool;
+-
+-@addField(inkShape)
+-public native let nineSliceScale: inkMargin;
+-
+-@addField(inkShape)
+-public native let useNineSlice: Bool;
+-
+-@addField(inkShape)
+-public native let contentHAlign: inkEHorizontalAlign;
+-
+-@addField(inkShape)
+-public native let contentVAlign: inkEVerticalAlign;
+-
+-@addField(inkShape)
+-public native let borderColor: HDRColor;
+-
+-@addField(inkShape)
+-public native let borderOpacity: Float;
+-
+-@addField(inkShape)
+-public native let fillOpacity: Float;
+-
+-@addField(inkShape)
+-public native let lineThickness: Float;
+-
+-@addField(inkShape)
+-public native let endCapStyle: inkEEndCapStyle;
+-
+-@addField(inkShape)
+-public native let jointStyle: inkEJointStyle;
+-
+-@addField(inkShape)
+-public native let vertexList: array<Vector2>;
+diff --git a/scripts/Base/Addons/inkText.reds b/scripts/Base/Addons/inkText.reds
+index 1419585ad7c4fc281d5ef23215af590a0f97de15..b8bfa93ac61e1fe8044d05ca90e6715046baffe2 100644
+--- a/scripts/Base/Addons/inkText.reds
++++ b/scripts/Base/Addons/inkText.reds
+@@ -27,35 +27,14 @@ public native let letterCase: textLetterCase;
+ @addField(inkText)
+ public native let tracking: Uint32;
+ 
+-@addField(inkText)
+-public native let lockFontInGame: Bool;
+-
+-@addField(inkText)
+-public native let wrappingInfo: textWrappingInfo;
+-
+-@addField(inkText)
+-public native let lineHeightPercentage: Float;
+-
+-@addField(inkText)
+-public native let justification: textJustificationType;
+-
+ @addField(inkText)
+ public native let textHorizontalAlignment: textHorizontalAlignment;
+ 
+ @addField(inkText)
+ public native let textVerticalAlignment: textVerticalAlignment;
+ 
+-@addField(inkText)
+-public native let textOverflowPolicy: textOverflowPolicy;
+-
+ @addField(inkText)
+ public native let scrollTextSpeed: Float;
+ 
+ @addField(inkText)
+ public native let scrollDelay: Uint16;
+-
+-@addField(inkText)
+-public native let contentHAlign: inkEHorizontalAlign;
+-
+-@addField(inkText)
+-public native let contentVAlign: inkEVerticalAlign;
+diff --git a/scripts/Base/Imports/CMaterialParameterMultilayerMaskOverride.reds b/scripts/Base/Imports/CMaterialParameterMultilayerMaskOverride.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..cdd7fbb22b34db289ac66929f4ba1401a17eb151
+--- /dev/null
++++ b/scripts/Base/Imports/CMaterialParameterMultilayerMaskOverride.reds
+@@ -0,0 +1,5 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class CMaterialParameterMultilayerMaskOverride extends CMaterialParameter {
++  public native let mask: ResourceRef; // rRef<Multilayer_Mask>
++}
+diff --git a/scripts/Base/Imports/CMaterialParameterMultilayerSetupOverride.reds b/scripts/Base/Imports/CMaterialParameterMultilayerSetupOverride.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..783179190d734e60d6f8bfda9246f9646c7ec880
+--- /dev/null
++++ b/scripts/Base/Imports/CMaterialParameterMultilayerSetupOverride.reds
+@@ -0,0 +1,5 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class CMaterialParameterMultilayerSetupOverride extends CMaterialParameter {
++  public native let setup: ResourceRef; // rRef<Multilayer_Setup>
++}
+diff --git a/scripts/Base/Imports/CParticleDrawerMesh.reds b/scripts/Base/Imports/CParticleDrawerMesh.reds
+index fda5ea8ef1e740e8cafb47d5dad5660f15034c20..ed60ffa192f86c176cc8d475cb8b1704af1ced49 100644
+--- a/scripts/Base/Imports/CParticleDrawerMesh.reds
++++ b/scripts/Base/Imports/CParticleDrawerMesh.reds
+@@ -3,4 +3,5 @@
+ public native class CParticleDrawerMesh extends IParticleDrawer {
+   public native let meshes: array<ResourceRef>;
+   public native let orientationMode: EMeshParticleOrientationMode;
++  public native let useBatchedRender: Bool;
+ }
+diff --git a/scripts/Base/Imports/CRenderSimWaterImpulse.reds b/scripts/Base/Imports/CRenderSimWaterImpulse.reds
+index 30bfa2e227b52545a5a72a622b5ff57b5ebcfd27..eb12697bfaf281966bed479b34324f50c75deb47 100644
+--- a/scripts/Base/Imports/CRenderSimWaterImpulse.reds
++++ b/scripts/Base/Imports/CRenderSimWaterImpulse.reds
+@@ -1,7 +1,6 @@
+ // CODE GENERATED. DO NOT EDIT.
+ 
+ public native class CRenderSimWaterImpulse extends IDynamicTextureGenerator {
+-  public native let resolution: Int32;
+   public native let simulationSpeed: Float;
+ 
+   public final static native func AddImpulse()
+diff --git a/scripts/Base/Imports/ConfigGraphicsQualityLevel.reds b/scripts/Base/Imports/ConfigGraphicsQualityLevel.reds
+index cbe4d7cf29b9b32334a228e9f69c0b086769617d..8e743505e8079f8ed3443baeed9105643c93c53f 100644
+--- a/scripts/Base/Imports/ConfigGraphicsQualityLevel.reds
++++ b/scripts/Base/Imports/ConfigGraphicsQualityLevel.reds
+@@ -19,20 +19,25 @@ public enum ConfigGraphicsQualityLevel {
+   XboxOneX = 16,
+   PlayStation5_Performance = 17,
+   PlayStation5_Quality = 18,
+-  PlayStation5_Backcompat_Performance = 19,
+-  PlayStation5_Backcompat_Quality = 20,
+-  XboxSeriesS_Performance = 21,
+-  XboxSeriesS_Quality = 22,
+-  XboxSeriesS_Backcompat = 23,
+-  XboxSeriesX_Performance = 24,
+-  XboxSeriesX_Quality = 25,
+-  XboxSeriesX_Backcompat_Performance = 26,
+-  XboxSeriesX_Backcompat_Quality = 27,
++  PlayStation5Pro_Performance = 19,
++  PlayStation5Pro_Quality = 20,
++  PlayStation5Pro_Balanced = 21,
++  PlayStation5_Backcompat_Performance = 22,
++  PlayStation5_Backcompat_Quality = 23,
++  XboxSeriesS_Performance = 24,
++  XboxSeriesS_Quality = 25,
++  XboxSeriesS_Backcompat = 26,
++  XboxSeriesX_Performance = 27,
++  XboxSeriesX_Quality = 28,
++  XboxSeriesX_Backcompat_Performance = 29,
++  XboxSeriesX_Backcompat_Quality = 30,
++  Emporium_Docked = 31,
++  Emporium_Handheld = 32,
+   SteamDeck = 4,
+-  SafeMode = 30,
+-  GeForceNow = 28,
+-  IconsGeneration = 29,
+-  Auto = 31,
+-  GGP_Performance = 34,
+-  GGP_Quality = 35,
++  SafeMode = 35,
++  GeForceNow = 33,
++  IconsGeneration = 34,
++  Auto = 36,
++  GGP_Performance = 39,
++  GGP_Quality = 40,
+ }
+diff --git a/scripts/Base/Imports/DynamicTexture.reds b/scripts/Base/Imports/DynamicTexture.reds
+index 7ecc2720499f51e0c126148cc7f6747b16232f59..298643d44689c7cbb0a5fe45456f623ee793d7d9 100644
+--- a/scripts/Base/Imports/DynamicTexture.reds
++++ b/scripts/Base/Imports/DynamicTexture.reds
+@@ -4,6 +4,7 @@ public native class DynamicTexture extends ITexture {
+   public native let width: Uint32;
+   public native let height: Uint32;
+   public native let scaleToViewport: Bool;
++  public native let viewportScale: Float;
+   public native let mipChain: Bool;
+   public native let samplesCount: Uint8;
+   public native let dataFormat: DynamicTextureDataFormat;
+diff --git a/scripts/Base/Imports/EAstcQuality.reds b/scripts/Base/Imports/EAstcQuality.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..187feea5f4d9bc7bb82914a98174a37d549880eb
+--- /dev/null
++++ b/scripts/Base/Imports/EAstcQuality.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum EAstcQuality {
++  ASTC_None = 0,
++  ASTC_Low = 1,
++  ASTC_High = 2,
++}
+diff --git a/scripts/Base/Imports/ECameraRenderingQuality.reds b/scripts/Base/Imports/ECameraRenderingQuality.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..2e122b7c69d80465fe05c5f86b6dd4c294b1b6cf
+--- /dev/null
++++ b/scripts/Base/Imports/ECameraRenderingQuality.reds
+@@ -0,0 +1,9 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum ECameraRenderingQuality {
++  Default = 0,
++  PreviewHigh = 1,
++  PreviewMedium = 2,
++  PreviewLow = 3,
++  LiveFeed = 4,
++}
+diff --git a/scripts/Base/Imports/ECookingPlatform.reds b/scripts/Base/Imports/ECookingPlatform.reds
+deleted file mode 100644
+index 11dde1d9a1cb077103358075223a3fc2e541fc6a..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/ECookingPlatform.reds
++++ /dev/null
+@@ -1,13 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum ECookingPlatform {
+-  PLATFORM_None = 0,
+-  PLATFORM_PC = 1,
+-  PLATFORM_XboxOne = 2,
+-  PLATFORM_PS4 = 3,
+-  PLATFORM_PS5 = 4,
+-  PLATFORM_XSX = 5,
+-  PLATFORM_WindowsServer = 6,
+-  PLATFORM_LinuxServer = 7,
+-  PLATFORM_GGP = 8,
+-}
+diff --git a/scripts/Base/Imports/EEnvManagerModifier.reds b/scripts/Base/Imports/EEnvManagerModifier.reds
+index 8699082af593ebc93641491cc2f84b25592e9f6f..3cb354119dde19ed104e5ab35e12a346a96e733f 100644
+--- a/scripts/Base/Imports/EEnvManagerModifier.reds
++++ b/scripts/Base/Imports/EEnvManagerModifier.reds
+@@ -86,4 +86,7 @@ public enum EEnvManagerModifier {
+   EMM_IndirectSpecularRaw = 82,
+   EMM_IndirectDiffuseDenoised = 83,
+   EMM_IndirectSpecularDenoised = 84,
++  EMM_DebugNRDFoo = 85,
++  EMM_DebugNRDBar = 86,
++  EMM_DebugNRDBaz = 87,
+ }
+diff --git a/scripts/Base/Imports/EInputAction.reds b/scripts/Base/Imports/EInputAction.reds
+deleted file mode 100644
+index b507bad75c65a6f7fb3465dfa1d58af0abb8036e..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/EInputAction.reds
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum EInputAction {
+-  IACT_None = 0,
+-  IACT_Press = 1,
+-  IACT_Release = 2,
+-  IACT_Axis = 3,
+-}
+diff --git a/scripts/Base/Imports/ESystemNotificationTypes.reds b/scripts/Base/Imports/ESystemNotificationTypes.reds
+index 4d0300e941c4be954894b8c7f5b9720389dd1ba9..610352882de2d2ef5eecc677160274f08a232660 100644
+--- a/scripts/Base/Imports/ESystemNotificationTypes.reds
++++ b/scripts/Base/Imports/ESystemNotificationTypes.reds
+@@ -35,6 +35,10 @@ public enum ESystemNotificationTypes {
+   TrialPeriodTimer = 31,
+   FailedToRemoveTransferredSave = 32,
+   LoadModdedSaveFile = 33,
+-  MAX = 34,
++  LoadModdedSaveFileOnUnsupportPlatform = 34,
++  LoadModdedSaveFilePC = 35,
++  ModLoadingPopup = 36,
++  DeprecatedModPopup = 37,
++  MAX = 38,
+   FirstModalHighPriority = 28,
+ }
+diff --git a/scripts/Base/Imports/GpuWrapApieTextureFormat.reds b/scripts/Base/Imports/GpuWrapApieTextureFormat.reds
+index 0ac34666106b828dc1c63f8c49d93667975dee89..b0791d1edcf7a1dd981f749612a07bcdddb28c53 100644
+--- a/scripts/Base/Imports/GpuWrapApieTextureFormat.reds
++++ b/scripts/Base/Imports/GpuWrapApieTextureFormat.reds
+@@ -1,6 +1,7 @@
+ // CODE GENERATED. DO NOT EDIT.
+ 
+ public enum GpuWrapApieTextureFormat {
++  TEXFMT_NULL = 64,
+   TEXFMT_A8_Unorm = 0,
+   TEXFMT_R8_Unorm = 1,
+   TEXFMT_L8_Unorm = 2,
+@@ -9,10 +10,10 @@ public enum GpuWrapApieTextureFormat {
+   TEXFMT_R8G8B8A8_Unorm = 5,
+   TEXFMT_R8G8B8A8_Unorm_SRGB = 40,
+   TEXFMT_R8G8B8A8_Snorm = 6,
+-  TEXFMT_B8G8R8A8 = 50,
+-  TEXFMT_B8G8R8A8_SRGB = 51,
++  TEXFMT_B8G8R8A8 = 66,
++  TEXFMT_B8G8R8A8_SRGB = 67,
+   TEXFMT_R16_Unorm = 7,
+-  TEXFMT_R16_Snorm = 49,
++  TEXFMT_R16_Snorm = 65,
+   TEXFMT_R16_Uint = 8,
+   TEXFMT_R32_Uint = 9,
+   TEXFMT_R32G32B32A32_Uint = 10,
+@@ -49,6 +50,22 @@ public enum GpuWrapApieTextureFormat {
+   TEXFMT_R16G16_Sint = 45,
+   TEXFMT_R16G16_Snorm = 46,
+   TEXFMT_B5G6R5_Unorm = 47,
++  TEXFMT_ASTC_6x5 = 48,
++  TEXFMT_ASTC_6x5_SRGB = 49,
++  TEXFMT_ASTC_6x5_R = 50,
++  TEXFMT_ASTC_6x5_RG = 51,
++  TEXFMT_ASTC_8x6 = 52,
++  TEXFMT_ASTC_8x6_SRGB = 53,
++  TEXFMT_ASTC_8x6_R = 54,
++  TEXFMT_ASTC_8x6_RG = 55,
++  TEXFMT_ASTC_8x8 = 56,
++  TEXFMT_ASTC_8x8_SRGB = 57,
++  TEXFMT_ASTC_8x8_R = 58,
++  TEXFMT_ASTC_8x8_RG = 59,
++  TEXFMT_ASTC_10x8 = 60,
++  TEXFMT_ASTC_10x8_SRGB = 61,
++  TEXFMT_ASTC_10x8_R = 62,
++  TEXFMT_ASTC_10x8_RG = 63,
+   TEXFMT_A8 = 0,
+   TEXFMT_R8 = 1,
+   TEXFMT_L8 = 2,
+diff --git a/scripts/Base/Imports/IMaterialDataProviderDescEParameterType.reds b/scripts/Base/Imports/IMaterialDataProviderDescEParameterType.reds
+index b9eb78f282f7a561e33284636cb3b5e857495181..93e8b7af5d8a60082645821728088912fd1054b8 100644
+--- a/scripts/Base/Imports/IMaterialDataProviderDescEParameterType.reds
++++ b/scripts/Base/Imports/IMaterialDataProviderDescEParameterType.reds
+@@ -19,5 +19,7 @@ public enum IMaterialDataProviderDescEParameterType {
+   PT_TerrainSetup = 15,
+   PT_Gradient = 16,
+   PT_DynamicTexture = 17,
+-  PT_MAX = 18,
++  PT_MultilayerSetupOverride = 18,
++  PT_MultilayerMaskOverride = 19,
++  PT_MAX = 20,
+ }
+diff --git a/scripts/Base/Imports/InheritedStructs/CyberwareCustomizationStorage.reds b/scripts/Base/Imports/InheritedStructs/CyberwareCustomizationStorage.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..1a8167e0e488623bb1876d214d6b3c771d4d259c
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/CyberwareCustomizationStorage.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct CyberwareCustomizationStorage {}
+diff --git a/scripts/Base/Imports/InheritedStructs/FSR30CustomData.reds b/scripts/Base/Imports/InheritedStructs/FSR30CustomData.reds
+deleted file mode 100644
+index fad9b7ba44e3b657b1e8c5eb2d35a65acab85dc6..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/InheritedStructs/FSR30CustomData.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native struct FSR30CustomData {}
+diff --git a/scripts/Base/Imports/InheritedStructs/Odyssey3DCustomData.reds b/scripts/Base/Imports/InheritedStructs/Odyssey3DCustomData.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..7cb1b750d73c8df27bf1efa7e7a9dd5f133ecc52
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/Odyssey3DCustomData.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct Odyssey3DCustomData {}
+diff --git a/scripts/Base/Imports/InheritedStructs/inkMarketingConsentPopupTypeResult.reds b/scripts/Base/Imports/InheritedStructs/gameuiAllLanguagesCheckboxCallback.reds
+similarity index 69%
+rename from scripts/Base/Imports/InheritedStructs/inkMarketingConsentPopupTypeResult.reds
+rename to scripts/Base/Imports/InheritedStructs/gameuiAllLanguagesCheckboxCallback.reds
+index 41c718ead7fcc8af2baee3a1892e6665171eae5a..35c80ce4b37b188216ef958dde0bce5c224625dc 100644
+--- a/scripts/Base/Imports/InheritedStructs/inkMarketingConsentPopupTypeResult.reds
++++ b/scripts/Base/Imports/InheritedStructs/gameuiAllLanguagesCheckboxCallback.reds
+@@ -1,6 +1,6 @@
+ // CODE GENERATED. DO NOT EDIT.
+ 
+-public native struct inkMarketingConsentPopupTypeResult {
++public native struct gameuiAllLanguagesCheckboxCallback {
+   public native let callbackName: CName;
+   public native let listeners: array<inkCallbackListener>;
+ }
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiFilterTagsReceivedCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiFilterTagsReceivedCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..c82eb44427900367610da4024745a297f2732b11
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiFilterTagsReceivedCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiFilterTagsReceivedCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiLoadUISendModInfoToUpdateCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiLoadUISendModInfoToUpdateCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..aa100555c471362191621dbb2ffae15d55914c35
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiLoadUISendModInfoToUpdateCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiLoadUISendModInfoToUpdateCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiMenuIntCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiMenuIntCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..ec19b3e4bd285bcfb4f8e9ff9fc2ef5fc5a3c048
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiMenuIntCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiMenuIntCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiMenuIntIntCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiMenuIntIntCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..4eb454fb33f6a2822c17f69adaa7a17fa9fff8b1
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiMenuIntIntCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiMenuIntIntCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiModLogoInfoReceivedCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiModLogoInfoReceivedCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..f045154afd577c7a1c8b825e1951067ff5b221f2
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiModLogoInfoReceivedCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiModLogoInfoReceivedCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiReceivedHiddenModsListCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiReceivedHiddenModsListCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..d71ce21d05165b6a4d261b0cfa11635e32640d64
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiReceivedHiddenModsListCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiReceivedHiddenModsListCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiRequestMediaForWidgetCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiRequestMediaForWidgetCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b12e09e7c9cb7997e30e812872beb0f2998a00b
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiRequestMediaForWidgetCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiRequestMediaForWidgetCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiSendModGridInfoCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiSendModGridInfoCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b688da0d126d85fade810c62e259b68e4d500826
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiSendModGridInfoCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiSendModGridInfoCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiSendModInfoToUpdateCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiSendModInfoToUpdateCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..7d8970d8286b778f3b28d48c68f2bff4a67e35c0
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiSendModInfoToUpdateCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiSendModInfoToUpdateCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiSendModUpdateVerificationInfo.reds b/scripts/Base/Imports/InheritedStructs/gameuiSendModUpdateVerificationInfo.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..2a800f2a7a6784e1c00b93e7d034f0b1faa14327
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiSendModUpdateVerificationInfo.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiSendModUpdateVerificationInfo {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiSendProcessedModProgressInfoCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiSendProcessedModProgressInfoCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..5af01135189fd326dcf8682c684778ecba67786c
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiSendProcessedModProgressInfoCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiSendProcessedModProgressInfoCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiSendSelectedModInfoCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiSendSelectedModInfoCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..45bdf1f06971658a6ddd39dcdcfb7156d899b433
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiSendSelectedModInfoCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiSendSelectedModInfoCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/gameuiUpdatePageLayoutCallback.reds b/scripts/Base/Imports/InheritedStructs/gameuiUpdatePageLayoutCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..93c9b4617639685c2fde7f61e99f778aa2481e7e
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/gameuiUpdatePageLayoutCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct gameuiUpdatePageLayoutCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/inkGogSignInCallback.reds b/scripts/Base/Imports/InheritedStructs/inkGogSignInCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..bc6e82d647b38fd29b36a8ed04bd0f27ac099a3a
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/inkGogSignInCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct inkGogSignInCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/inkTelemetryDataRemovalCallback.reds b/scripts/Base/Imports/InheritedStructs/inkTelemetryDataRemovalCallback.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..043452d33a2bf4a20a64c913a3b69d759b259f84
+--- /dev/null
++++ b/scripts/Base/Imports/InheritedStructs/inkTelemetryDataRemovalCallback.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct inkTelemetryDataRemovalCallback {
++  public native let callbackName: CName;
++  public native let listeners: array<inkCallbackListener>;
++}
+diff --git a/scripts/Base/Imports/InheritedStructs/saveMetadata.reds b/scripts/Base/Imports/InheritedStructs/saveMetadata.reds
+index f85660b87f635a88b3b1cc5f606f46f507d09e62..a09d631278c41f41fe326fe3e0dc5a4ebd786b02 100644
+--- a/scripts/Base/Imports/InheritedStructs/saveMetadata.reds
++++ b/scripts/Base/Imports/InheritedStructs/saveMetadata.reds
+@@ -60,5 +60,6 @@ public native struct saveMetadata {
+   public native let isPointOfNoReturn: Bool;
+   public native let isEndGameSave: Bool;
+   public native let isModded: Bool;
++  public native let enabledModioInfo: array<saveModioModSavedInfo>;
+   public native let additionalContentIds: array<CName>;
+ }
+diff --git a/scripts/Base/Imports/InkGameSystem.reds b/scripts/Base/Imports/InkGameSystem.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..8028195a1faf1343738a9a7dbb7269ce4e295ad9
+--- /dev/null
++++ b/scripts/Base/Imports/InkGameSystem.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class InkGameSystem extends IGameSystem {
++  public final native func GetLayer()
++  public final native func GetLayers()
++  public final native func GetWorldWidgets()
++}
+diff --git a/scripts/Base/Imports/ModdingSystem.reds b/scripts/Base/Imports/ModdingSystem.reds
+deleted file mode 100644
+index 6af1a76e001e7edd32eb4cfc2a2ee32076e38dc4..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/ModdingSystem.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class ModdingSystem extends IGameSystem {}
+diff --git a/scripts/Base/Imports/ModioModCollectionEntry.reds b/scripts/Base/Imports/ModioModCollectionEntry.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..de8e5dd6806ff7d4ea02dce857f9e05b67069f2a
+--- /dev/null
++++ b/scripts/Base/Imports/ModioModCollectionEntry.reds
+@@ -0,0 +1,9 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct ModioModCollectionEntry {
++  public native let modID: Int64;
++  public native let modState: inkModioModState;
++  public native let modInfo: ModioModInfos;
++  public native let pathOnDisk: String;
++  public native let sizeOnDisk: Uint64;
++}
+diff --git a/scripts/Base/Imports/STextureGroupSetup.reds b/scripts/Base/Imports/STextureGroupSetup.reds
+index 7e96ae4bc9ca019c29b93a89ec181b3c6de5ce76..448836281bd1b955641391206cbbdeea952815f1 100644
+--- a/scripts/Base/Imports/STextureGroupSetup.reds
++++ b/scripts/Base/Imports/STextureGroupSetup.reds
+@@ -4,6 +4,7 @@ public native struct STextureGroupSetup {
+   public native let group: GpuWrapApieTextureGroup;
+   public native let rawFormat: ETextureRawFormat;
+   public native let compression: ETextureCompression;
++  public native let astcQuality: EAstcQuality;
+   public native let isStreamable: Bool;
+   public native let hasMipchain: Bool;
+   public native let isGamma: Bool;
+diff --git a/scripts/Base/Imports/entGarmentParameterComponentData.reds b/scripts/Base/Imports/entGarmentParameterComponentData.reds
+index f02fb8c273a37c088404abddc40529ed2187902b..2a4a6d6138b8620e0da596c92281b74bf093385f 100644
+--- a/scripts/Base/Imports/entGarmentParameterComponentData.reds
++++ b/scripts/Base/Imports/entGarmentParameterComponentData.reds
+@@ -20,4 +20,5 @@ public native struct entGarmentParameterComponentData {
+   public native let mergeWithInnerLayer: Bool;
+   public native let numIndices: Uint32;
+   public native let numOffsets: Uint32;
++  public native let meshPathHash: Uint64;
+ }
+diff --git a/scripts/Base/Imports/entISkinTargetComponent.reds b/scripts/Base/Imports/entISkinTargetComponent.reds
+index c9aa1dcda116e2b21e0d87670a33a5e66c883e44..7d2e78f8a26c59347eb375264a4eadeb931f35d9 100644
+--- a/scripts/Base/Imports/entISkinTargetComponent.reds
++++ b/scripts/Base/Imports/entISkinTargetComponent.reds
+@@ -3,4 +3,5 @@
+ public abstract native class entISkinTargetComponent extends IVisualComponent {
+   public native let skinning: ref<entSkinningBinding>;
+   public native let useSkinningLOD: Bool;
++  public native let boundingBoxLocalBoundsOverride: Float;
+ }
+diff --git a/scripts/Base/Imports/entRenderToTextureCameraComponent.reds b/scripts/Base/Imports/entRenderToTextureCameraComponent.reds
+index 12329f490aa24cab45f772c5ad075b00307b470e..bd564088260ea25a03a7d5f2e42bba6cc2599c24 100644
+--- a/scripts/Base/Imports/entRenderToTextureCameraComponent.reds
++++ b/scripts/Base/Imports/entRenderToTextureCameraComponent.reds
+@@ -14,10 +14,13 @@ public native class entRenderToTextureCameraComponent extends entCameraComponent
+   public native let env: ResourceRef; // rRef<worldEnvironmentAreaParameters>
+   public native let params: WorldRenderAreaSettings;
+   public native let renderingMode: entRenderToTextureMode;
++  public native let renderingQuality: ECameraRenderingQuality;
+   public native let depthCutDistance: Float;
+   public native let backgroundColor: Color;
+   public native let overrideBackgroundColor: Bool;
+   public native let renderSceneLayer: RenderSceneLayer;
+   public native let features: entRenderToTextureFeatures;
++  public native let renderFrequency: Uint32;
++  public native let renderPhase: Uint32;
+   public native let streamingDistance: Float;
+ }
+diff --git a/scripts/Base/Imports/entRenderToTextureFeatures.reds b/scripts/Base/Imports/entRenderToTextureFeatures.reds
+index 8af998e3b77d43fc35e3d2b69c7d374115686d7f..cee75102d4fd0d36e65427bff5857005180aa3dc 100644
+--- a/scripts/Base/Imports/entRenderToTextureFeatures.reds
++++ b/scripts/Base/Imports/entRenderToTextureFeatures.reds
+@@ -9,4 +9,7 @@ public native struct entRenderToTextureFeatures {
+   public native let localShadows: Bool;
+   public native let SSAO: entRenderToTextureFeaturesPlatform;
+   public native let reflections: entRenderToTextureFeaturesPlatform;
++  public native let motionBlur: entRenderToTextureFeaturesPlatform;
++  public native let depthOfField: entRenderToTextureFeaturesPlatform;
++  public native let stereo: Bool;
+ }
+diff --git a/scripts/Base/Imports/gameBufferSlice.reds b/scripts/Base/Imports/gameBufferSlice.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..43c8952801a5c68fcf3196c2a8009271b7187ff4
+--- /dev/null
++++ b/scripts/Base/Imports/gameBufferSlice.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public importonly struct gameBufferSlice {
++  public native let offset: Uint32;
++  public native let combined: Uint32;
++}
+diff --git a/scripts/Base/Imports/gameRenderGameplayEffectsManagerSaveData.reds b/scripts/Base/Imports/gameRenderGameplayEffectsManagerSaveData.reds
+index dd96e0c5737cb5716b87a42aef56823594a730a9..67685dcaf0097c038a81d55491d7c3349f0b2e9a 100644
+--- a/scripts/Base/Imports/gameRenderGameplayEffectsManagerSaveData.reds
++++ b/scripts/Base/Imports/gameRenderGameplayEffectsManagerSaveData.reds
+@@ -4,4 +4,5 @@ public native class gameRenderGameplayEffectsManagerSaveData extends ISerializab
+   public native let cyberspacePixelsortParams: gameCyberspacePixelsortEffectParams;
+   public native let cyberspacePixelsortEnabled: Bool;
+   public native let enforceScreenSpaceReflectionsUberQuality: Bool;
++  public native let increaseLocalShadowmapUpdates: Bool;
+ }
+diff --git a/scripts/Base/Imports/gameSavedStatsDataOptimized.reds b/scripts/Base/Imports/gameSavedStatsDataOptimized.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..c49b672763ee1bb5d4d95a9b3218a4a8a3a2c2c4
+--- /dev/null
++++ b/scripts/Base/Imports/gameSavedStatsDataOptimized.reds
+@@ -0,0 +1,11 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public importonly struct gameSavedStatsDataOptimized {
++  public native let statModifiers: array<ref<gameStatModifierData>>;
++  public native let bufferSliceIndices: array<Uint16>;
++  public native let inactiveStatsIndices: array<Uint16>;
++  public native let entityHash: Uint64;
++  public native let seed: Uint32;
++  public native let recordIDIndex: Uint16;
++  public native let idType: gameStatIDType;
++}
+diff --git a/scripts/Base/Imports/gameStatsStateMapStructure.reds b/scripts/Base/Imports/gameStatsStateMapStructure.reds
+index 23e51b08391e938305209133d2a8f7d7ffc72d4d..613742e88c71283bb1bf9ef5f3dde1dc8c4245aa 100644
+--- a/scripts/Base/Imports/gameStatsStateMapStructure.reds
++++ b/scripts/Base/Imports/gameStatsStateMapStructure.reds
+@@ -3,4 +3,8 @@
+ public importonly struct gameStatsStateMapStructure {
+   public native let keys: array<StatsObjectID>;
+   public native let values: array<gameSavedStatsData>;
++  public native let valuesOptimized: array<gameSavedStatsDataOptimized>;
++  public native let sharedBufferSlices: array<gameBufferSlice>;
++  public native let sharedInactiveStats: array<gamedataStatType>;
++  public native let sharedRecordId: array<TweakDBID>;
+ }
+diff --git a/scripts/Base/Imports/gameuiGlamdocGameController_CharacterCustomizationListener.reds b/scripts/Base/Imports/gameuiGlamdocGameController_CharacterCustomizationListener.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab8942993bedc60330082a0698560b8e9648cf6f
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiGlamdocGameController_CharacterCustomizationListener.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiGlamdocGameController_CharacterCustomizationListener extends gameuiICustomizationStateUpdater {}
+diff --git a/scripts/Base/Imports/gameuiGlamdocGameController_UIObjectListener.reds b/scripts/Base/Imports/gameuiGlamdocGameController_UIObjectListener.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..5c3f4b1b2ff4d8f60eaf2f898f6cad65f166752a
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiGlamdocGameController_UIObjectListener.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiGlamdocGameController_UIObjectListener extends gameuiIUIObjectsLoaderSystemListener {}
+diff --git a/scripts/Base/Imports/gameuiGlamdocPuppetPreview_SetPuppetData.reds b/scripts/Base/Imports/gameuiGlamdocPuppetPreview_SetPuppetData.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..adbdf178ecac1f88ec34e720ce3efd08477a8dbc
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiGlamdocPuppetPreview_SetPuppetData.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiGlamdocPuppetPreview_SetPuppetData extends Event {
++  public native let cyberware: Int32;
++  public native let menu: Int32;
++  public native let color: Int32;
++}
+diff --git a/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReload.reds b/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReload.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..f9ff304edc90247d8592b8be4d17d6c659d3149a
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReload.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiInGameMenuGameController_ToggleSceneReload extends Event {
++  public native let shouldAutoReloadPuppets: Bool;
++  public native let shouldReloadNow: Bool;
++}
+diff --git a/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReloadProcessed.reds b/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReloadProcessed.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..6409fa6c57910318a679a071207ede3520de4ddc
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiInGameMenuGameController_ToggleSceneReloadProcessed.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiInGameMenuGameController_ToggleSceneReloadProcessed extends Event {}
+diff --git a/scripts/Base/Imports/gameuiPuppetPreview_ReInitCamera.reds b/scripts/Base/Imports/gameuiPuppetPreview_ReInitCamera.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..18937802239c343fe7ee9a93fab8a519101ead86
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiPuppetPreview_ReInitCamera.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiPuppetPreview_ReInitCamera extends Event {}
+diff --git a/scripts/Base/Imports/gameuiPuppetPreview_ToggleVisibility.reds b/scripts/Base/Imports/gameuiPuppetPreview_ToggleVisibility.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..66ecfea658e564ebcb8e2ceb82b03318e1445e9b
+--- /dev/null
++++ b/scripts/Base/Imports/gameuiPuppetPreview_ToggleVisibility.reds
+@@ -0,0 +1,5 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class gameuiPuppetPreview_ToggleVisibility extends Event {
++  public native let visible: Bool;
++}
+diff --git a/scripts/Base/Imports/inkCharacterEventType.reds b/scripts/Base/Imports/inkCharacterEventType.reds
+deleted file mode 100644
+index f3594ea638af76ebad5d5da215750167435503c5..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkCharacterEventType.reds
++++ /dev/null
+@@ -1,9 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum inkCharacterEventType {
+-  CharInput = 0,
+-  MoveCaretForward = 1,
+-  MoveCaretBackward = 2,
+-  Delete = 3,
+-  Backspace = 4,
+-}
+diff --git a/scripts/Base/Imports/inkContainerNavigationController.reds b/scripts/Base/Imports/inkContainerNavigationController.reds
+deleted file mode 100644
+index 4aaa1300e0ce91c23fdccbdfe00c09f816126bf3..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkContainerNavigationController.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class inkContainerNavigationController extends inkDiscreteNavigationController {
+-  public native let overrideEntries: array<inkNavigationOverrideEntry>;
+-  public native let useGlobalInput: Bool;
+-}
+diff --git a/scripts/Base/Imports/inkEEndCapStyle.reds b/scripts/Base/Imports/inkEEndCapStyle.reds
+deleted file mode 100644
+index e9e8423bfef899b3b10329508a69bcde60cd202b..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkEEndCapStyle.reds
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum inkEEndCapStyle {
+-  BUTT = 0,
+-  SQUARE = 1,
+-  ROUND = 2,
+-  JOINED = 3,
+-}
+diff --git a/scripts/Base/Imports/inkEJointStyle.reds b/scripts/Base/Imports/inkEJointStyle.reds
+deleted file mode 100644
+index 4208522bb06e929a0e7d87e7595b140b6e4a5233..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkEJointStyle.reds
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum inkEJointStyle {
+-  MITER = 0,
+-  BEVEL = 1,
+-  ROUND = 2,
+-}
+diff --git a/scripts/Base/Imports/inkEShapeVariant.reds b/scripts/Base/Imports/inkEShapeVariant.reds
+deleted file mode 100644
+index 9ad4d541910cb10567fdc926e8dfd05fc468dd2a..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkEShapeVariant.reds
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum inkEShapeVariant {
+-  Fill = 0,
+-  Border = 1,
+-  FillAndBorder = 2,
+-}
+diff --git a/scripts/Base/Imports/inkGameSettingsResource.reds b/scripts/Base/Imports/inkGameSettingsResource.reds
+index ae87a5c43b07709bda2900a4076b5542f1965b58..af82073028ac74a22f875ab15fe8fb2d49b28dc2 100644
+--- a/scripts/Base/Imports/inkGameSettingsResource.reds
++++ b/scripts/Base/Imports/inkGameSettingsResource.reds
+@@ -11,6 +11,8 @@ public native class inkGameSettingsResource extends CResource {
+   public native let permanentTextureAtlasesStadia: array<ResourceAsyncRef>;
+   public native let permanentTextureAtlasesStadiaDurango: array<ResourceAsyncRef>;
+   public native let permanentTextureAtlasesStadiaOrbis: array<ResourceAsyncRef>;
++  public native let permanentTextureAtlasesSwitch: array<ResourceAsyncRef>;
++  public native let permanentTextureAtlasesSwitchTouch: array<ResourceAsyncRef>;
+   public native let themes: array<inkStyleThemeDescriptor>;
+   public native let layersResource: ResourceRef; // rRef<inkLayersResource>
+   public native let iconReferenceFallbackTextureAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+@@ -37,6 +39,7 @@ public native class inkGameSettingsResource extends CResource {
+   public native let orbisIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+   public native let prosperoIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+   public native let nintendoSwitchIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
++  public native let nintendoSwitchTouchIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+   public native let stadiaIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+   public native let stadiaDurangoIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+   public native let stadiaOrbisIconsAtlas: ResourceAsyncRef; // raRef<inkTextureAtlas>
+diff --git a/scripts/Base/Imports/inkIEffect.reds b/scripts/Base/Imports/inkIEffect.reds
+deleted file mode 100644
+index 83ba1e74f9a2938e275e09bd9de8d60ad21742ac..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkIEffect.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public abstract native class inkIEffect extends ISerializable {
+-  public native let isEnabled: Bool;
+-  public native let effectName: CName;
+-}
+diff --git a/scripts/Base/Imports/inkMaskDataSource.reds b/scripts/Base/Imports/inkMaskDataSource.reds
+deleted file mode 100644
+index 8d2a65344584a832cbb47caa2b27b051c4a85e46..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkMaskDataSource.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum inkMaskDataSource {
+-  TextureAtlas = 0,
+-  DynamicTexture = 1,
+-}
+diff --git a/scripts/Base/Imports/inkModioChangeType.reds b/scripts/Base/Imports/inkModioChangeType.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..871906bf80cf31727e0dc47abf16bbd7c1af318e
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioChangeType.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioChangeType {
++  Added = 0,
++  Removed = 1,
++  Updated = 2,
++}
+diff --git a/scripts/Base/Imports/inkModioGallerySize.reds b/scripts/Base/Imports/inkModioGallerySize.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..f75cec58a63da60185e658355c19e9efdf852d5e
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioGallerySize.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioGallerySize {
++  Original = 0,
++  Thumb320 = 1,
++  Thumb1280 = 2,
++}
+diff --git a/scripts/Base/Imports/inkModioLanguage.reds b/scripts/Base/Imports/inkModioLanguage.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..89e11ab277b18d23e22b15e780bcc083fb3940ba
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioLanguage.reds
+@@ -0,0 +1,23 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioLanguage {
++  English = 0,
++  Bulgarian = 1,
++  French = 2,
++  German = 3,
++  Italian = 4,
++  Polish = 5,
++  Portuguese = 6,
++  Hungarian = 7,
++  Japanese = 8,
++  Korean = 9,
++  Russian = 10,
++  Spanish = 11,
++  SpanishLatinAmerican = 12,
++  Thai = 13,
++  ChineseSimplified = 14,
++  ChineseTraditional = 15,
++  Turkish = 16,
++  Ukrainian = 17,
++  Arabic = 18,
++}
+diff --git a/scripts/Base/Imports/inkModioLogoSize.reds b/scripts/Base/Imports/inkModioLogoSize.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c5e83fda53fccd0c22e28b8a1070416e5c6cf41
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioLogoSize.reds
+@@ -0,0 +1,8 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioLogoSize {
++  Original = 0,
++  Thumb320 = 1,
++  Thumb640 = 2,
++  Thumb1280 = 3,
++}
+diff --git a/scripts/Base/Imports/inkModioModRating.reds b/scripts/Base/Imports/inkModioModRating.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..d46782ee5e1f7dc5ea1df80c75def59ed80d7afa
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioModRating.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct inkModioModRating {
++  public native let id: Int64;
++  public native let rating: inkModioRating;
++}
+diff --git a/scripts/Base/Imports/inkModioRating.reds b/scripts/Base/Imports/inkModioRating.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b54cf39e61571eeeab1abe8eb1ea7f6332f9c42d
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioRating.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioRating {
++  Negative = -1,
++  Neutral = 0,
++  Positive = 1,
++}
+diff --git a/scripts/Base/Imports/inkModioSortDirection.reds b/scripts/Base/Imports/inkModioSortDirection.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..42caa0e8c21c61fc3ca1f977b2d2a9f0380a6a60
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioSortDirection.reds
+@@ -0,0 +1,6 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioSortDirection {
++  Ascending = 0,
++  Descending = 1,
++}
+diff --git a/scripts/Base/Imports/inkModioSortFieldType.reds b/scripts/Base/Imports/inkModioSortFieldType.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..da226234fb0225130d2268e572ac25a3c6cc95e9
+--- /dev/null
++++ b/scripts/Base/Imports/inkModioSortFieldType.reds
+@@ -0,0 +1,12 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public enum inkModioSortFieldType {
++  ID = 0,
++  DownloadsToday = 1,
++  SubscriberCount = 2,
++  Rating = 3,
++  DateMarkedLive = 4,
++  DateUpdated = 5,
++  DownloadsTotal = 6,
++  Alphabetical = 7,
++}
+diff --git a/scripts/Base/Imports/inkVirtualWindow.reds b/scripts/Base/Imports/inkVirtualWindow.reds
+deleted file mode 100644
+index 5a4bc6d78aaddcb7395d33ce28ac41cb9d8540cb..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkVirtualWindow.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class inkVirtualWindow extends inkWindow {}
+diff --git a/scripts/Base/Imports/inkWindow.reds b/scripts/Base/Imports/inkWindow.reds
+deleted file mode 100644
+index 64f8a22d54a06f609f0300233ce18cb567869f50..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/inkWindow.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class inkWindow extends inkCanvas {}
+diff --git a/scripts/Base/Imports/inkWorldmapStereoEffect.reds b/scripts/Base/Imports/inkWorldmapStereoEffect.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c853c481b9d9720087ffd681ed9e1f54341928c
+--- /dev/null
++++ b/scripts/Base/Imports/inkWorldmapStereoEffect.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class inkWorldmapStereoEffect extends inkIEffect {}
+diff --git a/scripts/Base/Imports/inputEInputDevice.reds b/scripts/Base/Imports/inputEInputDevice.reds
+index 2833928e2df9939c5d94ebcb24a37bf6267adb62..24869fe44955b0d22ee6a3744fa6d0c223175ba8 100644
+--- a/scripts/Base/Imports/inputEInputDevice.reds
++++ b/scripts/Base/Imports/inputEInputDevice.reds
+@@ -11,5 +11,6 @@ public enum inputEInputDevice {
+   NINTENDO_SWITCH = 7,
+   SCARLETT_GAMEPAD = 8,
+   PROSPERO = 9,
+-  EID_COUNT = 10,
++  NINTENDO_TOUCH = 10,
++  EID_COUNT = 11,
+ }
+diff --git a/scripts/Base/Imports/questCallContact_NodeType.reds b/scripts/Base/Imports/questCallContact_NodeType.reds
+index 40aad92e7e2532c7d54170853d978c305a5cc0ad..709109d9d42fe799b6e05296a48bae42e0e40343 100644
+--- a/scripts/Base/Imports/questCallContact_NodeType.reds
++++ b/scripts/Base/Imports/questCallContact_NodeType.reds
+@@ -7,6 +7,7 @@ public native class questCallContact_NodeType extends questIPhoneManagerNodeType
+   public native let mode: questPhoneCallMode;
+   public native let prefabNodeRef: NodeRef;
+   public native let applyPhoneRestriction: Bool;
++  public native let blockSkipByLine: Bool;
+   public native let isRejectable: Bool;
+   public native let showAvatar: Bool;
+   public native let visuals: questPhoneCallVisuals;
+diff --git a/scripts/Base/Imports/questIncreaseLocalShadowmapUpdates_NodeType.reds b/scripts/Base/Imports/questIncreaseLocalShadowmapUpdates_NodeType.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..a6ed899e1ce41ebdb36b4066ff87bc94e0c360e4
+--- /dev/null
++++ b/scripts/Base/Imports/questIncreaseLocalShadowmapUpdates_NodeType.reds
+@@ -0,0 +1,5 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class questIncreaseLocalShadowmapUpdates_NodeType extends questIRenderFxManagerNodeType {
++  public native let enabled: Bool;
++}
+diff --git a/scripts/Base/Imports/questInventoryDuplicate_ConditionType.reds b/scripts/Base/Imports/questInventoryDuplicate_ConditionType.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..42994944eb8146ae615ea42d227af3c19247b67c
+--- /dev/null
++++ b/scripts/Base/Imports/questInventoryDuplicate_ConditionType.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class questInventoryDuplicate_ConditionType extends questIObjectConditionType {
++  public native let objectRef: EntityReference;
++  public native let isPlayer: Bool;
++  public native let itemID: TweakDBID;
++}
+diff --git a/scripts/Base/Imports/questOpenPhotoMode_NodeType.reds b/scripts/Base/Imports/questOpenPhotoMode_NodeType.reds
+index d710c66f2039a0767ad667316a0718db666abd9b..3652b5843deeff27bbfe916e6e9bf18c4690b6a5 100644
+--- a/scripts/Base/Imports/questOpenPhotoMode_NodeType.reds
++++ b/scripts/Base/Imports/questOpenPhotoMode_NodeType.reds
+@@ -5,4 +5,5 @@ public native class questOpenPhotoMode_NodeType extends questIUIManagerNodeType
+   public native let forceFppMode: Bool;
+   public native let alwaysAllowTPP: Bool;
+   public native let lockExitUntilScreenshot: Bool;
++  public native let blockOutfitOption: Bool;
+ }
+diff --git a/scripts/Base/Imports/questPlatform.reds b/scripts/Base/Imports/questPlatform.reds
+index ae575b757b82a6259424675f04a6a0a2cbed43b4..7fe598b02341adecde6685c76deb1ba8d032bd14 100644
+--- a/scripts/Base/Imports/questPlatform.reds
++++ b/scripts/Base/Imports/questPlatform.reds
+@@ -5,4 +5,7 @@ public enum questPlatform {
+   Console = 1,
+   LastGenConsole = 2,
+   CurrGenConsole = 3,
++  NintendoSwitch2 = 4,
++  XBoxSeriesS = 5,
++  SteamDeck = 6,
+ }
+diff --git a/scripts/Base/Imports/questSetPhoneRestriction_NodeType.reds b/scripts/Base/Imports/questSetPhoneRestriction_NodeType.reds
+index e41adc85c463bd8daed919ec38d3dfb812523256..c016c76d484df6a712985decd441bd79198212c0 100644
+--- a/scripts/Base/Imports/questSetPhoneRestriction_NodeType.reds
++++ b/scripts/Base/Imports/questSetPhoneRestriction_NodeType.reds
+@@ -2,6 +2,7 @@
+ 
+ public native class questSetPhoneRestriction_NodeType extends questIPhoneManagerNodeType {
+   public native let applyPhoneRestriction: Bool;
++  public native let blockSkipByLine: Bool;
+   public native let forcedApply: Bool;
+   public native let forcedApplySource: CName;
+ }
+diff --git a/scripts/Base/Imports/rendRenderMultilayerMaskBlobEmporium.reds b/scripts/Base/Imports/rendRenderMultilayerMaskBlobEmporium.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..16f4ba3180a39d211867acc8720b573dfebf68dc
+--- /dev/null
++++ b/scripts/Base/Imports/rendRenderMultilayerMaskBlobEmporium.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class rendRenderMultilayerMaskBlobEmporium extends rendRenderMultilayerMaskBlob {}
+diff --git a/scripts/Base/Imports/rendRenderMultilayerMaskBlobPS4.reds b/scripts/Base/Imports/rendRenderMultilayerMaskBlobPS4.reds
+deleted file mode 100644
+index f3f51087cfe6de718fa047b459e4c3287365611d..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/rendRenderMultilayerMaskBlobPS4.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class rendRenderMultilayerMaskBlobPS4 extends rendRenderMultilayerMaskBlob {}
+diff --git a/scripts/Base/Imports/rendRenderMultilayerMaskBlobXboxOne.reds b/scripts/Base/Imports/rendRenderMultilayerMaskBlobXboxOne.reds
+deleted file mode 100644
+index 4bd7445a758901d6549ebd6578226cf15082b242..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/rendRenderMultilayerMaskBlobXboxOne.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class rendRenderMultilayerMaskBlobXboxOne extends rendRenderMultilayerMaskBlob {}
+diff --git a/scripts/Base/Imports/rendRenderTextureBlobEmporium.reds b/scripts/Base/Imports/rendRenderTextureBlobEmporium.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..56188ed731482513f8f0cc157d158f422173c399
+--- /dev/null
++++ b/scripts/Base/Imports/rendRenderTextureBlobEmporium.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class rendRenderTextureBlobEmporium extends rendIRenderTextureBlob {}
+diff --git a/scripts/Base/Imports/rendRenderTextureBlobHeader.reds b/scripts/Base/Imports/rendRenderTextureBlobHeader.reds
+index 3c99d99df4ab249743ceec22e46725b9abeb6f65..dc2bc4f1fdc35a7d781e4eb77cd1f53904531aa5 100644
+--- a/scripts/Base/Imports/rendRenderTextureBlobHeader.reds
++++ b/scripts/Base/Imports/rendRenderTextureBlobHeader.reds
+@@ -7,4 +7,5 @@ public native struct rendRenderTextureBlobHeader {
+   public native let mipMapInfo: array<rendRenderTextureBlobMipMapInfo>;
+   public native let histogramData: array<rendHistogramBias>;
+   public native let flags: Uint32;
++  public native let formatOverride: GpuWrapApieTextureFormat;
+ }
+diff --git a/scripts/Base/Imports/rendRenderTextureBlobPS4.reds b/scripts/Base/Imports/rendRenderTextureBlobPS4.reds
+deleted file mode 100644
+index 21e828901c5c9d0603ebcd3a13a9859a3e1cd2ce..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/rendRenderTextureBlobPS4.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class rendRenderTextureBlobPS4 extends rendIRenderTextureBlob {}
+diff --git a/scripts/Base/Imports/rendRenderTextureBlobXboxOne.reds b/scripts/Base/Imports/rendRenderTextureBlobXboxOne.reds
+deleted file mode 100644
+index 0e92cd1b41420e80cea1702df4a5d871e01de81a..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/rendRenderTextureBlobXboxOne.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class rendRenderTextureBlobXboxOne extends rendIRenderTextureBlob {}
+diff --git a/scripts/Base/Imports/saveModioModSavedInfo.reds b/scripts/Base/Imports/saveModioModSavedInfo.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..7a18d07709442d35b37422cf0f6a049b45bb0323
+--- /dev/null
++++ b/scripts/Base/Imports/saveModioModSavedInfo.reds
+@@ -0,0 +1,7 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct saveModioModSavedInfo {
++  public native let modID: Int64;
++  public native let modName: String;
++  public native let authorName: String;
++}
+diff --git a/scripts/Base/Imports/scnIsAliveListener.reds b/scripts/Base/Imports/scnIsAliveListener.reds
+deleted file mode 100644
+index 89865dd6ba93713a7427b63bb162cbf3751d7192..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/scnIsAliveListener.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class scnIsAliveListener extends IStatPoolsListener {}
+diff --git a/scripts/Base/Imports/textJustificationType.reds b/scripts/Base/Imports/textJustificationType.reds
+deleted file mode 100644
+index f19ff920bb3ba66906d287f49848b7f1f11f603d..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/textJustificationType.reds
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum textJustificationType {
+-  Left = 0,
+-  Center = 1,
+-  Right = 2,
+-}
+diff --git a/scripts/Base/Imports/textOverflowPolicy.reds b/scripts/Base/Imports/textOverflowPolicy.reds
+deleted file mode 100644
+index 416aace78b8a90d41dece47dec60257a2c7c6ada..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/textOverflowPolicy.reds
++++ /dev/null
+@@ -1,10 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum textOverflowPolicy {
+-  None = 0,
+-  DotsEnd = 1,
+-  DotsEndLastLine = 2,
+-  AutoScroll = 3,
+-  PingPongScroll = 4,
+-  AdjustToSize = 5,
+-}
+diff --git a/scripts/Base/Imports/textWrappingInfo.reds b/scripts/Base/Imports/textWrappingInfo.reds
+deleted file mode 100644
+index 62f11e4e17580c9ba68ee2fc4db08863fca68e4c..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/textWrappingInfo.reds
++++ /dev/null
+@@ -1,8 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native struct textWrappingInfo {
+-  public native let autoWrappingEnabled: Bool;
+-  public native let wrappingAtPosition: Float;
+-  public native let wrappingPolicy: textWrappingPolicy;
+-  public native let forceMinimumWidthToWrappingAtPosition: Bool;
+-}
+diff --git a/scripts/Base/Imports/textWrappingPolicy.reds b/scripts/Base/Imports/textWrappingPolicy.reds
+deleted file mode 100644
+index b650e75a67417abae95d26478f4ef79702a844b4..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/textWrappingPolicy.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public enum textWrappingPolicy {
+-  Default = 0,
+-  PerCharacter = 1,
+-}
+diff --git a/scripts/Base/Imports/worldCookedAcousticSectorNode.reds b/scripts/Base/Imports/worldCookedAcousticSectorNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..beeb717331e478ab8fdf10a60f132592239cec4e
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedAcousticSectorNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedAcousticSectorNode extends worldCookedNode {}
+diff --git a/scripts/Base/Imports/worldCookedAreaProxyMeshNode.reds b/scripts/Base/Imports/worldCookedAreaProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b984abaa620b851e23dca2663ef4a8e372077f32
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedAreaProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedAreaProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedBendedMeshNode.reds b/scripts/Base/Imports/worldCookedBendedMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed310c16ba51cc91c5c1c1472e85ebd7ee4a7108
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedBendedMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedBendedMeshNode extends worldCookedNode {}
+diff --git a/scripts/Base/Imports/worldCookedBuildingProxyMeshNode.reds b/scripts/Base/Imports/worldCookedBuildingProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..6f408286e3a443c9c536431f2c3cb014bcc416ac
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedBuildingProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedBuildingProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedCableMeshNode.reds b/scripts/Base/Imports/worldCookedCableMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..c66bb23fa2e918f8965885c630837df2d14d6e37
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedCableMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedCableMeshNode extends worldCookedBendedMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedCollisionNode.reds b/scripts/Base/Imports/worldCookedCollisionNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..4308aaf61ee1aad3b82ee51185ced810cf05be7a
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedCollisionNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedCollisionNode extends worldCookedNode {}
+diff --git a/scripts/Base/Imports/worldCookedDecorationProxyMeshNode.reds b/scripts/Base/Imports/worldCookedDecorationProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b772ccf5f9bd5617677614f9b6e9c2e825391379
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedDecorationProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedDecorationProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedDestructibleEntityProxyMeshNode.reds b/scripts/Base/Imports/worldCookedDestructibleEntityProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..b0b1f985bc9afdef7a4e45b110e758dc017520d5
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedDestructibleEntityProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedDestructibleEntityProxyMeshNode extends worldCookedEntityProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedDestructibleProxyMeshNode.reds b/scripts/Base/Imports/worldCookedDestructibleProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..427550dce28808c197404f262770fcee26161392
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedDestructibleProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedDestructibleProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedEntityProxyMeshNode.reds b/scripts/Base/Imports/worldCookedEntityProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..a5a0941409b85a5920bd10eb8e7a9747962804ae
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedEntityProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedEntityProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedFoliageDestructionNode.reds b/scripts/Base/Imports/worldCookedFoliageDestructionNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..4c7b263ae3ca22053279c18c6376e71bd92ab60a
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedFoliageDestructionNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedFoliageDestructionNode extends worldCookedCollisionNode {}
+diff --git a/scripts/Base/Imports/worldCookedGenericProxyMeshNode.reds b/scripts/Base/Imports/worldCookedGenericProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..1484617dad7e8499490c5a4fd8ea1861fc20ded5
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedGenericProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedGenericProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedInvalidProxyMeshNode.reds b/scripts/Base/Imports/worldCookedInvalidProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..ddfa5d6f9832e97f8e8cda431c536d1b67cfba59
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedInvalidProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedInvalidProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedMeshNode.reds b/scripts/Base/Imports/worldCookedMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..eccd725c52f318261852a1fb1310036c8e9f9030
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedMeshNode extends worldCookedNode {}
+diff --git a/scripts/Base/Imports/worldCookedNode.reds b/scripts/Base/Imports/worldCookedNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..00ac75e9fd3a87c241613d57bcd4cc25f93286de
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public abstract native class worldCookedNode extends worldNode {}
+diff --git a/scripts/Base/Imports/worldCookedPrefabProxyMeshNode.reds b/scripts/Base/Imports/worldCookedPrefabProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..8de357385200376b912b0c251d223cbd39e8cbce
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedPrefabProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public abstract native class worldCookedPrefabProxyMeshNode extends worldCookedMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedQuestProxyMeshNode.reds b/scripts/Base/Imports/worldCookedQuestProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..ead3c9d8820fe37f3f6ef99585b115bba4da8fb2
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedQuestProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedQuestProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedRoadProxyMeshNode.reds b/scripts/Base/Imports/worldCookedRoadProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..fab6c665e89fa26caf2d677f8d233ee89b2c579f
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedRoadProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedRoadProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedStaticDecalNode.reds b/scripts/Base/Imports/worldCookedStaticDecalNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..5979702aa8d1df3ad11ad7c9fc5d8b6c311e27f5
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedStaticDecalNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedStaticDecalNode extends worldCookedNode {}
+diff --git a/scripts/Base/Imports/worldCookedStaticMeshNode.reds b/scripts/Base/Imports/worldCookedStaticMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..34e5f70a35476b638278715c3b6981421ad03ec6
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedStaticMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedStaticMeshNode extends worldCookedMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedTerrainProxyMeshNode.reds b/scripts/Base/Imports/worldCookedTerrainProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..fd30febe96a317d3303607620451d4b3910e31f8
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedTerrainProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedTerrainProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldCookedWaterPatchProxyMeshNode.reds b/scripts/Base/Imports/worldCookedWaterPatchProxyMeshNode.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..45f894975368365c4d5b34a028459ec71f4d1871
+--- /dev/null
++++ b/scripts/Base/Imports/worldCookedWaterPatchProxyMeshNode.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native class worldCookedWaterPatchProxyMeshNode extends worldCookedPrefabProxyMeshNode {}
+diff --git a/scripts/Base/Imports/worldInstancedDestructibleMeshNode.reds b/scripts/Base/Imports/worldInstancedDestructibleMeshNode.reds
+index ff1319db6fcc628da3e57fcef92f15647a9e1a9a..7c0599fa9bce199bd5789c8d3c9385e11e12da78 100644
+--- a/scripts/Base/Imports/worldInstancedDestructibleMeshNode.reds
++++ b/scripts/Base/Imports/worldInstancedDestructibleMeshNode.reds
+@@ -18,7 +18,6 @@ public native class worldInstancedDestructibleMeshNode extends worldMeshNode {
+   public native let fracturingEffect: ResourceAsyncRef; // raRef<worldEffect>
+   public native let idleEffect: ResourceAsyncRef; // raRef<worldEffect>
+   public native let instanceTransforms: array<Transform>;
+-  public native let cookedInstanceTransforms: worldTransformBuffer;
+   public native let isPierceable: Bool;
+   public native let isWorkspot: Bool;
+   public native let navigationSetting: NavGenNavigationSetting;
+diff --git a/scripts/Base/Imports/worldOldCompiledNodeInstanceSetupInfo.reds b/scripts/Base/Imports/worldOldCompiledNodeInstanceSetupInfo.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..fc8d92744be9d608ec28c160be76e05e28dd7cc4
+--- /dev/null
++++ b/scripts/Base/Imports/worldOldCompiledNodeInstanceSetupInfo.reds
+@@ -0,0 +1,3 @@
++// CODE GENERATED. DO NOT EDIT.
++
++public native struct worldOldCompiledNodeInstanceSetupInfo {}
+diff --git a/scripts/Base/Imports/worldRenderProxyTransformBuffer.reds b/scripts/Base/Imports/worldRenderProxyTransformBuffer.reds
+deleted file mode 100644
+index 20a59fd2ffddcccdf5b345cf7f5b51f905fca497..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/worldRenderProxyTransformBuffer.reds
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native struct worldRenderProxyTransformBuffer {
+-  public native let sharedDataBuffer: ref<worldSharedDataBuffer>;
+-  public native let startIndex: Uint32;
+-  public native let numElements: Uint32;
+-}
+diff --git a/scripts/Base/Imports/worldSharedDataBuffer.reds b/scripts/Base/Imports/worldSharedDataBuffer.reds
+deleted file mode 100644
+index 106f3ec019b00d186563761bd34e4749e3a7210b..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/worldSharedDataBuffer.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native class worldSharedDataBuffer extends ISerializable {}
+diff --git a/scripts/Base/Imports/worldTransformBuffer.reds b/scripts/Base/Imports/worldTransformBuffer.reds
+deleted file mode 100644
+index 5988771a936ef0a4d6a56a41712676a9d4233acf..0000000000000000000000000000000000000000
+--- a/scripts/Base/Imports/worldTransformBuffer.reds
++++ /dev/null
+@@ -1,7 +0,0 @@
+-// CODE GENERATED. DO NOT EDIT.
+-
+-public native struct worldTransformBuffer {
+-  public native let sharedDataBuffer: ref<worldSharedDataBuffer>;
+-  public native let startIndex: Uint32;
+-  public native let numElements: Uint32;
+-}
+diff --git a/scripts/Base/Imports/worldVehicleForbiddenAreaNotifier.reds b/scripts/Base/Imports/worldVehicleForbiddenAreaNotifier.reds
+index f133d3cc67fab7eb4f2b6fd8d1d5c0c6e5ec3113..9253bcb0e040b8f67d4f0f69f7459aac7183bc50 100644
+--- a/scripts/Base/Imports/worldVehicleForbiddenAreaNotifier.reds
++++ b/scripts/Base/Imports/worldVehicleForbiddenAreaNotifier.reds
+@@ -6,6 +6,7 @@ public native class worldVehicleForbiddenAreaNotifier extends worldITriggerAreaN
+   public native let parkingSpots: array<NodeRef>;
+   public native let innerAreaSpeedLimit: Float;
+   public native let areaSpeedLimit: Float;
++  public native let speedLimitAppliedWhenEntityIsPassenger: Bool;
+   public native let enableNullArea: Bool;
+   public native let dismount: Bool;
+   public native let enableSummoning: Bool;
+diff --git a/scripts/Callback/CallbackSystem.reds b/scripts/Callback/CallbackSystem.reds
+deleted file mode 100644
+index 3d88f26c6725179d1a894ee3b5a484c04d765f87..0000000000000000000000000000000000000000
+--- a/scripts/Callback/CallbackSystem.reds
++++ /dev/null
+@@ -1,15 +0,0 @@
+-public native class CallbackSystem extends IGameSystem {
+-    public native func RegisterCallback(eventName: CName, target: ref<IScriptable>, function: CName, opt sticky: Bool) -> ref<CallbackSystemHandler>
+-    public native func RegisterStaticCallback(eventName: CName, target: CName, function: CName, opt sticky: Bool) -> ref<CallbackSystemHandler>
+-
+-    public native func UnregisterCallback(eventName: CName, target: ref<IScriptable>, opt function: CName)
+-    public native func UnregisterStaticCallback(eventName: CName, target: CName, opt function: CName)
+-
+-    public native func RegisterEvent(eventName: CName, opt eventType: CName) -> Bool
+-
+-    public native func DispatchEvent(eventObject: ref<CallbackSystemEvent>)
+-    public native func DispatchEventAs(eventName: CName, eventObject: ref<CallbackSystemEvent>)
+-}
+-
+-@addMethod(GameInstance)
+-public static native func GetCallbackSystem() -> ref<CallbackSystem>
+diff --git a/scripts/Callback/CallbackSystemEvent.reds b/scripts/Callback/CallbackSystemEvent.reds
+index f0fac4d7d7d1f5123a543e0e58ddc0a8fa836b74..bcfcbd5d3ac05c41b7cade43a267aedccc1b8194 100644
+--- a/scripts/Callback/CallbackSystemEvent.reds
++++ b/scripts/Callback/CallbackSystemEvent.reds
+@@ -1,3 +1,3 @@
+-public abstract native class CallbackSystemEvent {
+-    public native func GetEventName() -> CName
+-}
++// Game 2.5 declares `native class CallbackSystemEvent extends IScriptable { native let eventName: CName; }`.
++@addMethod(CallbackSystemEvent)
++public native func GetEventName() -> CName
+diff --git a/scripts/Callback/CallbackSystemHandler.reds b/scripts/Callback/CallbackSystemHandler.reds
+deleted file mode 100644
+index 338f9c57766db740a615c50876a787752e576083..0000000000000000000000000000000000000000
+--- a/scripts/Callback/CallbackSystemHandler.reds
++++ /dev/null
+@@ -1,10 +0,0 @@
+-public native class CallbackSystemHandler {
+-    public native func AddTarget(target: ref<CallbackSystemTarget>) -> ref<CallbackSystemHandler>
+-    public native func RemoveTarget(target: ref<CallbackSystemTarget>) -> ref<CallbackSystemHandler>
+-
+-    public native func SetRunMode(runMode: CallbackRunMode) -> ref<CallbackSystemHandler>
+-    public native func SetLifetime(lifetime: CallbackLifetime) -> ref<CallbackSystemHandler>
+-
+-    public native func IsRegistered() -> Bool
+-    public native func Unregister()
+-}
+diff --git a/scripts/Callback/CallbackSystemHandlerCompat.reds b/scripts/Callback/CallbackSystemHandlerCompat.reds
+new file mode 100644
+index 0000000000000000000000000000000000000000..29968900e03d711a4e176bb67ba61e5745671e81
+--- /dev/null
++++ b/scripts/Callback/CallbackSystemHandlerCompat.reds
+@@ -0,0 +1,25 @@
++// Game 2.5 declares CallbackSystemHandler.SetRunMode/SetLifetime with its own enums
++// (gameCallbackRunMode/gameCallbackLifetime), while mods pass Codeware's enums.
++// Both enums have the same members and values.
++
++@addMethod(CallbackSystemHandler)
++public func SetRunMode(runMode: CallbackRunMode) -> ref<CallbackSystemHandler> {
++    switch runMode {
++        case CallbackRunMode.Once:
++            return this.SetRunMode(gameCallbackRunMode.Once);
++        case CallbackRunMode.OncePerTarget:
++            return this.SetRunMode(gameCallbackRunMode.OncePerTarget);
++        default:
++            return this.SetRunMode(gameCallbackRunMode.Default);
++    }
++}
++
++@addMethod(CallbackSystemHandler)
++public func SetLifetime(lifetime: CallbackLifetime) -> ref<CallbackSystemHandler> {
++    switch lifetime {
++        case CallbackLifetime.Forever:
++            return this.SetLifetime(gameCallbackLifetime.Forever);
++        default:
++            return this.SetLifetime(gameCallbackLifetime.Session);
++    }
++}
+diff --git a/scripts/Callback/CallbackSystemTarget.reds b/scripts/Callback/CallbackSystemTarget.reds
+deleted file mode 100644
+index a250763b6bcf3f8ace7bbcbadeb04d672e60bb95..0000000000000000000000000000000000000000
+--- a/scripts/Callback/CallbackSystemTarget.reds
++++ /dev/null
+@@ -1 +0,0 @@
+-public abstract native class CallbackSystemTarget {}
+diff --git a/scripts/Callback/Events/GameSessionEvent.reds b/scripts/Callback/Events/GameSessionEvent.reds
+deleted file mode 100644
+index d4ab7cbb2ca8ea408348f93a73a8c4a7505fbedb..0000000000000000000000000000000000000000
+--- a/scripts/Callback/Events/GameSessionEvent.reds
++++ /dev/null
+@@ -1,4 +0,0 @@
+-public native class GameSessionEvent extends CallbackSystemEvent {
+-    public native func IsRestored() -> Bool
+-    public native func IsPreGame() -> Bool
+-}
+diff --git a/scripts/Callback/Events/ResourceEvent.reds b/scripts/Callback/Events/ResourceEvent.reds
+index 2042e8182bae595b8903d295c435ca60f79c5b43..22a1161ed1207140f3f88ccb44ea0333477e80d9 100644
+--- a/scripts/Callback/Events/ResourceEvent.reds
++++ b/scripts/Callback/Events/ResourceEvent.reds
+@@ -1,5 +1,3 @@
+-public native class ResourceEvent extends CallbackSystemEvent {
+-    public native func GetResource() -> ref<CResource>
+-    public native func GetPath() -> ResRef
+-    public native func GetJobGroup() -> JobGroup
+-}
++// Game 2.5 declares ResourceEvent (resource, GetResource, GetPath).
++@addMethod(ResourceEvent)
++public native func GetJobGroup() -> JobGroup
+diff --git a/scripts/Callback/Targets/InputTarget.reds b/scripts/Callback/Targets/InputTarget.reds
+deleted file mode 100644
+index 9785a75c5473d828bc8ce9a85c36777c9a0e8a93..0000000000000000000000000000000000000000
+--- a/scripts/Callback/Targets/InputTarget.reds
++++ /dev/null
+@@ -1,4 +0,0 @@
+-public native class InputTarget extends CallbackSystemTarget {
+-    public static native func Key(key: EInputKey, opt action: EInputAction) -> ref<InputTarget>
+-    public static native func Axis(axis: EInputKey, opt threshold: Float) -> ref<InputTarget>
+-}
+diff --git a/scripts/Callback/Targets/ResourceTarget.reds b/scripts/Callback/Targets/ResourceTarget.reds
+deleted file mode 100644
+index c58c4759ff11d896ecfe09b0ed2aa1a7896963bc..0000000000000000000000000000000000000000
+--- a/scripts/Callback/Targets/ResourceTarget.reds
++++ /dev/null
+@@ -1,4 +0,0 @@
+-public native class ResourceTarget extends CallbackSystemTarget {
+-    public static native func Path(resourcePath: ResRef) -> ref<ResourceTarget>
+-    public static native func Type(resourceType: CName) -> ref<ResourceTarget>
+-}
+diff --git a/scripts/Depot/CResource.reds b/scripts/Depot/CResource.reds
+index 3473d78c223a3308b7025dede0fcbfb0873092c3..383686d0b39f0cf0528b223b13f00b2c6b0d6f43 100644
+--- a/scripts/Depot/CResource.reds
++++ b/scripts/Depot/CResource.reds
+@@ -1,4 +1,3 @@
+-public abstract native class CResource extends ISerializable {
+-    native let cookingPlatform: ECookingPlatform;
+-    native let path: ResRef;
+-}
++// Game 2.5 declares `native class CResource extends ISerializable { native let cookingPlatform: ECookingPlatform; }`.
++@addField(CResource)
++public native let path: ResRef;
+diff --git a/scripts/Depot/ResourceReference.reds b/scripts/Depot/ResourceReference.reds
+index daf206e96eb52923b0376488421a14041082fc83..0048e1a7a571b1b8ab289a06804b422330557795 100644
+--- a/scripts/Depot/ResourceReference.reds
++++ b/scripts/Depot/ResourceReference.reds
+@@ -34,11 +34,7 @@ public func OperatorAssignMultiply(out res: ResourceAsyncRef, path: ResRef) {
+     ResourceAsyncRef.SetPath(res, path);
+ }
+ 
+-@addMethod(ResRef)
+-public static native func GetHash(self: ResRef) -> Uint64
+ 
+-@addMethod(ResRef)
+-public static native func ToString(self: ResRef) -> String
+ 
+ public func OperatorEqual(lhs: ResourceAsyncRef, rhs: ResRef) -> Bool {
+     return Equals(ResourceAsyncRef.GetPath(lhs), rhs);
+diff --git a/scripts/Scripting/ISerializable.reds b/scripts/Scripting/ISerializable.reds
+index 2c387c98f6da26cb63298b98d4522c96284836c7..71c3993036d5bb610f7ea3b1b03cb480db4933c1 100644
+--- a/scripts/Scripting/ISerializable.reds
++++ b/scripts/Scripting/ISerializable.reds
+@@ -1,11 +1,20 @@
+-public abstract native class ISerializable {
+-    public final native func GetClassName() -> CName
+-    public final native func IsA(className: CName) -> Bool
+-    public final native func IsExactlyA(className: CName) -> Bool
+-    public final native func Clone() -> ref<ISerializable>
+-    public final native func ProcessPostLoad(opt disablePreInitialization: Bool)
+-
+-    public final func RefreshResource(opt disablePreInitialization: Bool) {
+-        this.ProcessPostLoad(disablePreInitialization);
+-    }
++// Game 2.5 declares `native importonly class ISerializable` with no members.
++@addMethod(ISerializable)
++public final native func GetClassName() -> CName
++
++@addMethod(ISerializable)
++public final native func IsA(className: CName) -> Bool
++
++@addMethod(ISerializable)
++public final native func IsExactlyA(className: CName) -> Bool
++
++@addMethod(ISerializable)
++public final native func Clone() -> ref<ISerializable>
++
++@addMethod(ISerializable)
++public final native func ProcessPostLoad(opt disablePreInitialization: Bool)
++
++@addMethod(ISerializable)
++public final func RefreshResource(opt disablePreInitialization: Bool) {
++    this.ProcessPostLoad(disablePreInitialization);
+ }
+diff --git a/scripts/Scripting/ScriptableService.reds b/scripts/Scripting/ScriptableService.reds
+deleted file mode 100644
+index 2cdfbb97e942cf5528813b04fb4d5b6e21675144..0000000000000000000000000000000000000000
+--- a/scripts/Scripting/ScriptableService.reds
++++ /dev/null
+@@ -1,12 +0,0 @@
+-public abstract native class ScriptableService {
+-    // private cb func OnLoad()
+-    // private cb func OnReload()
+-    // private cb func OnInitialize()
+-    // private cb func OnUninitialize()
+-}
+-
+-// DEPRECATED
+-public abstract class ScriptableEnv extends ScriptableService {
+-    public static final func Get(name: CName) -> ref<ScriptableService>
+-        = GameInstance.GetScriptableServiceContainer().GetService(name)
+-}
+diff --git a/scripts/Scripting/ScriptableServiceContainer.reds b/scripts/Scripting/ScriptableServiceContainer.reds
+deleted file mode 100644
+index 9d3a979272c1d444a2e535f273d029ba139a91ce..0000000000000000000000000000000000000000
+--- a/scripts/Scripting/ScriptableServiceContainer.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-public abstract native class ScriptableServiceContainer extends IGameSystem {
+-    public native func GetService(name: CName) -> ref<ScriptableService>
+-}
+-
+-@addMethod(GameInstance)
+-public static native func GetScriptableServiceContainer() -> ref<ScriptableServiceContainer>
+diff --git a/scripts/UI/Core/inkCharacterEvent.reds b/scripts/UI/Core/inkCharacterEvent.reds
+deleted file mode 100644
+index 048a7ca5ea1193aa17401bfa89bb628e084e31d8..0000000000000000000000000000000000000000
+--- a/scripts/UI/Core/inkCharacterEvent.reds
++++ /dev/null
+@@ -1,9 +0,0 @@
+-// -----------------------------------------------------------------------------
+-// inkCharacterEvent
+-// -----------------------------------------------------------------------------
+-
+-@addMethod(inkCharacterEvent)
+-public native func GetType() -> inkCharacterEventType
+-
+-@addMethod(inkCharacterEvent)
+-public native func GetAction() -> EInputAction
+diff --git a/scripts/UI/Core/inkKeyInputEvent.reds b/scripts/UI/Core/inkKeyInputEvent.reds
+index 423a442bd1d4e55db66ba1d2861ce237f19f7707..be8924872fb2a37d44deb446161e8655e6dc0009 100644
+--- a/scripts/UI/Core/inkKeyInputEvent.reds
++++ b/scripts/UI/Core/inkKeyInputEvent.reds
+@@ -1,6 +1,10 @@
+-public native class inkKeyInputEvent extends inkInputEvent {
+-    public native func GetKey() -> EInputKey
+-    public native func GetAction() -> EInputAction
+-    public native func GetCharacter() -> String
+-    public native func IsCharacter() -> Bool
+-}
++// Game 2.5 declares `native class inkKeyInputEvent extends inkInputEvent` with the fields key, action,
++// character and IsCharacter().
++@addMethod(inkKeyInputEvent)
++public native func GetKey() -> EInputKey
++
++@addMethod(inkKeyInputEvent)
++public native func GetAction() -> EInputAction
++
++@addMethod(inkKeyInputEvent)
++public native func GetCharacter() -> String
+diff --git a/scripts/UI/Core/inkLayerWrapper.reds b/scripts/UI/Core/inkLayerWrapper.reds
+deleted file mode 100644
+index 1da3f7fa07470daa795f350bce4e5bf97c29061f..0000000000000000000000000000000000000000
+--- a/scripts/UI/Core/inkLayerWrapper.reds
++++ /dev/null
+@@ -1,6 +0,0 @@
+-public native class inkLayerWrapper {
+-    public native func GetLayerName() -> CName
+-    public native func GetVirtualWindow() -> wref<inkVirtualWindow>
+-    public native func GetGameController() -> wref<inkIGameController>
+-    public native func GetGameControllers() -> array<wref<inkIGameController>>
+-}
+diff --git a/scripts/UI/Core/inkText.reds b/scripts/UI/Core/inkText.reds
+index c9858a5ff4adf33a3e3759bfbd5a7d71d5b1cc8c..8ddd75e53fb359b97784ae66fd0063100f38ce9d 100644
+--- a/scripts/UI/Core/inkText.reds
++++ b/scripts/UI/Core/inkText.reds
+@@ -38,17 +38,7 @@ public func SetOverflowPolicy(overflowPolicy: textOverflowPolicy) {
+     this.textOverflowPolicy = overflowPolicy;
+ }
+ 
+-@addMethod(inkText)
+-public func SetWrapping(enabled: Bool, opt width: Float, opt policy: textWrappingPolicy) {
+-    this.wrappingInfo.autoWrappingEnabled = enabled;
+-    this.wrappingInfo.wrappingAtPosition = width;
+-    this.wrappingInfo.wrappingPolicy = policy;
+-}
+ 
+-@addMethod(inkText)
+-public func GetWrapping() -> textWrappingInfo {
+-    return this.wrappingInfo;
+-}
+ 
+ @addMethod(inkText)
+ public func GetLineHeight() -> Float {
+diff --git a/scripts/UI/Core/inkWidget.reds b/scripts/UI/Core/inkWidget.reds
+index c3ff8a62af80ae4c0dd4419a1cd96d2e91ba21f2..a69d77fb445a04b5a33eb58559113b6efd2ca2b9 100644
+--- a/scripts/UI/Core/inkWidget.reds
++++ b/scripts/UI/Core/inkWidget.reds
+@@ -23,5 +23,3 @@ public func AddEffect(effect: ref<inkIEffect>) {
+     ArrayPush(this.effects, effect);
+ }
+ 
+-@addMethod(inkWidget)
+-public native func AttachController(controller: ref<inkLogicController>, opt secondary: Bool);
+diff --git a/scripts/UI/Core/inkWidgetLibraryResource.reds b/scripts/UI/Core/inkWidgetLibraryResource.reds
+deleted file mode 100644
+index 28102ae9457f9d909a1cc38541db43c7e77397e6..0000000000000000000000000000000000000000
+--- a/scripts/UI/Core/inkWidgetLibraryResource.reds
++++ /dev/null
+@@ -1,9 +0,0 @@
+-@addMethod(inkWidgetLibraryResource)
+-public static native func SetPath(self: script_ref<inkWidgetLibraryResource>, path: ResRef);
+-
+-@addMethod(inkWidgetLibraryResource)
+-public static func Create(path: ResRef) -> inkWidgetLibraryResource {
+-    let ref: inkWidgetLibraryResource;
+-    inkWidgetLibraryResource.SetPath(ref, path);
+-    return ref;
+-}
+diff --git a/scripts/UI/Core/inkWorldWidgetInfos.reds b/scripts/UI/Core/inkWorldWidgetInfos.reds
+deleted file mode 100644
+index 1ed26ca7786003bac0a345bf15bbe282e7fd44a0..0000000000000000000000000000000000000000
+--- a/scripts/UI/Core/inkWorldWidgetInfos.reds
++++ /dev/null
+@@ -1,3 +0,0 @@
+-public abstract native class inkWorldWidgetInfos extends inkUserData {
+-    public native func GetComponent() -> ref<IComponent>
+-}
+diff --git a/scripts/World/worldInstancedMeshNode.reds b/scripts/World/worldInstancedMeshNode.reds
+index e2cb255adc05611073e7c5839384eb244c63ed08..4f4e1582f12b77f20e6bce9f07afedfe23b4fb6d 100644
+--- a/scripts/World/worldInstancedMeshNode.reds
++++ b/scripts/World/worldInstancedMeshNode.reds
+@@ -1,15 +1,6 @@
+-public native class worldInstancedMeshNode extends worldNode {
+-  public native let mesh: ResourceAsyncRef; // raRef<CMesh>
+-  public native let meshAppearance: CName;
+-  public native let castShadows: shadowsShadowCastingMode;
+-  public native let castLocalShadows: shadowsShadowCastingMode;
+-  public native let occluderType: visWorldOccluderType;
+-  public native let meshLODScales: Uint32;
+-  public native let occluderAutohideDistanceScale: Uint8;
+-  public native let worldTransformsBuffer: worldRenderProxyTransformBuffer;
++// Game 2.5: worldInstancedMeshNode is a cooked node (parent worldCookedNode, size 0x98/0xB8 editor) with only
++// cookedWorldTransformsBuffer and version (REDmod metadata.json; 2.5 exe class registration 0x1322F7A).
++// The 2.31 fields (mesh, meshAppearance, ..., instanceBatches, boundingBoxes, streamingDistances) are gone.
++public native class worldInstancedMeshNode extends worldCookedNode {
+   public native let version: Uint8;
+-
+-  public native let instanceBatches: array<Uint32>;
+-  public native let boundingBoxes: array<Box>;
+-  public native let streamingDistances: array<Float>;
+ }
+diff --git a/src/App/Callback/CallbackSystem.cpp b/src/App/Callback/CallbackSystem.cpp
+index aff9783c43bec9b5d1d0485d2cfda2e215e95ca5..1b01c4416780cf817d708acceb0497c18ec6e3e5 100644
+--- a/src/App/Callback/CallbackSystem.cpp
++++ b/src/App/Callback/CallbackSystem.cpp
+@@ -157,9 +157,11 @@ Red::Handle<App::CallbackSystemHandler> App::CallbackSystem::RegisterCallback(
+ }
+ 
+ Red::Handle<App::CallbackSystemHandler> App::CallbackSystem::RegisterStaticCallback(
+-    Red::CName aEventName, Red::CName aContext, Red::CName aFunction,
++    Red::CName aEventName, const Red::Handle<Red::IScriptable>& aTarget, Red::CName aFunction,
+     Red::Optional<bool> aSticky, Red::CStackFrame* aFrame)
+ {
++    const auto aContext = aTarget ? aTarget->GetType()->GetName() : Red::CName{};
++
+     MapEventName(aEventName);
+ 
+     ActivateEvent(aEventName);
+@@ -289,16 +291,19 @@ void App::CallbackSystem::FireCallbacks(const Red::Handle<CallbackSystemEvent>&
+     }
+ }
+ 
+-bool App::CallbackSystem::RegisterEvent(Red::CName aEventName, Red::Optional<Red::CName> aEventType)
++void App::CallbackSystem::RegisterEvent(Red::CName aEventName, Red::Optional<Red::CName> aEventType)
++{
++    Red::CName eventType = aEventType;
++    RegisterEventImpl(aEventName, eventType ? eventType : aEventName);
++}
++
++bool App::CallbackSystem::RegisterEventImpl(Red::CName aEventName, Red::CName aEventType)
+ {
+     std::unique_lock _(m_callbacksLock);
+ 
+     if (m_supportedEvents[aEventName])
+         return false;
+ 
+-    if (!aEventType)
+-        aEventType = aEventName;
+-
+     if (!Red::GetClass(aEventType))
+         return false;
+ 
+diff --git a/src/App/Callback/CallbackSystem.hpp b/src/App/Callback/CallbackSystem.hpp
+index eb1b8d5fb182381271e20a5b7ca08bfdbe64820f..f269576220d268de7891f0ff24750f0e93f85a21 100644
+--- a/src/App/Callback/CallbackSystem.hpp
++++ b/src/App/Callback/CallbackSystem.hpp
+@@ -26,7 +26,11 @@ public:
+                                                         const Red::Handle<Red::IScriptable>& aContext,
+                                                         Red::CName aFunction, Red::Optional<bool> aSticky,
+                                                         Red::CStackFrame* aFrame = nullptr);
+-    Red::Handle<CallbackSystemHandler> RegisterStaticCallback(Red::CName aEventName, Red::CName aContext,
++    // Game 2.5's script declaration (the one mods compile against) takes the target as an object:
++    // RegisterStaticCallback(eventName: CName, target: IScriptable, functionName: CName, opt sticky: Bool).
++    // The static callback is bound to the target's class.
++    Red::Handle<CallbackSystemHandler> RegisterStaticCallback(Red::CName aEventName,
++                                                              const Red::Handle<Red::IScriptable>& aTarget,
+                                                               Red::CName aFunction, Red::Optional<bool> aSticky,
+                                                               Red::CStackFrame* aFrame = nullptr);
+ 
+@@ -34,7 +38,9 @@ public:
+                             Red::Optional<Red::CName> aFunction);
+     void UnregisterStaticCallback(Red::CName aEventName, Red::CName aContext, Red::Optional<Red::CName> aFunction);
+ 
+-    bool RegisterEvent(Red::CName aEventName, Red::Optional<Red::CName> aEventType);
++    // Returns nothing on game 2.5, as the game's script declaration does.
++    void RegisterEvent(Red::CName aEventName, Red::Optional<Red::CName> aEventType);
++    bool RegisterEventImpl(Red::CName aEventName, Red::CName aEventType);
+     void DispatchEvent(const Red::Handle<CallbackSystemEvent>& aEvent);
+     void DispatchEventAs(Red::CName aEventName, const Red::Handle<CallbackSystemEvent>& aEvent);
+ 
+@@ -68,6 +74,9 @@ public:
+ 
+     static Red::Handle<CallbackSystem>& Get();
+ 
++    // Game 2.5 declares GameInstance.GetCallbackSystem(opt gi: GameInstance).
++    static constexpr bool GetterTakesGameInstance = true;
++
+ protected:
+     void OnWorldAttached(Red::world::RuntimeScene*) override;
+     // void OnStreamingWorldLoaded(Red::world::RuntimeScene*, uint64_t aRestored, const Red::JobGroup&) override;
+diff --git a/src/App/Callback/CallbackSystemEvent.hpp b/src/App/Callback/CallbackSystemEvent.hpp
+index b55ef14986c0bacbbd7260c436d2e9d641704885..21adca733c3bf615e50f089fc5baa84db3d89880 100644
+--- a/src/App/Callback/CallbackSystemEvent.hpp
++++ b/src/App/Callback/CallbackSystemEvent.hpp
+@@ -29,4 +29,5 @@ struct CallbackSystemEvent : Red::IScriptable
+ RTTI_DEFINE_CLASS(App::CallbackSystemEvent, {
+     RTTI_ABSTRACT();
+     RTTI_GETTER(eventName);
++    RTTI_PROPERTY(eventName); // game 2.5 declares `native let eventName: CName`
+ });
+diff --git a/src/App/Callback/Events/ResourceEvent.hpp b/src/App/Callback/Events/ResourceEvent.hpp
+index 66e8498db0b752d6ede383128c1e5401ed3fbfe9..382edce4462b37beefb3d83bdd6d847b854cf179 100644
+--- a/src/App/Callback/Events/ResourceEvent.hpp
++++ b/src/App/Callback/Events/ResourceEvent.hpp
+@@ -46,4 +46,5 @@ RTTI_DEFINE_CLASS(App::ResourceEvent, {
+     RTTI_METHOD(GetPath);
+     RTTI_METHOD(GetJobGroup);
+     RTTI_GETTER(resource);
++    RTTI_PROPERTY(resource); // game 2.5 declares `native let resource: CResource`
+ });
+diff --git a/src/App/Callback/Targets/InputTarget.hpp b/src/App/Callback/Targets/InputTarget.hpp
+index 324ebc2373d16a491604e485367b54e59ee6d2d6..2ab91007a0d4f500d1de6c77d60e5a948e50c309 100644
+--- a/src/App/Callback/Targets/InputTarget.hpp
++++ b/src/App/Callback/Targets/InputTarget.hpp
+@@ -34,11 +34,13 @@ struct InputTarget : CallbackSystemTarget
+         return aEventType == Red::GetTypeName<KeyInputEvent>();
+     }
+ 
+-    static Red::Handle<InputTarget> Key(Red::EInputKey aKey, Red::Optional<Red::EInputAction> aAction)
++    // Game 2.5 declares InputTarget.Key(key: EInputKey, opt threshold: Float). The target matches the
++    // key on every action (press and release), as Key(key) without an action did before.
++    static Red::Handle<InputTarget> Key(Red::EInputKey aKey, Red::Optional<float> aThreshold)
+     {
+         auto target = Red::MakeHandle<InputTarget>();
+         target->key = aKey;
+-        target->action = aAction;
++        target->threshold = aThreshold;
+ 
+         return target;
+     }
+diff --git a/src/App/Scripting/ScriptableServiceContainer.hpp b/src/App/Scripting/ScriptableServiceContainer.hpp
+index 70143580bbc31e703cf4ec1e31b0c291e33a2008..066a5c74c3edd58e0e85e1e492cab00e2c37019a 100644
+--- a/src/App/Scripting/ScriptableServiceContainer.hpp
++++ b/src/App/Scripting/ScriptableServiceContainer.hpp
+@@ -27,6 +27,9 @@ public:
+     static Red::Handle<ScriptableServiceContainer>& Build(const std::filesystem::path& aStateDir);
+     static Red::Handle<ScriptableServiceContainer>& Get();
+ 
++    // Game 2.5 declares GameInstance.GetScriptableServiceContainer(opt gi: GameInstance).
++    static constexpr bool GetterTakesGameInstance = true;
++
+ private:
+     void OnBeforeWorldDetach(Red::world::RuntimeScene* aScene) override;
+     uint32_t OnBeforeGameSave(const Red::JobGroup& aJobGroup, void* a2) override;
+diff --git a/src/App/Scripting/ScriptingService.cpp b/src/App/Scripting/ScriptingService.cpp
+index fd16640e5700d6866109df593fc7c508f12b773f..67e79497f993b8bf10c378d8c6b46c3d24bb01ac 100644
+--- a/src/App/Scripting/ScriptingService.cpp
++++ b/src/App/Scripting/ScriptingService.cpp
+@@ -1,6 +1,7 @@
+ #include "ScriptingService.hpp"
+ #include "App/Depot/ResourceReference.hpp"
+ #include "App/Engine/CurveData.hpp"
++#include "App/Scripting/VanillaApiCompat.hpp"
+ 
+ namespace
+ {
+@@ -25,12 +26,20 @@ constexpr auto gameuiBaseUIDataTypeName = Red::CName("gameuiBaseUIData");
+ constexpr auto scnChatterTypeName = Red::CName("scnChatter");
+ constexpr auto audioEventElementTypeName = Red::CName("audioAudioEventMetadataArrayElement");
+ constexpr auto entLODDefinitionTypeName = Red::CName("entLODDefinition");
++
++constexpr auto GameCallbackRunModeName = Red::CName("gameCallbackRunMode");
++constexpr auto GameCallbackLifetimeName = Red::CName("gameCallbackLifetime");
++constexpr auto CallbackRunModeName = Red::CName("CallbackRunMode");
++constexpr auto CallbackLifetimeName = Red::CName("CallbackLifetime");
+ }
+ 
+ App::ScriptingService::ScriptingService(const std::filesystem::path& aStateDir)
+ {
+     s_stateDir = aStateDir;
+ 
++    // Queued after every RTTI_DEFINE_CLASS registrar (static init), so Codeware's system getters exist.
++    Red::TypeInfoRegistrar::AddDescribeCallback(&VanillaApiCompat::Apply);
++
+     std::error_code error;
+     if (!std::filesystem::exists(s_stateDir, error))
+     {
+@@ -75,6 +84,8 @@ void App::ScriptingService::OnInitializeGameInstance()
+ 
+ void App::ScriptingService::OnValidateScripts(void* aValidator, Red::ScriptBundle* aBundle, void* aReport)
+ {
++    VanillaApiCompat::Apply();
++
+     Red::GetClass<gameuiBaseUIDataTypeName>()->parent = Red::GetClass<ISerializableTypeName>();
+     Red::GetClass<scnChatterTypeName>()->parent = Red::GetClass<ISerializableTypeName>();
+ 
+@@ -82,6 +93,17 @@ void App::ScriptingService::OnValidateScripts(void* aValidator, Red::ScriptBundl
+     {
+         if (classDef->flags.isNative)
+         {
++            // Game 2.5: the vanilla bundle declares ScriptableService / CallbackSystemEvent without
++            // `abstract`, but their script names now resolve to Codeware's abstract types
++            // (VanillaApiCompat), so the validator refuses "Native class '...' was not marked as abstract".
++            if (VanillaApiCompat::IsSharedScriptName(classDef->name))
++            {
++                if (auto nativeClass = Red::GetScriptClass(classDef->name))
++                {
++                    classDef->flags.isAbstract = nativeClass->flags.isAbstract;
++                }
++            }
++
+             if (classDef->name == ISerializableTypeName)
+             {
+                 classDef->flags.isStruct = true;
+@@ -192,6 +214,15 @@ void App::ScriptingService::OnValidateTypeName(bool& aValid, Red::CName aScriptT
+ {
+     if (!aValid)
+     {
++        // Game 2.5 declares CallbackSystemHandler.SetRunMode/SetLifetime with its own enums
++        // (gameCallbackRunMode/gameCallbackLifetime, same members and values as Codeware's).
++        if ((aScriptTypeName == GameCallbackRunModeName && aNativeTypeName == CallbackRunModeName) ||
++            (aScriptTypeName == GameCallbackLifetimeName && aNativeTypeName == CallbackLifetimeName))
++        {
++            aValid = true;
++            return;
++        }
++
+         if (aScriptTypeName == ResourceWrapperName)
+         {
+             aValid = strncmp(ResourceReferencePrefix.data(), aNativeTypeName.ToString(),
+diff --git a/src/App/Scripting/VanillaApiCompat.cpp b/src/App/Scripting/VanillaApiCompat.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..b8cb019723df29729774adee2202404d1e366482
+--- /dev/null
++++ b/src/App/Scripting/VanillaApiCompat.cpp
+@@ -0,0 +1,183 @@
++#include "VanillaApiCompat.hpp"
++
++namespace
++{
++// Codeware native type name (also its script name) -> the vanilla native type that game 2.5
++// registers under the same script name (strings at 0x3626A18..0x3628400 in the 2.5 exe).
++constexpr std::pair<Red::CName, Red::CName> SharedScriptNames[] = {
++    {"CallbackSystem", "gameCallbackSystem"},
++    {"CallbackSystemEvent", "gameCallbackSystemEvent"},
++    {"CallbackSystemHandler", "gameCallbackSystemHandler"},
++    {"CallbackSystemTarget", "gameCallbackSystemTarget"},
++    {"GameSessionEvent", "gameGameSessionEvent"},
++    {"ResourceEvent", "gameResourceEvent"},
++    {"ResourceTarget", "gameResourceTarget"},
++    {"InputTarget", "gameInputTarget"},
++    {"KeyInputEvent", "gameKeyInputEvent"},
++    {"ScriptableService", "gameScriptableService"},
++    {"ScriptableServiceContainer", "gameScriptableServiceContainer"},
++};
++
++// GameInstance static getters that both the game and Codeware register. Codeware's return type is
++// its own class; the vanilla one returns the vanilla class.
++constexpr std::pair<Red::CName, Red::CName> SharedGetters[] = {
++    {"GetCallbackSystem", "CallbackSystem"},
++    {"GetScriptableServiceContainer", "ScriptableServiceContainer"},
++};
++
++constexpr auto VanillaMarkerType = Red::CName("gameCallbackSystem");
++
++Red::CName GetReturnTypeName(Red::CBaseFunction* aFunc)
++{
++    if (!aFunc || !aFunc->returnType || !aFunc->returnType->type)
++        return {};
++
++    auto* type = aFunc->returnType->type;
++
++    if (type->GetType() == Red::ERTTIType::Handle)
++    {
++        auto* inner = reinterpret_cast<Red::CRTTIHandleType*>(type)->innerType;
++        return inner ? inner->GetName() : Red::CName{};
++    }
++
++    return type->GetName();
++}
++} // namespace
++
++// Game 2.5 also registers native ResRef.ToString / ResRef.GetHash (static functions of
++// redResourceReferenceScriptToken; the 2.5 bundle declares them in its `ResRef` struct). The script call
++// binds to the first function of that name, the vanilla one, and its ToString answers "" for paths the
++// game keeps no string for (for example the mesh paths of the player's equipped items). Codeware's own
++// (ResourcePathRegistry) is kept, the vanilla ones are removed. The 2.5 RTTI lists the vanilla pair first
++// (parameter `path`) and Codeware's expansion after it (parameter `arg`): with two of a name, the last
++// registered is Codeware's.
++void App::VanillaApiCompat::ApplyResRefNatives()
++{
++    auto* type = Red::CRTTISystem::Get()->GetClass("redResourceReferenceScriptToken");
++    if (!type)
++    {
++        LogWarning("[VanillaApiCompat] ResRef: redResourceReferenceScriptToken not registered.");
++        s_resRefApplied = true;
++        return;
++    }
++
++    constexpr Red::CName Names[] = {"ToString", "GetHash"};
++    for (auto name : Names)
++    {
++        std::vector<Red::CClassStaticFunction*> found;
++        for (auto* func : type->staticFuncs)
++            if (func && func->shortName == name)
++                found.push_back(func);
++
++        if (found.size() < 2)
++        {
++            if (name == Names[0])
++                return; // Codeware's expansion not registered yet (or no vanilla one): next Apply decides
++            continue;
++        }
++
++        auto paramName = [](Red::CClassStaticFunction* aFunc) {
++            return aFunc->params.Size() > 0 && aFunc->params[0] ? std::string(aFunc->params[0]->name.ToString())
++                                                                : std::string("-");
++        };
++        auto* kept = found.back();
++        std::string removed;
++        for (size_t i = 0; i + 1 < found.size(); ++i)
++        {
++            removed += std::string(removed.empty() ? "" : ",") + paramName(found[i]);
++            type->staticFuncs.Remove(found[i]);
++        }
++        s_resRefApplied = true;
++        LogInfo("[VanillaApiCompat] ResRef.{}: removed {} earlier native(s) (param {}), kept the last (param {}).",
++                name.ToString(), found.size() - 1, removed, paramName(kept));
++    }
++}
++bool App::VanillaApiCompat::IsSharedScriptName(Red::CName aName)
++{
++    for (const auto& [codewareName, vanillaName] : SharedScriptNames)
++    {
++        if (codewareName == aName)
++            return true;
++    }
++    return false;
++}
++
++void App::VanillaApiCompat::Apply()
++{
++    auto* rtti = Red::CRTTISystem::Get();
++
++    if (!rtti || !rtti->GetClass(VanillaMarkerType))
++        return;
++
++    if (!s_scriptNamesApplied)
++    {
++        s_scriptNamesApplied = true;
++
++        for (const auto& [codewareName, vanillaName] : SharedScriptNames)
++        {
++            auto* codewareType = rtti->GetClass(codewareName);
++            auto* vanillaType = rtti->GetClass(vanillaName);
++
++            if (!codewareType)
++            {
++                LogWarning("[VanillaApiCompat] {}: Codeware type not registered, script name left to {}.",
++                           codewareName.ToString(), vanillaType ? vanillaName.ToString() : "nobody");
++                continue;
++            }
++
++            rtti->RegisterScriptName(codewareName, codewareName);
++
++            auto* bound = rtti->GetClassByScriptName(codewareName);
++            LogInfo("[VanillaApiCompat] script name {} -> {} (vanilla {}: {}).", codewareName.ToString(),
++                    bound ? bound->GetName().ToString() : "null", vanillaName.ToString(),
++                    vanillaType ? "present" : "absent");
++        }
++    }
++
++    if (!s_resRefApplied)
++    {
++        ApplyResRefNatives();
++    }
++
++    if (!s_gettersApplied)
++    {
++        auto* gameType = Red::GetClass<Red::ScriptGameInstance>();
++
++        if (!gameType)
++            return;
++
++        s_gettersApplied = true;
++
++        for (const auto& [getterName, codewareType] : SharedGetters)
++        {
++            Red::CClassStaticFunction* codewareGetter = nullptr;
++            std::vector<Red::CClassStaticFunction*> vanillaGetters;
++
++            for (auto* func : gameType->staticFuncs)
++            {
++                if (!func || func->shortName != getterName)
++                    continue;
++
++                if (GetReturnTypeName(func) == codewareType)
++                    codewareGetter = func;
++                else
++                    vanillaGetters.push_back(func);
++            }
++
++            if (!codewareGetter)
++            {
++                LogWarning("[VanillaApiCompat] GameInstance.{}: Codeware getter not found, {} vanilla left.",
++                           getterName.ToString(), vanillaGetters.size());
++                continue;
++            }
++
++            for (auto* func : vanillaGetters)
++            {
++                gameType->staticFuncs.Remove(func);
++            }
++
++            LogInfo("[VanillaApiCompat] GameInstance.{}: removed {} vanilla getter(s), Codeware's kept ({} param).",
++                    getterName.ToString(), vanillaGetters.size(), codewareGetter->params.Size());
++        }
++    }
++}
+diff --git a/src/App/Scripting/VanillaApiCompat.hpp b/src/App/Scripting/VanillaApiCompat.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..aeb197678752d092ebfc8ad39e1c817a620bff5d
+--- /dev/null
++++ b/src/App/Scripting/VanillaApiCompat.hpp
+@@ -0,0 +1,37 @@
++#pragma once
++
++#include "Core/Logging/LoggingAgent.hpp"
++
++namespace App
++{
++// Game 2.5 ships its own version of Codeware's callback and service API (native types
++// gameCallbackSystem, gameScriptableService, ... with the script names CallbackSystem,
++// ScriptableService, ...; static natives GameInstance.GetCallbackSystem/GetScriptableServiceContainer).
++// Its event set is a subset (Session/*, Resource/PostLoad, Resource/Ready): no Entity/*, so mods
++// that use Codeware's events need Codeware's implementation bound to those script names.
++//
++// Evidence, game 2.5 exe 3.0.88.46235:
++// - CRTTISystem::RegisterScriptName (vtable 0x3577168 slot 0x100 = 0x9764B8) overwrites both maps:
++//   [this+0x150][script] = native, [this+0x180][native] = script.
++// - GetClassByScriptName (slot 0x108 = 0x1B60D0) looks the script name up in [this+0x150] and calls
++//   GetClass (0x281444) with the result, so the last registration wins.
++// - The vanilla getter GameInstance.GetCallbackSystem (registered at 0x215843D, handler 0x2158680)
++//   returns the vanilla singleton handle at 0x4CF6E30, not Codeware's system.
++//
++// Apply() maps each shared script name back to Codeware's native type and removes the vanilla
++// GameInstance getters, leaving Codeware's (which take the same optional GameInstance parameter).
++// On a game without the vanilla types it does nothing.
++class VanillaApiCompat : public Core::LoggingAgent
++{
++public:
++    static void Apply();
++    static bool IsSharedScriptName(Red::CName aName);
++
++private:
++    static void ApplyResRefNatives();
++
++    inline static bool s_resRefApplied = false;
++    inline static bool s_scriptNamesApplied = false;
++    inline static bool s_gettersApplied = false;
++};
++} // namespace App
+diff --git a/src/App/UI/WidgetBuildingService.cpp b/src/App/UI/WidgetBuildingService.cpp
+index d8986713a5e32428659373e26f0d57b13399e11e..52e56be6fa2883518160d305fa09048c164251aa 100644
+--- a/src/App/UI/WidgetBuildingService.cpp
++++ b/src/App/UI/WidgetBuildingService.cpp
+@@ -67,32 +67,6 @@ bool App::WidgetBuildingService::AttachWidgetTree(const Red::Handle<Red::inkWidg
+     return true;
+ }
+ 
+-bool App::WidgetBuildingService::AttachController(const Red::Handle<Red::inkWidget>& aWidget,
+-                                                  const Red::Handle<Red::inkLogicController>& aController)
+-{
+-    if (aController->layerProxy.instance)
+-        return true;
+-
+-    aController->widget = aWidget;
+-    aController->layerProxy = aWidget->layerProxy;
+-
+-    auto& layerProxy = aWidget->layerProxy;
+-
+-    if (!layerProxy)
+-        return false;
+-
+-    auto layer = layerProxy->layer.Lock();
+-
+-    if (!layer)
+-        return false;
+-
+-    Raw::inkLayer::RegisterListener(layer, aController);
+-
+-    aController->OnInitialize();
+-
+-    return true;
+-}
+-
+ bool App::WidgetBuildingService::IsLegacyController(Red::inkLogicController* aController)
+ {
+     return aController->nativeType
+diff --git a/src/App/UI/WidgetBuildingService.hpp b/src/App/UI/WidgetBuildingService.hpp
+index c63174babf43820a34d35b6b931f02e585beac43..737186d5c94a0b30c27dafac667156d67d457916 100644
+--- a/src/App/UI/WidgetBuildingService.hpp
++++ b/src/App/UI/WidgetBuildingService.hpp
+@@ -13,9 +13,11 @@ class WidgetBuildingService
+     , public Core::LoggingAgent
+ {
+ public:
++    // Game 2.5 (exe 3.0.88.46235) has its own native inkWidget.AttachController: its handler (0x2092080) sets
++    // logicController (+0x128) or appends to secondaryControllers (+0x108), then 0x20B0190 sets the controller's
++    // widget and layer proxy, registers it as a layer listener and calls OnInitialize. Script natives bind to
++    // the first function of a name (0x6BDB00), the game's, so Codeware no longer registers its own.
+     static bool AttachWidgetTree(const Red::Handle<Red::inkWidget>& aWidget);
+-    static bool AttachController(const Red::Handle<Red::inkWidget>& aWidget,
+-                                 const Red::Handle<Red::inkLogicController>& aController);
+ 
+ protected:
+     void OnBootstrap() override;
+diff --git a/src/App/UI/WidgetSpawningService.cpp b/src/App/UI/WidgetSpawningService.cpp
+index 47f3082a1ce4634828ccacb656533eae0e868d9f..6663b2682889f458dd59bfcd6aa57468f1493e55 100644
+--- a/src/App/UI/WidgetSpawningService.cpp
++++ b/src/App/UI/WidgetSpawningService.cpp
+@@ -71,8 +71,8 @@ uintptr_t App::WidgetSpawningService::OnSpawnExternal(Red::ink::WidgetLibraryRes
+ }
+ 
+ bool App::WidgetSpawningService::OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource& aLibrary,
+-                                                   Red::InkSpawningInfo& aSpawningInfo,
+-                                                   Red::CName aItemName)
++                                                   Red::InkSpawningInfo& aSpawningInfo, Red::CName aItemName,
++                                                   bool aFlag)
+ {
+     auto* itemNameStr = aItemName.ToString();
+     auto* controllerSep = strchr(itemNameStr, ControllerSeparator);
+@@ -82,7 +82,7 @@ bool App::WidgetSpawningService::OnAsyncSpawnLocal(Red::ink::WidgetLibraryResour
+         aItemName = Red::CName(itemNameStr, controllerSep - itemNameStr);
+     }
+ 
+-    return Raw::InkWidgetLibrary::AsyncSpawnFromLocal(aLibrary, aSpawningInfo, aItemName);
++    return Raw::InkWidgetLibrary::AsyncSpawnFromLocal(aLibrary, aSpawningInfo, aItemName, aFlag);
+ }
+ 
+ bool App::WidgetSpawningService::OnAsyncSpawnExternal(Red::ink::WidgetLibraryResource& aLibrary,
+diff --git a/src/App/UI/WidgetSpawningService.hpp b/src/App/UI/WidgetSpawningService.hpp
+index 2d6749555a2821750e405f5e967a4ff2965e5afc..2a29a1d8f9497e65c2587a13865bf8495fe53766 100644
+--- a/src/App/UI/WidgetSpawningService.hpp
++++ b/src/App/UI/WidgetSpawningService.hpp
+@@ -28,9 +28,8 @@ protected:
+                                      Red::Handle<Red::ink::WidgetLibraryItemInstance>& aInstance,
+                                      Red::ResourcePath aExternalPath,
+                                      Red::CName aItemName);
+-    static bool OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource& aLibrary,
+-                                  Red::InkSpawningInfo& aSpawningInfo,
+-                                  Red::CName aItemName);
++    static bool OnAsyncSpawnLocal(Red::ink::WidgetLibraryResource& aLibrary, Red::InkSpawningInfo& aSpawningInfo,
++                                  Red::CName aItemName, bool aFlag);
+     static bool OnAsyncSpawnExternal(Red::ink::WidgetLibraryResource& aLibrary,
+                                      Red::InkSpawningInfo& aSpawningInfo,
+                                      Red::ResourcePath aExternalPath,
+diff --git a/src/App/UI/inkKeyInputEvent.hpp b/src/App/UI/inkKeyInputEvent.hpp
+index 73ba1b26d8c1282c4efbedf5354ea021962d39be..d148cbe3cce57fe3cc6c7478720b8153f6a9ff55 100644
+--- a/src/App/UI/inkKeyInputEvent.hpp
++++ b/src/App/UI/inkKeyInputEvent.hpp
+@@ -35,8 +35,19 @@ struct inkKeyInputEvent : Red::inkInputEvent
+ };
+ }
+ 
++static_assert(offsetof(App::inkKeyInputEvent, key) == 0x90);
++static_assert(offsetof(App::inkKeyInputEvent, action) == 0x94);
++static_assert(offsetof(App::inkKeyInputEvent, character) == 0x98);
++static_assert(sizeof(App::inkKeyInputEvent) == 0xB8);
++
+ RTTI_DEFINE_CLASS(App::inkKeyInputEvent, {
+     RTTI_PARENT(Red::inkInputEvent);
++    // Game 2.5 has a vanilla inkKeyInputEvent with the same layout (2.5 exe class registration 0x20A87B4:
++    // size 0xB8, key +0x90, action +0x94, character +0x98) and its scripts declare these as native
++    // properties; this class replaces it in the type map, so it must carry them or validation fails.
++    RTTI_PROPERTY(key);
++    RTTI_PROPERTY(action);
++    RTTI_PROPERTY(character);
+     RTTI_GETTER(key);
+     RTTI_GETTER(action);
+     RTTI_GETTER(character);
+diff --git a/src/App/UI/inkWidgetEx.hpp b/src/App/UI/inkWidgetEx.hpp
+deleted file mode 100644
+index 6688144308900a027b99a401806587de6c61e1b8..0000000000000000000000000000000000000000
+--- a/src/App/UI/inkWidgetEx.hpp
++++ /dev/null
+@@ -1,27 +0,0 @@
+-#pragma once
+-
+-#include "WidgetBuildingService.hpp"
+-
+-namespace App
+-{
+-struct inkWidgetEx : Red::inkWidget
+-{
+-    void AttachController(const Red::Handle<Red::inkLogicController>& aController, Red::Optional<bool> aSecondary)
+-    {
+-        if (aSecondary)
+-        {
+-            secondaryControllers.PushBack(aController);
+-        }
+-        else
+-        {
+-            logicController = aController;
+-        }
+-
+-        WidgetBuildingService::AttachController(Red::AsHandle(this), aController);
+-    }
+-};
+-}
+-
+-RTTI_EXPAND_CLASS(Red::inkWidget, App::inkWidgetEx, {
+-    RTTI_METHOD(AttachController);
+-});
+diff --git a/src/App/World/InstancedMeshNodeEx.hpp b/src/App/World/InstancedMeshNodeEx.hpp
+deleted file mode 100644
+index 0795fc79e5dd716502a590bc3ea3571b2abadf52..0000000000000000000000000000000000000000
+--- a/src/App/World/InstancedMeshNodeEx.hpp
++++ /dev/null
+@@ -1,7 +0,0 @@
+-#pragma once
+-
+-RTTI_EXPAND_CLASS(Red::worldInstancedMeshNode, {
+-    RTTI_PROPERTY(Red::DynArray<Red::Box>, 0x50, "boundingBoxes");
+-    RTTI_PROPERTY(Red::DynArray<float>, 0x60, "streamingDistances");
+-    RTTI_PROPERTY(Red::DynArray<uint32_t>, 0x70, "instanceBatches");
+-});
+diff --git a/src/App/World/NodeSetupWrapper.hpp b/src/App/World/NodeSetupWrapper.hpp
+index f5ca7d1baa655d0f14eb23e711d1895de84870b8..0df1101ab433f2e6ba93cf1a8164db2202642273 100644
+--- a/src/App/World/NodeSetupWrapper.hpp
++++ b/src/App/World/NodeSetupWrapper.hpp
+@@ -19,7 +19,7 @@ struct WorldNodeSetupWrapper : Red::IScriptable
+ 
+     [[nodiscard]] uint16_t GetNodeIndex() const
+     {
+-        return setup->nodeIndex;
++        return static_cast<uint16_t>(setup->nodeIndex);
+     }
+ 
+     [[nodiscard]] Red::Handle<Red::worldNode> GetNode() const
+diff --git a/src/App/World/StaticEntitySystem.cpp b/src/App/World/StaticEntitySystem.cpp
+index 942daedaff2d98a4f3e35ecdcdcc898429135d4f..b5f11c21294bc7ff49ef30ab477c898913312785 100644
+--- a/src/App/World/StaticEntitySystem.cpp
++++ b/src/App/World/StaticEntitySystem.cpp
+@@ -235,7 +235,7 @@ bool App::StaticEntitySystem::DetachEntity(Red::EntityID aEntityID)
+     if (status == Red::EntityStatus::Detached || status == Red::EntityStatus::Detaching)
+         return false;
+ 
+-    Raw::RuntimeSystemEntity::DetachEntity(m_entityRuntimeSystem, entity);
++    Raw::RuntimeSystemEntity::DetachEntity(m_entityRuntimeSystem, entity, 0);
+ 
+     return true;
+ }
+diff --git a/src/App/World/WeatherSystemEx.cpp b/src/App/World/WeatherSystemEx.cpp
+index 907ffac76f0d1cd7da6fc22457f9ef0c77def15b..b1c6dea09f9b231ed7b01020129b0bc7e7be95d5 100644
+--- a/src/App/World/WeatherSystemEx.cpp
++++ b/src/App/World/WeatherSystemEx.cpp
+@@ -26,7 +26,7 @@ bool App::WeatherSystemEx::ResetWeather(Red::Optional<bool> aForceRestore, Red::
+ 
+     if (aForceRestore)
+     {
+-        if (!Raw::RuntimeSystemWeather::SetWeatherByIndex(system, 0, "", aBlendTime, 0.0, 0))
++        if (!Raw::RuntimeSystemWeather::SetWeatherByIndex(system, 0, "", aBlendTime, 0, 0, true))
+             return false;
+     }
+ 
+diff --git a/src/Red/Addresses/Library.hpp b/src/Red/Addresses/Library.hpp
+index 1717c2c4ca3cf4e6068f20274d47b407e34d234e..b438ff8b2483e3f9271330067d77565133bc77ae 100644
+--- a/src/Red/Addresses/Library.hpp
++++ b/src/Red/Addresses/Library.hpp
+@@ -46,7 +46,7 @@ constexpr uint32_t InkLogicController_OnInitialize = 2671382832;
+ constexpr uint32_t InkLogicController_OnUninitialize = 1159862457;
+ constexpr uint32_t InkLogicController_OnArrangeChildrenComplete = 3589084925;
+ 
+-constexpr uint32_t InkSpawner_FinishAsyncSpawn = 2698985195;
++constexpr uint32_t InkSpawner_FinishAsyncSpawn = 4097515464;
+ 
+ constexpr uint32_t InkSystem_Instance = 2635337807;
+ constexpr uint32_t InkSystem_ProcessCharacterEvent = 4284882427;
+@@ -58,8 +58,8 @@ constexpr uint32_t InkWidget_ScriptReparent = 492509908;
+ constexpr uint32_t InkWidget_ScriptAddChild = 3558023194;
+ constexpr uint32_t InkWidget_TriggerEvent = 3357288308;
+ 
+-constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromExternal = 1396063719;
+-constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromLocal = 118698863;
++constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromExternal = 225197914;
++constexpr uint32_t InkWidgetLibrary_AsyncSpawnFromLocal = 2342073570;
+ constexpr uint32_t InkWidgetLibrary_SpawnFromExternal = 506278179;
+ constexpr uint32_t InkWidgetLibrary_SpawnFromLocal = 1158555307;
+ 
+@@ -117,8 +117,8 @@ constexpr uint32_t ResourcePath_Create = 3998356057;
+ 
+ constexpr uint32_t ResourceSerializer_ExecutePostLoad = 1350901460;
+ constexpr uint32_t ResourceSerializer_SchedulePostLoadJobs = 3599579551;
+-constexpr uint32_t ResourceSerializer_ScheduleFinalizeJobs = 949631709;
+-constexpr uint32_t ResourceSerializer_OnDependenciesReady = 1185093671;
++constexpr uint32_t ResourceSerializer_ScheduleFinalizeJobs = 4272634361;
++constexpr uint32_t ResourceSerializer_OnDependenciesReady = 3892979844;
+ constexpr uint32_t ResourceSerializer_OnResourceReady = 1147149338;
+ 
+ constexpr uint32_t RuntimeEntityRegistry_RegisterEntity = 2840271332; // world::RuntimeEntityRegistry::RegisterEntity
+@@ -128,12 +128,12 @@ constexpr uint32_t RuntimeScene_AttachEntity = 3800374702;
+ constexpr uint32_t RuntimeScene_DetachEntity = 1732384813;
+ 
+ constexpr uint32_t RuntimeSystemEntity_AttachEntity = 1576214475;
+-constexpr uint32_t RuntimeSystemEntity_DetachEntity = 1737563910;
++constexpr uint32_t RuntimeSystemEntity_DetachEntity = 2597397686;
+ 
+ constexpr uint32_t RuntimeSystemWeather_GetEnvironmentDefinition = 1471948702;
+ constexpr uint32_t RuntimeSystemWeather_GetWeatherState = 2679119876;
+ constexpr uint32_t RuntimeSystemWeather_SetWeatherByName = 2334794340;
+-constexpr uint32_t RuntimeSystemWeather_SetWeatherByIndex = 1821516328;
++constexpr uint32_t RuntimeSystemWeather_SetWeatherByIndex = 2987664085;
+ 
+ constexpr uint32_t ScriptBundle_dtor = 3993832650;
+ 
+diff --git a/src/Red/AudioSystem.hpp b/src/Red/AudioSystem.hpp
+index 7ecf46d7e8c2a5cbafd726e882c154bc684a71c8..f593e8ec2cab4166b6adbc47c31459eff14149e9 100644
+--- a/src/Red/AudioSystem.hpp
++++ b/src/Red/AudioSystem.hpp
+@@ -14,6 +14,7 @@ struct SoundBankEntry
+ 
+ namespace Red::SoundBankManager
+ {
++// Game 2.5: SoundBankManager_ReadSoundBanksJson 0x953FB4 `mov r15,rcx` ... `lea rcx,[r15+0x68]` (0x954181).
+ using RegisteredBanks = Core::OffsetPtr<0x68, HashMap<CName, SharedPtr<SoundBankEntry>>>;
+ }
+ 
+diff --git a/src/Red/CommunitySystem.hpp b/src/Red/CommunitySystem.hpp
+index 8b548308f9d3d8314382918f4b7a4782478d80b9..78dc5d7322b94603f7bf99eea6760677e7233983 100644
+--- a/src/Red/CommunitySystem.hpp
++++ b/src/Red/CommunitySystem.hpp
+@@ -86,6 +86,8 @@ RED4EXT_ASSERT_OFFSET(Spawner, reservedEntityIDs, 0x98);
+ 
+ namespace Raw::CommunitySystem
+ {
++// Game 2.5: gameCommunitySystem slots 0x1B0-0x1E8 and 0x258-0x268 are the 2.31 functions (same code or the same
++// code with other registers; 0x220/0x228 fold into 0x1C2498). The Community/Spawner structs were not re-derived.
+ constexpr auto ActivateCommunity = Core::RawVFunc<
+     /* addr = */ 0x1B0,
+     /* type = */ void (Red::ICommunitySystem::*)(uint64_t aCommunityID, Red::CName aEntryName)>();
+diff --git a/src/Red/Entity.hpp b/src/Red/Entity.hpp
+index e83c5795fc0bde8c00514c5565f8a06d1efa14ec..a82755d00d4a1c45ceb00861a97fce14c2a0f5c1 100644
+--- a/src/Red/Entity.hpp
++++ b/src/Red/Entity.hpp
+@@ -38,6 +38,8 @@ struct EntityInitializeRequest
+     uint32_t unkC8;                                               // C8
+     uint16_t unkCC;                                               // CC
+ };
++// Game 2.5: Entity_Initialize 0x71BEF0 reads entityParams `lea rdx,[r8+0x70]`, isDynamic [r8+0x38], entityID [r8+0x20],
++// 0x40/0x48, peer byte [r8+0xB0], word [r8+0xCC], populationParam [r14+0x90].
+ RED4EXT_ASSERT_SIZE(EntityInitializeRequest, 0xD0);
+ RED4EXT_ASSERT_OFFSET(EntityInitializeRequest, entityID, 0x20);
+ RED4EXT_ASSERT_OFFSET(EntityInitializeRequest, entityParams, 0x70);
+@@ -47,6 +49,10 @@ RED4EXT_ASSERT_OFFSET(EntityInitializeRequest, unkCC, 0xCC);
+ 
+ namespace Raw::Entity
+ {
++// Game 2.5 (exe 3.0.88.46235): Entity_Initialize 0x71BEF0 writes status [rcx+0x156] (0x71BF1C), entityID [rcx+0x48]
++// (0x71BF4B), scene [rcx+0xb8] (0x71BF5E), transform component [rdi+0xb0] (0x71BFE2), reads the template path
++// [rdi+0x60] (0x71BFFA) and fills the component storage `lea rcx,[rdi+0x70]` (0x71C2A1); Entity_Assemble writes
++// [rcx+0x50] (0x6CBC36). entEntity is still 352 bytes.
+ using EntityID = Core::OffsetPtr<0x48, Red::EntityID>;
+ using AppearanceName = Core::OffsetPtr<0x50, Red::CName>;
+ using TemplatePath = Core::OffsetPtr<0x60, Red::ResourcePath>;
+diff --git a/src/Red/EntityBuilder.hpp b/src/Red/EntityBuilder.hpp
+index 1a4ac68941654ae80c9491144999795443b5cc95..3ac14590f97cc75318e463f5c0bbb4905678d318 100644
+--- a/src/Red/EntityBuilder.hpp
++++ b/src/Red/EntityBuilder.hpp
+@@ -55,6 +55,9 @@ struct EntityBuilder
+     uint64_t unk108;                                   // 108
+     Flags flags;                                       // 110
+ };
++// Game 2.5: EntityBuilder_ExtractComponentsJob 0x32236C reads the template [rdx+0x90], appearances [rdx+0x80] (0x30
++// stride: +0x10/+0x20), components [rax+0xC0]/size [rax+0xCC], flags `test byte [rax+0x110],0x10`, request [rax+0xA0]
++// and the request's byte 0xCE and instance data [rsi+0xD8].
+ RED4EXT_ASSERT_SIZE(EntityBuilder, 0x118);
+ RED4EXT_ASSERT_OFFSET(EntityBuilder, appearance, 0x20);
+ RED4EXT_ASSERT_OFFSET(EntityBuilder, appearances, 0x80);
+diff --git a/src/Red/EntitySpawner.hpp b/src/Red/EntitySpawner.hpp
+index e77ad97cdc5dd5cb087892b43660c26570dee97c..e70f0372a459292a531e3e96ca6d5d4904d1a62c 100644
+--- a/src/Red/EntitySpawner.hpp
++++ b/src/Red/EntitySpawner.hpp
+@@ -26,6 +26,8 @@ struct EntitySpawnerToken
+     bool failed;           // 21
+     bool aborted;          // 22
+ };
++// Game 2.5: the token factory 0x5C178C allocates `mov ecx,0x28`; the dtor reads [rcx+0x10] (0xD93B75); 0x5C180E reads
++// the failed flag `[r8+0x21]`.
+ RED4EXT_ASSERT_SIZE(EntitySpawnerToken, 0x28);
+ RED4EXT_ASSERT_OFFSET(EntitySpawnerToken, entity, 0x10);
+ RED4EXT_ASSERT_OFFSET(EntitySpawnerToken, failed, 0x21);
+@@ -46,6 +48,9 @@ struct EntitySpawnerRequest
+     uint8_t priority{1};            // E1
+     uint8_t unkE2;                  // E2
+ };
++// Game 2.5: EntitySpawner_SpawnEntity 0x5C140C reads the callback `lea rdx,[rsi+0x48]` and priority [rsi+0xE1]; the
++// token factory 0x5C1508 reads transform 0x10-0x2F, entityID 0x30, appearance 0x38, detached 0x78, 0x79-0x7B,
++// 0x80-0xA0, 0xE0-0xE2 and word 0xE4 (all below 0xF0).
+ RED4EXT_ASSERT_SIZE(EntitySpawnerRequest, 0xF0);
+ RED4EXT_ASSERT_OFFSET(EntitySpawnerRequest, transform, 0x10);
+ RED4EXT_ASSERT_OFFSET(EntitySpawnerRequest, entityID, 0x30);
+diff --git a/src/Red/InkCore.hpp b/src/Red/InkCore.hpp
+index 4f94bef3424dbafcd38f83b32268536e18f3920a..b028261c2851ee8ea64a13fd04348354dbb202a0 100644
+--- a/src/Red/InkCore.hpp
++++ b/src/Red/InkCore.hpp
+@@ -20,6 +20,8 @@ constexpr auto AttachWidgetTree = Core::RawFunc<
+ 
+ namespace Raw::inkWidget
+ {
++// Game 2.5 (exe 3.0.88.46235): inkWidget grew to 528 bytes but this is unchanged: inkWidget virtual 0x190
++// (0x830D4C) does `lea rbx,[rcx+0x50]` (0x830D70) and passes it to InkWidget_TriggerEvent (0x830D96).
+ using EventManager = Core::OffsetPtr<0x50, Red::EventManager>;
+ 
+ constexpr auto GetLayer = Core::RawFunc<
+diff --git a/src/Red/InkLibrary.hpp b/src/Red/InkLibrary.hpp
+index fdd51171ca82c91a110ca1bd934785dc3c86e2c0..6caa3adb153d1159ed76fa3295fd798ae258043e 100644
+--- a/src/Red/InkLibrary.hpp
++++ b/src/Red/InkLibrary.hpp
+@@ -4,6 +4,8 @@
+ 
+ namespace Raw::InkWidgetLibrary
+ {
++// Game 2.5 (exe 3.0.88.46235): RVA 0x208F250, a thunk that passes false as the fifth argument of
++// 0x208F270 (`mov byte [rsp+0x28],0; jmp`), so the four-argument shape is unchanged.
+ constexpr auto AsyncSpawnFromExternal = Core::RawFunc<
+     /* addr = */ Red::AddressLib::InkWidgetLibrary_AsyncSpawnFromExternal,
+     /* type = */ bool (*)(
+@@ -12,12 +14,12 @@ constexpr auto AsyncSpawnFromExternal = Core::RawFunc<
+         Red::ResourcePath aExternalPath,
+         Red::CName aItemName)>();
+ 
++// Game 2.5: RVA 0x208F2E0 takes a fourth argument, a bool (r9b) handed to the spawn request builder
++// 0x208F570 (stored with setne at 0x208F63D). The external thunk above passes false for it.
+ constexpr auto AsyncSpawnFromLocal = Core::RawFunc<
+     /* addr = */ Red::AddressLib::InkWidgetLibrary_AsyncSpawnFromLocal,
+-    /* type = */ bool (*)(
+-        Red::ink::WidgetLibraryResource& aLibrary,
+-        Red::InkSpawningInfo& aSpawningInfo,
+-        Red::CName aItemName)>();
++    /* type = */ bool (*)(Red::ink::WidgetLibraryResource& aLibrary, Red::InkSpawningInfo& aSpawningInfo,
++                          Red::CName aItemName, bool aFlag)>();
+ 
+ constexpr auto SpawnFromExternal = Core::RawFunc<
+     /* addr = */ Red::AddressLib::InkWidgetLibrary_SpawnFromExternal,
+diff --git a/src/Red/InkSpawner.hpp b/src/Red/InkSpawner.hpp
+index 5a3641c077b73c6747ade333bfd4bf30262d499a..853cec6fe4a87f873f7ef0264b7e855eabdf5b09 100644
+--- a/src/Red/InkSpawner.hpp
++++ b/src/Red/InkSpawner.hpp
+@@ -12,26 +12,23 @@ struct InkSpawningRequest
+     Handle<ink::WidgetLibraryResource> library;      // 80
+     Handle<ink::WidgetLibraryItemInstance> instance; // 90
+     ResourcePath externalLibrary;                    // A0
+-    // bool flag;                                    // F8
+-    // uint8_t status;                               // 184
++    // bool flag;                                    // F8 (2.31)
++    // uint8_t status;                               // 1AC (2.5: 0x804E6B, 0x209FC8A; 2.31: 184)
+ };
+ RED4EXT_ASSERT_OFFSET(InkSpawningRequest, itemName, 0x48);
+ RED4EXT_ASSERT_OFFSET(InkSpawningRequest, rootWidget, 0x60);
+ 
++// Game 2.5 (exe 3.0.88.46235): FinishAsyncSpawn (RVA 0x209FBE0) is reached through the jump thunk
++// 0x209F9E0 and reads the request from [ctx+0x10] (0x209FC41 `mov rcx,[rbx+0x10]`, then
++// +0x90 instance, +0x60 rootWidget, +0x70 gameController, status byte +0x1AC := 3). The capture copy
++// 0x209F9F0 moves 16 bytes at +0x00 and the SharedPtr at +0x10/+0x18. 2.31 had the request at +0x18.
+ struct InkSpawningContext
+ {
+-    virtual void sub_00() = 0;
+-    virtual void sub_08() = 0;
+-    virtual void sub_10() = 0;
+-    virtual void sub_18() = 0;
+-    virtual void sub_20() = 0;
+-    virtual void sub_28() = 0;
+-
+-    SharedPtr<void> unk08;                 // 08
+-    SharedPtr<InkSpawningRequest> request; // 18
++    uint8_t unk00[0x10];                   // 00
++    SharedPtr<InkSpawningRequest> request; // 10
+ };
+-RED4EXT_ASSERT_SIZE(InkSpawningContext, 0x28);
+-RED4EXT_ASSERT_OFFSET(InkSpawningContext, request, 0x18);
++RED4EXT_ASSERT_SIZE(InkSpawningContext, 0x20);
++RED4EXT_ASSERT_OFFSET(InkSpawningContext, request, 0x10);
+ 
+ struct InkSpawningInfo
+ {
+diff --git a/src/Red/InkSystem.hpp b/src/Red/InkSystem.hpp
+index a13447476bc6f825fa74d6654b5614c31f1312ab..1bd24ad290b8d589d9cc54d0f2225d30b845156c 100644
+--- a/src/Red/InkSystem.hpp
++++ b/src/Red/InkSystem.hpp
+@@ -27,6 +27,9 @@ struct InkSystem
+     WeakHandle<ink::ISystemRequestsHandler> requestsHandler; // 370
+     DynArray<SharedPtr<InkLayerManager>> layerManagers;      // 380
+ };
++// Game 2.5: InkSystem_ProcessCharacterEvent 0xCA7BC4 `lea rcx,[r15+0x2e8]`, `lea r12,[r15+0x2f8]`;
++// InkSystem_ProcessInputEvents 0x4C0B88 `lea rsi,[rdi+0x380]` and layers `[rax+0x38]` (0x4C0FE4).
++// requestsHandler (0x370) is not used by Codeware and was not re-derived.
+ RED4EXT_ASSERT_OFFSET(InkSystem, inputWidget, 0x2E8);
+ RED4EXT_ASSERT_OFFSET(InkSystem, keyboardState, 0x2F8);
+ RED4EXT_ASSERT_OFFSET(InkSystem, requestsHandler, 0x370);
+diff --git a/src/Red/Input.hpp b/src/Red/Input.hpp
+index d7c30ddbfe9df8fe928a3a4c62de41aff4bd4f10..08754bc9ec5c94f89c090d996a1e8ca9fdb6e600 100644
+--- a/src/Red/Input.hpp
++++ b/src/Red/Input.hpp
+@@ -27,8 +27,11 @@ struct RawInputData
+     uint64_t unk28;      // 28
+     uint64_t unk30;      // 30
+     uint64_t unk38;      // 38
++    uint64_t unk40;      // 40 (game 2.5: entries are 0x48 bytes; the buffer's array is freed with element size
++                         // 0x48 at exe 0x5D5A17 and walked with stride 0x48 at 0x69C404; key/action/value unchanged,
++                         // the flag moved +0x18 -> +0x20 and the device +0x28 -> +0x30, so the unk names above shift)
+ };
+-RED4EXT_ASSERT_SIZE(RawInputData, 0x40);
++RED4EXT_ASSERT_SIZE(RawInputData, 0x48);
+ 
+ struct RawInputBuffer
+ {
+diff --git a/src/Red/JournalManager.hpp b/src/Red/JournalManager.hpp
+index af9e429ef015d6b8ed3686806b346d1a9e2808e0..82224ee3df4b2e7361bd948fe77413c7dbb852f4 100644
+--- a/src/Red/JournalManager.hpp
++++ b/src/Red/JournalManager.hpp
+@@ -7,6 +7,7 @@ using JournalEntryHash = uint32_t;
+ 
+ namespace Raw::JournalManager
+ {
++// Game 2.5: gameJournalManager slots 0x210/0x220/0x268/0x2B0/0x2C8 have the same code as on 2.31.
+ constexpr auto GetEntries = Core::RawVFunc<
+     /* addr = */ 0x210,
+     /* type = */ void* (Red::gameIJournalManager::*)(const Red::gameJournalRequestContext& aRequest,
+diff --git a/src/Red/MappinSystem.hpp b/src/Red/MappinSystem.hpp
+index 1822dd83fd8f36ab38538e0b0ed7e4b69fa12e2c..3731098e9093a1411ff9964df2e93ea1c885e094 100644
+--- a/src/Red/MappinSystem.hpp
++++ b/src/Red/MappinSystem.hpp
+@@ -11,6 +11,9 @@ struct MappinData
+ 
+ namespace Raw::MappinSystem
+ {
++// Game 2.5 (exe 3.0.88.46235): unchanged although the class grew by 64 bytes. Virtual 0x3B0 (0x2211400):
++// `lea rsi,[rcx+0x198]` / `lea rdi,[rcx+0x1a0]`, as 2.31 0x1D1BC40; all 18 virtuals touching 0x198/0x1A0 match 2.31.
++// Virtual slots 0x1D0 (0x2D4250C) and 0x3C8 (0x22125D0) have the same code as 2.31 (0x27AA144, 0x1D1C640).
+ using MappinsLock = Core::OffsetPtr<0x198, Red::SharedSpinLock>;
+ using MappinsData = Core::OffsetPtr<0x1A0, Red::SortedArray<Red::MappinData>>;
+ 
+@@ -26,6 +29,7 @@ constexpr auto GetPoiMappinPhase = Core::RawVFunc<
+ 
+ namespace Raw::PointOfInterestMappin
+ {
++// Game 2.5: PointOfInterestMappin_SetPhase 0x2D3F451 `mov edx,[rbx+0x8c]`.
+ using JournalHash = Core::OffsetPtr<0x8C, uint32_t>;
+ 
+ constexpr auto SetPhase = Core::RawFunc<
+diff --git a/src/Red/Mesh.hpp b/src/Red/Mesh.hpp
+index 374a36d585dfd7871138e2780b3184c3bc1b5825..7f44e78de6e4f8bdeed4e3147e22ae1312c92f40 100644
+--- a/src/Red/Mesh.hpp
++++ b/src/Red/Mesh.hpp
+@@ -15,6 +15,9 @@ constexpr auto FindAppearance = Core::RawFunc<
+ 
+ namespace Raw::MeshAppearance
+ {
++// Game 2.5: MeshAppearance_LoadMaterialSetupAsync 0x40AC88 uses 0xA0 (0x40ACEE), 0x98 (0x40AD09), 0x48 (0x40AD1F),
++// 0x90 (0x40AD30), 0x50 (0x40AD99); MeshAppearance_ReleaseReference 0x31C0F8 clears the map at 0x68 (keys size
++// 0x74, values 0x78/0x84, flags 0x88: 0x31C178-0x31C192).
+ using MaterialData = Core::OffsetPtr<0x48, Red::RenderDataPtr>;
+ using Owner = Core::OffsetPtr<0x50, Red::CMesh*>;
+ using MaterialMap = Core::OffsetPtr<0x68, Red::Map<Red::CName, Red::Handle<Red::IMaterial>>>;
+@@ -30,6 +33,7 @@ constexpr auto LoadMaterialSetupAsync = Core::RawFunc<
+ 
+ namespace Raw::MeshComponent
+ {
++// Game 2.5: entMeshComponent slots 0x260 (0x299AE78) and 0x280 (0x715078) have the same code as on 2.31.
+ constexpr auto LoadResource = Core::RawVFunc<
+         /* offset = */ 0x260,
+         /* type = */ uint64_t(Red::IComponent::*)(Red::JobQueue& aJobQueue)>();
+diff --git a/src/Red/Physics.hpp b/src/Red/Physics.hpp
+index d63296b378036747d26b8f7e8598213584deae7e..9fb161d07f34a8c5418dd1230e47fcb99aaf31f8 100644
+--- a/src/Red/Physics.hpp
++++ b/src/Red/Physics.hpp
+@@ -2,6 +2,7 @@
+ 
+ namespace Raw::PhysicsTraceResult
+ {
++// Game 2.5: not re-derived; physicsTraceResult is still 0x60 with the same RTTI fields.
+ using ResultID = Core::OffsetPtr<0x48, uint32_t>;
+ 
+ constexpr auto GetHitObject = Core::RawFunc<
+diff --git a/src/Red/QuestsSystem.hpp b/src/Red/QuestsSystem.hpp
+index 741186e672998a94f817824b0d1ded83c40741d8..ae11ec12c227eff72016f4d8d37fe3b8b0185fe1 100644
+--- a/src/Red/QuestsSystem.hpp
++++ b/src/Red/QuestsSystem.hpp
+@@ -87,6 +87,8 @@ struct QuestContext
+     QuestNodeID nodeID;                       // 108
+     QuestPhaseContext phaseContext;           // 110
+ };
++// Game 2.5: the context constructor 0x2B3150 (called by QuestsSystem_CreateContext 0x2B30A0) initialises 0x10-0xE8,
++// `lea rsi,[rdi+0xf8]` (phaseStack), `lea rbx,[rdi+0x110]` (phaseContext) and writes [rbx+0x220] = context+0x330.
+ RED4EXT_ASSERT_SIZE(QuestContext, 0x340);
+ RED4EXT_ASSERT_OFFSET(QuestContext, phaseStack, 0xF8);
+ 
+@@ -217,6 +219,8 @@ struct AreaTypeTransition
+ 
+ namespace Raw::QuestsSystem
+ {
++// Game 2.5: the 26 questQuestsSystem virtuals that touch 0x60/0x68/0x78/0xF8 do so exactly as on 2.31
++// (for example slot 0x120, 0x35EAEC).
+ using Mutex = Core::OffsetPtr<0x60, Red::SharedSpinLock>;
+ using RootPhase = Core::OffsetPtr<0x68, Red::Handle<Red::questPhaseInstance>>;
+ using NodePathHashMap = Core::OffsetPtr<0x78, Red::HashMap<Red::QuestNodePathHash, Red::QuestNodePath>>;
+@@ -247,6 +251,8 @@ constexpr auto CreateContext = Core::RawFunc<
+ 
+ namespace Raw::QuestLoader
+ {
++// Game 2.5: QuestLoader_PhasePreloadCheck 0xD6272C `mov rcx,[rcx+0x20]`; NodePathMap is only used by the disabled
++// OnPhasePreloadCheck hook and was not re-derived.
+ using PreloadList = Core::OffsetPtr<0x20, Red::DynArray<Red::QuestNodePath>*>;
+ using SortedPreloadList = Core::OffsetPtr<0x20, Red::SortedArray<Red::QuestNodePath>*>;
+ using NodePathMap = Core::OffsetPtr<0x48, Red::HashMap<Red::ResourcePath, Red::QuestNodePath>>;
+@@ -258,6 +264,9 @@ constexpr auto PhasePreloadCheck = Core::RawFunc<
+ 
+ namespace Raw::QuestPhaseInstance
+ {
++// Game 2.5: QuestPhaseInstance_Initialize 0x2B1F40 `lea rcx,[r15+0x30]`, `[r15+0x40]`, `lea rdi,[r15+0x70]`,
++// `lea r10,[r15+0x80]`; virtuals 0x50/0x100 read 0x88 and 0xBEA90C `lea rdx,[rcx+0x98]`; slot 0x120
++// (ExecutePath, 0xBEA4C4) touches 0x30/0x40/0x70 like 2.31; slots 0x18-0x150 match 2.31.
+ using Resource = Core::OffsetPtr<0x30, Red::Handle<Red::questQuestPhaseResource>>;
+ using Graph = Core::OffsetPtr<0x40, Red::Handle<Red::questGraphDefinition>>;
+ using NodePath = Core::OffsetPtr<0x70, Red::QuestNodePath>;
+@@ -302,10 +311,12 @@ constexpr auto ExecutePath = Core::RawVFunc<
+ 
+ namespace Raw::QuestSocketDefinition
+ {
++// Game 2.5: not re-derived; graphGraphSocketDefinition (88) and questSocketDefinition (96) kept their size and fields.
+ using OwnerNode = Core::OffsetPtr<0x48, Red::WeakHandle<Red::questNodeDefinition>>;
+ }
+ 
+ namespace Raw::QuestConditionType
+ {
++// Game 2.5: not re-derived; questIConditionType is still 56 bytes.
+ using OwnerNodeID = Core::OffsetPtr<0x30, Red::QuestNodePathHash>;
+ }
+diff --git a/src/Red/Rendering.hpp b/src/Red/Rendering.hpp
+index 2b572ecd51271b1e86aeec32b035caba58365b58..c495bdcbce6033d2d3ddd6eeed49f1c1b9143391 100644
+--- a/src/Red/Rendering.hpp
++++ b/src/Red/Rendering.hpp
+@@ -36,6 +36,7 @@ constexpr auto Release = Core::RawFunc<
+ 
+ namespace Raw::RenderProxy
+ {
++// Game 2.5: RenderProxy_SetVisibility 0x4023F0 `mov al,[rcx+0x23]`.
+ using Flags = Core::OffsetPtr<0x23, uint8_t>;
+ 
+ inline bool IsVisible(Red::RenderProxy* aProxy)
+diff --git a/src/Red/RuntimeScene.hpp b/src/Red/RuntimeScene.hpp
+index 339918543949307a5e2f0a37bc3067d74d3cb566..07be409d96a3aac1cbf55ee5e9643e711308117d 100644
+--- a/src/Red/RuntimeScene.hpp
++++ b/src/Red/RuntimeScene.hpp
+@@ -25,22 +25,26 @@ struct RuntimeSystemEntityAttachRequest
+     uint16_t unk30;              // 30
+     uint8_t unk32[0x40 - 0x32];  // 32
+ };
++// Game 2.5: RuntimeScene attach 0x74BC5C reads the entity from [rbx] (0x74BCA0); the size is not re-derived.
+ RED4EXT_ASSERT_SIZE(RuntimeSystemEntityAttachRequest, 0x40);
+ RED4EXT_ASSERT_OFFSET(RuntimeSystemEntityAttachRequest, entity, 0x0);
+ }
+ 
+ namespace Raw::RuntimeScene
+ {
++// Game 2.5: not re-derived (worldRuntimeScene is still 1208 bytes); nothing in Codeware reads it.
+ using Weather = Core::OffsetPtr<0x280, Red::Handle<Red::worldRuntimeSystemWeather>>;
+ }
+ 
+ namespace Raw::WeatherScriptInterface
+ {
++// Game 2.5: native WeatherSystem.GetRainIntensityType handler 0x297140C `mov rax,[rcx+0x40]` (0x2971414).
+ using System = Core::OffsetPtr<0x40, Red::worldRuntimeSystemWeather*>;
+ }
+ 
+ namespace Raw::RuntimeSystemEntity
+ {
++// Game 2.5: worldRuntimeSystemEntity virtuals 0x168/0x170/0x188 touch +0x58 as on 2.31 (0x9D5AC9 `mov rbx,[rdi+0x58]`).
+ using Spawner = Core::OffsetPtr<0x58, Red::EntitySpawner*>;
+ 
+ constexpr auto AttachEntity = Core::RawFunc<
+@@ -50,12 +54,17 @@ constexpr auto AttachEntity = Core::RawFunc<
+ 
+ constexpr auto DetachEntity = Core::RawFunc<
+     /* addr = */ Red::AddressLib::RuntimeSystemEntity_DetachEntity,
+-    /* type = */ void (*)(Red::world::RuntimeSystemEntity* aSystem,
+-                          const Red::Handle<Red::Entity>& aEntity)>();
++    // Game 2.5 (RVA 0x74A8B8): `mov rcx,[rcx+0x48]; jmp 0x74A8C4`. The callee takes a third argument,
++    // a 16-bit detach reason mask (0x74A8EB movzx esi,r8w) OR'd into the entity's request word at +0x68.
++    // 2.31's wrapper (0x8B5380) had the same shape; vanilla callers pass 1..0x2000. Attach clears the mask.
++    /* type = */ void (*)(Red::world::RuntimeSystemEntity* aSystem, const Red::Handle<Red::Entity>& aEntity,
++                          uint16_t aReason)>();
+ }
+ 
+ namespace Raw::RuntimeSystemWeather
+ {
++// Game 2.5: 0x97D1D5 `mov byte [rbx+0x8c],0` after SetWeatherByName, 0x97D1F1 `=1`; SetWeatherByIndex 0x2127C70 writes
++// the state index [rdi+0x90] (0x2127D70), source [rdi+0x98] (0x2127D4B), copies 0x90 to 0xB8 (0x2127D26).
+ using CycleWeather = Core::OffsetPtr<0x8C, bool>;
+ using CurrentStateIndex = Core::OffsetPtr<0x90, uint32_t>;
+ using CurrentSource = Core::OffsetPtr<0x98, Red::CName>;
+@@ -68,8 +77,11 @@ constexpr auto SetWeatherByName = Core::RawFunc<
+ 
+ constexpr auto SetWeatherByIndex = Core::RawFunc<
+     /* addr = */ Red::AddressLib::RuntimeSystemWeather_SetWeatherByIndex,
++    // Game 2.5 (exe 3.0.88.46235, RVA 0x2127C70): a seventh argument, a bool read at [rbp+0x170]
++    // (0x2128031) that gates a notification; every vanilla caller passes 1 except one (setne).
++    // a5 is read as a dword (0x2127C92 mov r14d,[rbp+0x160]) and stored at system+0xB0.
+     /* type = */ bool (*)(Red::worldRuntimeSystemWeather* aSystem, uint32_t aIndex, Red::CName aSource,
+-                          float aBlendTime, float a5, uint32_t aPriority)>();
++                          float aBlendTime, uint32_t a5, uint32_t aPriority, bool aNotify)>();
+ 
+ constexpr auto GetEnvironmentDefinition = Core::RawFunc<
+     /* addr = */ Red::AddressLib::RuntimeSystemWeather_GetEnvironmentDefinition,
+diff --git a/src/Red/ScriptBundle.hpp b/src/Red/ScriptBundle.hpp
+index 31edbb7b308db5e961e0ecf87692b1ee2d24d02c..ea9be1c48a3a84868266ff50a493e586a96638ad 100644
+--- a/src/Red/ScriptBundle.hpp
++++ b/src/Red/ScriptBundle.hpp
+@@ -44,6 +44,11 @@ struct ScriptDefinition
+ 
+     CName name;     // 08
+     uint64_t unk10; // 10
++    // Game 2.5 (exe 3.0.88.46235): every script definition grew by 0x28 bytes after the name.
++    // ScriptValidator::ValidateProperty (0x6BF654) reads ScriptProperty::type at +0xB8 (2.31: +0x90),
++    // ScriptValidator::CompareType (0x10E5B7C) reads ScriptType::innerType +0x48 / metaType +0x54
++    // (2.31: +0x20 / +0x2C); the name stays at +0x08 (Validate 0x6B9C98 `mov rdx,[r15+8]`).
++    uint8_t unk18[0x28]; // 18
+ };
+ 
+ struct ScriptFileInfo : ScriptDefinition
+@@ -165,7 +170,8 @@ struct ScriptFunction : ScriptDefinition
+     ScriptFileInfo* sourceFile;          // C0
+     uint32_t sourceLine;                 // C8
+ };
+-RED4EXT_ASSERT_SIZE(ScriptFunction, 0xD0);
++// Game 2.5: ScriptFunction's layout past the grown base is not re-derived (Codeware does not read it);
++// the 2.31 size assert (0xD0) no longer holds.
+ 
+ struct ScriptClass : ScriptDefinition
+ {
+@@ -182,11 +188,24 @@ struct ScriptClass : ScriptDefinition
+     ScriptClass* parent;                  // 20
+     DynArray<ScriptProperty*> properties; // 28
+     DynArray<ScriptProperty*> overrides;  // 38
++    uint8_t unk70[0x20];                  // 2.5: 0x20 new bytes before functions
+     DynArray<ScriptFunction*> functions;  // 48
+     HashMap<CName, CString> attributes;   // 58
+     EScriptVisibility visibility;         // 88
+     Flags flags;                          // 89
+ };
++// Game 2.5 offsets (comments above are 2.31). ScriptValidator's class check (0x6BE2DC) reads the
++// parent at +0x48, properties +0x50/+0x5C, functions +0x90/+0x9C, flags byte +0xD1 (importonly 0x02,
++// abstract 0x04, struct 0x10, new testonly 0x20); the definition collector 0xB2C408 walks a class's
++// +0x50, +0x60 and +0x90 arrays.
++static_assert(offsetof(ScriptClass, parent) == 0x48);
++static_assert(offsetof(ScriptClass, properties) == 0x50);
++static_assert(offsetof(ScriptClass, overrides) == 0x60);
++static_assert(offsetof(ScriptClass, functions) == 0x90);
++static_assert(offsetof(ScriptClass, flags) == 0xD1);
++static_assert(offsetof(ScriptProperty, type) == 0xB8);
++static_assert(offsetof(ScriptType, innerType) == 0x48);
++static_assert(offsetof(ScriptType, metaType) == 0x54);
+ 
+ struct ScriptConstant : ScriptDefinition
+ {
+@@ -214,21 +233,25 @@ struct ScriptBitfield : ScriptDefinition
+     EScriptVisibility visibility;        // 32
+ };
+ 
++// Game 2.5 (exe 3.0.88.46235): 8 new bytes at the start, so everything up to the strings moved +8, and the
++// tail grew (members up to +0x1E0). Evidence: ScriptBundle dtor 0xA7B3A4 / 0xA7B49C frees hash maps at
++// +0x08/+0x38/+0x68 and arrays at +0x98..+0xE8; the definition collector 0xB2C408 walks classes at +0xD8
++// (with each class's +0x50/+0x60/+0x90 arrays). 2.31 offsets were 0x00..0xF0. The tail past `strings`
++// is opaque here (Codeware does not read it).
+ struct ScriptBundle
+ {
+-    HashMap<CName, ScriptDefinition*> definitionsByName; // 00
+-    HashMap<CName, ScriptFunction*> functionsByName;     // 30
+-    HashMap<CName, ScriptType*> typesByName;             // 60
+-    DynArray<ScriptFileInfo*> files;                     // 90
+-    DynArray<ScriptFunction*> globals;                   // A0
+-    DynArray<ScriptEnum*> enums;                         // B0
+-    DynArray<ScriptBitfield*> bitfields;                 // C0
+-    DynArray<ScriptClass*> classes;                      // D0
+-    DynArray<ScriptType*> types;                         // E0
+-    DynArray<CString> strings;                           // F0
+-    HashMap<CName, void*> unk100;                        // 100
+-    SharedSpinLock typesLock;                            // 130
+-    CRITICAL_SECTION unk138;                             // 138
++    void* unk00;                                         // 00 (2.5)
++    HashMap<CName, ScriptDefinition*> definitionsByName; // 08
++    HashMap<CName, ScriptFunction*> functionsByName;     // 38
++    HashMap<CName, ScriptType*> typesByName;             // 68
++    DynArray<ScriptFileInfo*> files;                     // 98
++    DynArray<ScriptFunction*> globals;                   // A8
++    DynArray<ScriptEnum*> enums;                         // B8
++    DynArray<ScriptBitfield*> bitfields;                 // C8
++    DynArray<ScriptClass*> classes;                      // D8
++    DynArray<ScriptType*> types;                         // E8
++    DynArray<CString> strings;                           // F8
+ };
+-RED4EXT_ASSERT_SIZE(ScriptBundle, 0x160);
++static_assert(offsetof(ScriptBundle, definitionsByName) == 0x08);
++static_assert(offsetof(ScriptBundle, classes) == 0xD8);
+ }
+diff --git a/src/Red/Serialization.hpp b/src/Red/Serialization.hpp
+index ee0530c90fe978263374ab345c6ce9f5fe099ed3..bebe43c4368b1feb355d716c5f0bdd0a3f3a5b31 100644
+--- a/src/Red/Serialization.hpp
++++ b/src/Red/Serialization.hpp
+@@ -10,6 +10,8 @@ struct ResourceSerializer
+     uint8_t unk1D0[0x230 - 0x1D0];                 // 1D0
+     DynArray<Handle<ISerializable>> serializables; // 230
+ };
++// Game 2.5: ResourceSerializer_OnResourceReady 0x4B6C40 `lea rdi,[rcx+0x230]`, `lea r8,[rbx+0x1d0]`;
++// OnDependenciesReady 0x2062660 `[rbx+0x1d0]`, `[rbx+0x23c]`, `[rbx+0x230]`.
+ RED4EXT_ASSERT_OFFSET(ResourceSerializer, unk1D0, 0x1D0);
+ RED4EXT_ASSERT_OFFSET(ResourceSerializer, serializables, 0x230);
+ 
+diff --git a/src/Red/StreamingSector.hpp b/src/Red/StreamingSector.hpp
+index c3b9c3dd723d4bff6935cd662d1ca01ad5bc346a..ef47c4ac3f5dc59e2a4b139f02669f85b9b763e8 100644
+--- a/src/Red/StreamingSector.hpp
++++ b/src/Red/StreamingSector.hpp
+@@ -2,6 +2,12 @@
+ 
+ namespace Red
+ {
++// Game 2.5 (exe 3.0.88.46235): the node setup layout changed with the sector buffer version (0x3E -> 0x44).
++// The 2.5 converter for old 0x3E data, 0x20BDFB0 (`cmp dword ptr [rcx+0x28],0x3e`), copies old 0x00-0x4F as is,
++// old 0x58/0x60/0x68 to the same offsets, old float 0x70 -> 0x78, old float 0x74 -> 0x7C, old byte 0x88 -> 0x84,
++// and packs a qword at 0x70: (old 0x78 & 0x7FFFF) | ((old 0x78 >> 1) & 0xFFFFFFF80000) | (old 0x80 << 48).
++// The node pointer fix-up 0x699F10 reads the node index as `[setup+0x70] & 0x7FFFF` (2.31 0x26F390:
++// `[setup+0x78] & 0xFFFFF`) and writes the node pointer to setup+0x50; the element stride stays 0x90 (/144).
+ struct __declspec(align(0x10)) CompiledNodeInstanceSetupInfo
+ {
+     Transform transform;               // 00
+@@ -13,19 +19,22 @@ struct __declspec(align(0x10)) CompiledNodeInstanceSetupInfo
+     uint64_t globalNodeID;             // 58
+     uint64_t proxyNodeID;              // 60
+     ResourcePath unk68;                // 68
+-    float secondaryRefPointDistance;   // 70
+-    float streamingDistance;           // 74
+-    uint16_t nodeIndex;                // 78
+-    uint16_t unk7A;                    // 7A
+-    uint16_t unk7C;                    // 7C
+-    uint16_t unk7E;                    // 7E
+-    uint64_t unk80;                    // 80
+-    uint64_t unk88;                    // 88
++    uint64_t nodeIndex : 19;           // 70 (2.31: uint16 at 0x78, engine mask 0xFFFFF)
++    uint64_t unk70_19 : 29;            // 70 (2.31: bits 20-48 of the qword at 0x78)
++    uint64_t unk70_48 : 16;            // 70 (2.31: uint16 at 0x80)
++    float secondaryRefPointDistance;   // 78 (2.31: 70)
++    float streamingDistance;           // 7C (2.31: 74)
++    uint32_t unk80;                    // 80
++    uint8_t unk84;                     // 84 (2.31: 88)
++    uint8_t unk85[0x90 - 0x85];        // 85
+ };
+ RED4EXT_ASSERT_SIZE(CompiledNodeInstanceSetupInfo, 0x90);
+ RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, node, 0x50);
+ RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, globalNodeID, 0x58);
+-RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, nodeIndex, 0x78);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, proxyNodeID, 0x60);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, secondaryRefPointDistance, 0x78);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, streamingDistance, 0x7C);
++RED4EXT_ASSERT_OFFSET(CompiledNodeInstanceSetupInfo, unk84, 0x84);
+ 
+ struct CompiledNodeInstanceSetupInfoBuffer : DataBuffer
+ {
+@@ -52,17 +61,26 @@ struct CompiledNodeInstanceSetupInfoBuffer : DataBuffer
+ };
+ RED4EXT_ASSERT_SIZE(CompiledNodeInstanceSetupInfoBuffer, 0x28);
+ 
++// Game 2.5 (exe 3.0.88.46235): a dword (the setup data version) was inserted at +0x28, so the arrays moved by 8.
++// The buffer serializer 0x6CCF7C handles `lea rcx,[rbp+0x30]` (nodes, size at +0x3C) and `lea rcx,[rbp+0x40]`
++// (nodeRefs, size at +0x4C); 2.31's 0x41A58C used +0x28/+0x34 and +0x38/+0x44. The sector's serialize virtual
++// 0xE9A7DC stores an old version with `mov dword ptr [sector+0x68],eax` (buffer +0x28) and the fix-up 0x699F10
++// reads the node handles from `[buffer+0x30]`.
+ struct StreamingSectorNodeBuffer
+ {
+     CompiledNodeInstanceSetupInfoBuffer nodeSetups; // 00
+-    DynArray<Handle<worldNode>> nodes;              // 28
+-    DynArray<NodeRef> nodeRefs;                     // 38
++    uint32_t setupVersion;                          // 28 (0x44 on 2.5; 0x3E data is converted on load)
++    DynArray<Handle<worldNode>> nodes;              // 30 (2.31: 28)
++    DynArray<NodeRef> nodeRefs;                     // 40 (2.31: 38)
+ };
+-RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodes, 0x28);
+-RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodeRefs, 0x38);
++RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, setupVersion, 0x28);
++RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodes, 0x30);
++RED4EXT_ASSERT_OFFSET(StreamingSectorNodeBuffer, nodeRefs, 0x40);
+ }
+ 
+ namespace Raw::StreamingSector
+ {
++// Game 2.5: unchanged at +0x40 (worldStreamingSector serialize virtual 0xE9A7DC `lea rdx,[rbx+0x40]` and dtor
++// 0x699B04 `lea rcx,[rbx+0x40]`, same as 2.31 0xDF0384/0x26EED9); the sector grew by 8 inside this buffer.
+ using NodeBuffer = Core::OffsetPtr<0x40, Red::StreamingSectorNodeBuffer>;
+ }
+diff --git a/src/Red/StreamingWorld.hpp b/src/Red/StreamingWorld.hpp
+index 63f5f7a4581c4f3bfd3b8e7ef09feb5ea06678b2..5ddc5e42093d087781769c29dc816b5c4fc4cfba 100644
+--- a/src/Red/StreamingWorld.hpp
++++ b/src/Red/StreamingWorld.hpp
+@@ -2,5 +2,6 @@
+ 
+ namespace Raw::RuntimeSystemWorldStreaming
+ {
++// Game 2.5: worldRuntimeSystemWorldStreaming virtual 0x128 (0x4C3BD4) `mov rax,[rcx+0x270]`, same slot as 2.31.
+ using StreamingWorld = Core::OffsetPtr<0x270, Red::Handle<Red::worldStreamingWorld>>;
+ }
+diff --git a/src/Red/TagSystem.hpp b/src/Red/TagSystem.hpp
+index 3db8ea2c1f4359c80f2d0b6e858474a2dfeb82ba..3400db4e96a4bec48d78e5e7ec2f66959b555472 100644
+--- a/src/Red/TagSystem.hpp
++++ b/src/Red/TagSystem.hpp
+@@ -2,6 +2,7 @@
+ 
+ namespace Raw::GameTagSystem
+ {
++// Game 2.5: GameTagSystem.GetAnyMatchingEntity helper 0x2A23F9C `lea rbx,[rcx+0x48]` (0x2A23FAC).
+ using TagSystem = Core::OffsetPtr<0x48, Red::redTagSystem>;
+ }
+ 
+diff --git a/src/Red/Vehicle.hpp b/src/Red/Vehicle.hpp
+index 938cda6c88dbd9b1be0e120fca39bc61125aa818..246cb4f54e604e34ee0a3823883119a07d5302a5 100644
+--- a/src/Red/Vehicle.hpp
++++ b/src/Red/Vehicle.hpp
+@@ -2,5 +2,8 @@
+ 
+ namespace Raw::Vehicle
+ {
+-using RecordID = Core::OffsetPtr<0x638, Red::TweakDBID>;
++// Game 2.5 (exe 3.0.88.46235): the vehicle GetRecordID native (0xEBFFB4, registered at 0x21BB54D)
++// reads [this+0x658]; 2.31's (0xE59F88, registered at 0x1CDEA6D) read [this+0x638].
++// vehicleBaseObject grew 2976 -> 3008 bytes. The puppet one is unchanged (0xC7FAC8 reads +0x260).
++using RecordID = Core::OffsetPtr<0x658, Red::TweakDBID>;
+ }
+diff --git a/src/Red/VisualController.hpp b/src/Red/VisualController.hpp
+index 446c385d65abc0afdbfd5e1037d7ede0f3238e08..f702a5b98776ac4563f47dee6689f308a0216b78 100644
+--- a/src/Red/VisualController.hpp
++++ b/src/Red/VisualController.hpp
+@@ -26,6 +26,8 @@ struct VisualController
+     volatile int32_t status;                                // 78
+     SharedSpinLock lock;                                    // 7C
+ };
++// Game 2.5: VisualController_LoadDependencies 0x6284A4: lock `lea rdx,[r13+0x7c]`, dependencies [r13+0x10]/size
++// [r13+0x1c], dependency mesh `lea rcx,[rdi+0x20]`.
+ RED4EXT_ASSERT_SIZE(VisualController, 0x80);
+ RED4EXT_ASSERT_OFFSET(VisualController, dependencies, 0x10);
+ RED4EXT_ASSERT_OFFSET(VisualController, lock, 0x7C);
+@@ -40,5 +42,6 @@ constexpr auto LoadDependencies = Core::RawFunc<
+ 
+ namespace Raw::VisualControllerComponent
+ {
++// Game 2.5: entVisualControllerComponent virtual 0x190 (0xEEBA4C) `lea rdx,[rcx+0xd8]`, same slots as 2.31.
+ using Controller = Core::OffsetPtr<0xD8, Red::SharedPtr<Red::VisualController>>;
+ }
+diff --git a/src/Red/WardrobeSystem.hpp b/src/Red/WardrobeSystem.hpp
+index 4855c26a8194da7acbb57a5149185d01544d461d..863c1eeaac821224d3625c4d76d439d3373e753f 100644
+--- a/src/Red/WardrobeSystem.hpp
++++ b/src/Red/WardrobeSystem.hpp
+@@ -2,6 +2,8 @@
+ 
+ namespace Raw::WardrobeSystem
+ {
++// Game 2.5: 15 gameWardrobeSystem virtuals touch 0x48/0xF4 exactly as on 2.31 (0x35CE0E `lea rcx,[rbx+0x48]`,
++// 0x35CE25 `lea rdx,[rbx+0xf4]`).
+ using ItemStore = Core::OffsetPtr<0x48, Red::HashMap<Red::CName, Red::ItemID>>;
+ using ItemStoreMutex = Core::OffsetPtr<0xF4, Red::SharedSpinLock>;
+ }
+diff --git a/src/Red/WorkspotSystem.hpp b/src/Red/WorkspotSystem.hpp
+index c918f284b805d30f1df588984fbdb181f74c509f..669221b5198f1f7ad6f352fbd2ddfefc6994e8a4 100644
+--- a/src/Red/WorkspotSystem.hpp
++++ b/src/Red/WorkspotSystem.hpp
+@@ -2,6 +2,7 @@
+ 
+ namespace Raw::workWorkspotSystem
+ {
++// Game 2.5: 0x5DBBA8 `lea rdx,[rcx+0x50]` (lock) before GetWorkspotInstance, which does `add rcx,0x70` (0x5DBBF7).
+ using SpinLock = Core::OffsetPtr<0x50, Red::SharedSpinLock>;
+ using InstanceMap = Core::OffsetPtr<0x70, Red::HashMap<uint64_t, Red::workWorkspotInstance*>>;
+ 
+diff --git a/src/Red/WorldNode.hpp b/src/Red/WorldNode.hpp
+index 072e2558b7bc42b1a9995bf1e222465b8357fae4..be09cf137f8e4171a37b0fb4355d75effb7acd86 100644
+--- a/src/Red/WorldNode.hpp
++++ b/src/Red/WorldNode.hpp
+@@ -21,6 +21,9 @@ struct WorldNodeInstanceNodeState
+ 
+ namespace Raw::WorldNodeInstance
+ {
++// Game 2.5: worldMeshNodeInstance virtual 0x1A8 (0x28257E4) reads 0x30/0x50/0x60/0x70/0x88 like 2.31 (0x22759C4);
++// the 12 shared slots that touch these offsets match. Subclass fields: mesh 0x98 (0x2825802), bended 0xA0
++// (0x29745F2), decal 0xA0 (0x471874), foliage 0xB8 (0x62C56F), entity 0xA0 (0x29A610E), each in the same slot as 2.31.
+ using Transform = Core::OffsetPtr<0x30, Red::Transform>;
+ using Scale = Core::OffsetPtr<0x50, Red::Vector3>;
+ using Node = Core::OffsetPtr<0x60, Red::Handle<Red::worldNode>>;
+diff --git a/src/rtti.cpp b/src/rtti.cpp
+index e36176d235455df4067559a6df6a5cc0023ad929..4350b2f421a7462d00ac3ed3d90d11983af96a13 100644
+--- a/src/rtti.cpp
++++ b/src/rtti.cpp
+@@ -60,7 +60,6 @@
+ #include "App/UI/inkKeyInputEvent.hpp"
+ #include "App/UI/inkLayerWrapper.hpp"
+ #include "App/UI/inkSystem.hpp"
+-#include "App/UI/inkWidgetEx.hpp"
+ #include "App/UI/inkWidgetLibraryEx.hpp"
+ #include "App/UI/inkWidgetReferenceEx.hpp"
+ #include "App/UI/inkWorldWidgetInfosEx.hpp"
+@@ -80,7 +79,6 @@
+ #include "App/World/DynamicEntityState.hpp"
+ #include "App/World/DynamicEntitySystem.hpp"
+ #include "App/World/DynamicEntitySystemPS.hpp"
+-#include "App/World/InstancedMeshNodeEx.hpp"
+ #include "App/World/MappinSystemEx.hpp"
+ #include "App/World/NodeInstanceEx.hpp"
+ #include "App/World/NodeSetupWrapper.hpp"

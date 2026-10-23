@@ -1,0 +1,147 @@
+{
+  "schema": 2,
+  "projects": {
+    "red4ext": {
+      "path": "sources/red4ext",
+      "patches": [
+        {
+          "path": "patches/red4ext/001-essentials.patch",
+          "sha256": "e45bd42d06398c670dbc5b07113d02b265022d49ce3c21388e110fb72ef0236e"
+        }
+      ],
+      "provenance": {
+        "port": "https://github.com/wopss/RED4ext/pull/154",
+        "commit": "47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6"
+      }
+    },
+    "archive-xl": {
+      "path": "sources/archive-xl",
+      "patches": [
+        {
+          "path": "patches/archive-xl/001-essentials.patch",
+          "sha256": "d65744074adf66b671ddfc86e2615a11308d5e809a9606ff2952cefd613c82ab"
+        }
+      ],
+      "provenance": {
+        "port": "https://github.com/psiberx/cp2077-archive-xl/pull/31",
+        "commit": "5f7dc88292ba010d871c6d24797591359f243a11"
+      }
+    },
+    "codeware": {
+      "path": "sources/codeware",
+      "patches": [
+        {
+          "path": "patches/codeware/001-essentials.patch",
+          "sha256": "cddac229d9d33b5c00338e6d860a31798aaf9eff7aabbcb41ceb5380c9409209"
+        }
+      ],
+      "provenance": {
+        "port": "https://github.com/psiberx/cp2077-codeware/pull/63",
+        "commit": "6ef34ff0dd01ce9406e809e56e268f20fab367c4"
+      }
+    },
+    "tweak-xl": {
+      "path": "sources/tweak-xl",
+      "patches": [
+        {
+          "path": "patches/tweak-xl/001-essentials.patch",
+          "sha256": "0a9547aeedebc1db1ab59f25b8c4f2a60f90a82bdc6d0031970e7287e01da6c1"
+        }
+      ],
+      "provenance": {
+        "port": "https://github.com/psiberx/cp2077-tweak-xl/pull/22",
+        "commit": "fee3a9427c321445c67487e42e79dd2977c35701"
+      }
+    },
+    "red4ext-sdk": {
+      "path": "sources/red4ext-sdk",
+      "patches": [
+        {
+          "path": "patches/red4ext-sdk/001-essentials.patch",
+          "sha256": "ce529c091f79e4fd563aee4960758786a9d8f44f9fecbaa44aebeba11e844808"
+        }
+      ],
+      "provenance": {
+        "port": "https://github.com/wopss/RED4ext.SDK/pull/228",
+        "commit": "12e0c33337f8612850854fb9ed5ad9628796afca",
+        "additional_port": "https://github.com/wopss/RED4ext.SDK/pull/229"
+      }
+    }
+  },
+  "dependencies": {
+    "tiltedcore": {
+      "path": "build/deps/tiltedcore",
+      "url": "https://github.com/tiltedphoques/TiltedCore.git",
+      "commit": "b5aa9203dc47e3ced49ca60e65d1bf4409501f03"
+    },
+    "mimalloc": {
+      "path": "build/deps/mimalloc",
+      "url": "https://github.com/microsoft/mimalloc.git",
+      "commit": "fbd8b99c2b828428947d70fdc046bb55609be93e"
+    },
+    "minhook": {
+      "path": "build/deps/minhook",
+      "url": "https://github.com/TsudaKageyu/minhook.git",
+      "commit": "c3fcafdc10146beb5919319d0683e44e3c30d537"
+    },
+    "yaml-cpp": {
+      "path": "build/deps/yaml-cpp",
+      "url": "https://github.com/jbeder/yaml-cpp.git",
+      "commit": "f7320141120f720aecc4c32be25586e7da9eb978"
+    },
+    "hopscotch-map": {
+      "path": "build/deps/hopscotch-map",
+      "url": "https://github.com/Tessil/hopscotch-map.git",
+      "commit": "2bdc14c19e2fdfd000dc8649fa1b60f9d2810ce7"
+    },
+    "spdlog": {
+      "path": "build/deps/spdlog",
+      "url": "https://github.com/gabime/spdlog.git",
+      "commit": "79524ddd08a4ec981b7fea76afd08ee05f83755d"
+    },
+    "detours": {
+      "path": "build/deps/detours",
+      "url": "https://github.com/microsoft/Detours.git",
+      "commit": "9764cebcb1a75940e68fa83d6730ffaf0f669401"
+    },
+    "fmt": {
+      "path": "build/deps/fmt",
+      "url": "https://github.com/fmtlib/fmt.git",
+      "commit": "407c905e45ad75fc29bf0f9bb7c5c2fd3475976f"
+    },
+    "redscript": {
+      "path": "build/deps/redscript",
+      "url": "https://github.com/jac3km4/redscript.git",
+      "commit": "b413ba6a40098191d18bb24d1a095dd00190322e"
+    },
+    "simdjson": {
+      "path": "build/deps/simdjson",
+      "url": "https://github.com/simdjson/simdjson.git",
+      "commit": "e829566589ce573df18df5935dcb14070504c02e"
+    },
+    "toml11": {
+      "path": "build/deps/toml11",
+      "url": "https://github.com/ToruNiina/toml11.git",
+      "commit": "be08ba2be2a964edcdb3d3e3ea8d100abc26f286"
+    },
+    "red4ext-wil": {
+      "path": "build/deps/red4ext-wil",
+      "url": "https://github.com/microsoft/wil.git",
+      "commit": "3ecba603d9789435b0661be7b7154d45c195ef98"
+    }
+  },
+  "archivexl_assets": {
+    "path": "build/ArchiveXL-1.27.5-assets.zip",
+    "url": "https://github.com/psiberx/cp2077-archive-xl/releases/download/v1.27.5/ArchiveXL-1.27.5.zip",
+    "sha256": "ce10bb94ca20367975f2362c6a1d47e1e5dd14cd4380f456628f0a96ce1d0913"
+  },
+  "loader_dependencies": {
+    "DETOURS": "detours",
+    "FMT": "fmt",
+    "REDSCRIPT": "redscript",
+    "SIMDJSON": "simdjson",
+    "SPDLOG": "spdlog",
+    "TOML11": "toml11",
+    "WIL": "red4ext-wil"
+  }
+}

@@ -1,0 +1,5 @@
+# Keep root-owned text portable and Linux entry points executable by Bash.
+* text=auto eol=lf
+
+# Patches are checksum-pinned: preserve every byte, including upstream whitespace.
+*.patch -text -whitespace

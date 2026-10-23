@@ -1,0 +1,162 @@
+diff --git a/src/dll/Config.cpp b/src/dll/Config.cpp
+index 0a72f08c39df06f8333aa29c3d508fa02e542e72..aec9052c312c99258d2578bf19cec5f76b58e336 100644
+--- a/src/dll/Config.cpp
++++ b/src/dll/Config.cpp
+@@ -46,7 +46,7 @@ Config::Config(const Paths& aPaths)
+     }
+ }
+ 
+-const size_t Config::GetVersion() const
++size_t Config::GetVersion() const
+ {
+     return m_version;
+ }
+diff --git a/src/dll/Config.hpp b/src/dll/Config.hpp
+index 3914ffe0935ce83ab46ab7e0193f2145617b4bcf..d108a3f78f3ea53fb2fa0fe750f34b72330ab00d 100644
+--- a/src/dll/Config.hpp
++++ b/src/dll/Config.hpp
+@@ -38,7 +38,7 @@ public:
+     Config(const Paths& aPaths);
+     ~Config() = default;
+ 
+-    const size_t GetVersion() const;
++    size_t GetVersion() const;
+ 
+     const DevConfig& GetDev() const;
+     const LoggingConfig& GetLogging() const;
+diff --git a/src/dll/DetourTransaction.cpp b/src/dll/DetourTransaction.cpp
+index 45804a06da44dc26f000c2c0d2bd71359c7927bf..30ba07c99d30cfd582a5550c7f123ab613d2e9fb 100644
+--- a/src/dll/DetourTransaction.cpp
++++ b/src/dll/DetourTransaction.cpp
+@@ -63,7 +63,7 @@ DetourTransaction::~DetourTransaction()
+     }
+ }
+ 
+-const bool DetourTransaction::IsValid() const
++bool DetourTransaction::IsValid() const
+ {
+     return m_state != State::Invalid;
+ }
+diff --git a/src/dll/DetourTransaction.hpp b/src/dll/DetourTransaction.hpp
+index 4f4baea306b6bcf1cd1038fcf96ab69b5f89aff6..f299500c20217a0fedf00de845669e0b02d816c3 100644
+--- a/src/dll/DetourTransaction.hpp
++++ b/src/dll/DetourTransaction.hpp
+@@ -12,7 +12,7 @@ public:
+     DetourTransaction& operator=(const DetourTransaction&) = delete;
+     DetourTransaction& operator=(DetourTransaction&&) = delete;
+ 
+-    const bool IsValid() const;
++    bool IsValid() const;
+ 
+     bool Commit();
+     bool Abort();
+diff --git a/src/dll/Main.cpp b/src/dll/Main.cpp
+index 6bc274f4471f8804be4937cde128c00b3730383a..e84c36d671ef2c5bcc3484623ebc49c8934eb77d 100644
+--- a/src/dll/Main.cpp
++++ b/src/dll/Main.cpp
+@@ -4,7 +4,7 @@
+ 
+ BOOL APIENTRY DllMain(HMODULE aModule, DWORD aReason, LPVOID aReserved)
+ {
+-    RED4EXT_UNUSED_PARAMETER(aReserved);
++    static_cast<void>(aReserved);
+ 
+     switch (aReason)
+     {
+diff --git a/src/dll/PluginBase.hpp b/src/dll/PluginBase.hpp
+index 74bdacec88661b65ace53e4890cf5cbb28c70540..4aad42513cc42c0c94792c6fe5b91cf002a13b56 100644
+--- a/src/dll/PluginBase.hpp
++++ b/src/dll/PluginBase.hpp
+@@ -17,7 +17,7 @@ public:
+     PluginBase(const std::filesystem::path& aPath, wil::unique_hmodule aModule);
+     virtual ~PluginBase() = default;
+ 
+-    virtual const uint32_t GetApiVersion() const = 0;
++    virtual uint32_t GetApiVersion() const = 0;
+     virtual void* GetPluginInfo() = 0;
+     virtual const void* GetSdkStruct() const = 0;
+ 
+diff --git a/src/dll/ScriptCompiler/ScriptCompilerFailure.cpp b/src/dll/ScriptCompiler/ScriptCompilerFailure.cpp
+index c751a2eb14248f3061dcdd6b2b938a0966ee5119..5cd3a2f3d090bec67d336d57c388ea43b5f9ad7c 100644
+--- a/src/dll/ScriptCompiler/ScriptCompilerFailure.cpp
++++ b/src/dll/ScriptCompiler/ScriptCompilerFailure.cpp
+@@ -4,7 +4,7 @@ ScriptCompilerFailure::ScriptCompilerFailure(SccApi& aApi, SccResult* aResult, K
+     : m_scc(aApi)
+     , m_result(aResult)
+ {
+-    RED4EXT_UNUSED_PARAMETER(aKey);
++    static_cast<void>(aKey);
+ 
+     char buffer[256] = {0};
+     m_scc.copy_error(aResult, buffer, sizeof(buffer));
+diff --git a/src/dll/ScriptCompiler/ScriptCompilerOutput.cpp b/src/dll/ScriptCompiler/ScriptCompilerOutput.cpp
+index 956b4cef996c7c7ff01c9ad9abb869e4c1834200..49d60ff0835b8cc72de2273009cbe1353a89e7e9 100644
+--- a/src/dll/ScriptCompiler/ScriptCompilerOutput.cpp
++++ b/src/dll/ScriptCompiler/ScriptCompilerOutput.cpp
+@@ -2,10 +2,10 @@
+ 
+ ScriptCompilerOutput::ScriptCompilerOutput(SccApi& aApi, SccResult* aResult, SccOutput* aOutput, Key aKey)
+     : m_scc(aApi)
+-    , m_output(aOutput)
+     , m_result(aResult)
++    , m_output(aOutput)
+ {
+-    RED4EXT_UNUSED_PARAMETER(aKey);
++    static_cast<void>(aKey);
+ }
+ 
+ ScriptCompilerOutput::~ScriptCompilerOutput()
+diff --git a/src/dll/Utils.hpp b/src/dll/Utils.hpp
+index 3aebb23797bbfc0239eff9e4c569453593b85ae8..3cb8eb8c95ae0615daafd33f6f36111c59275bf0 100644
+--- a/src/dll/Utils.hpp
++++ b/src/dll/Utils.hpp
+@@ -44,7 +44,7 @@ int32_t ShowMessageBox(uint32_t aType, const std::wstring_view aText, Args&&...
+ }
+ 
+ template<typename... Args>
+-void ShowLastErrorMessage(uint32_t aType, const std::wstring_view aAdditionalText = "", Args&&... aArgs)
++void ShowLastErrorMessage(uint32_t aType, const std::wstring_view aAdditionalText = L"", Args&&... aArgs)
+ {
+     auto msg = FormatLastError();
+     if (!aAdditionalText.empty())
+diff --git a/src/dll/v1/Plugin.cpp b/src/dll/v1/Plugin.cpp
+index 47efd94cc67f2b632534761864e325ed38ef115e..04a5c90df4c5e9647a832a690feeb4c179aaa38e 100644
+--- a/src/dll/v1/Plugin.cpp
++++ b/src/dll/v1/Plugin.cpp
+@@ -66,7 +66,7 @@ v1::Plugin::Plugin(const std::filesystem::path& aPath, wil::unique_hmodule aModu
+     m_scripts.RegisterMixedRefType = v1::Scripts::RegisterMixedRefType;
+ }
+ 
+-const uint32_t v1::Plugin::GetApiVersion() const
++uint32_t v1::Plugin::GetApiVersion() const
+ {
+     return RED4EXT_API_VERSION_1;
+ }
+diff --git a/src/dll/v1/Plugin.hpp b/src/dll/v1/Plugin.hpp
+index 5961f965b9944a4aa40ed0cdc630c445723aafef..f35dd896642f8f17a0888010ab2ce65bd056a4e2 100644
+--- a/src/dll/v1/Plugin.hpp
++++ b/src/dll/v1/Plugin.hpp
+@@ -23,7 +23,7 @@ class Plugin : public PluginBase
+ public:
+     Plugin(const std::filesystem::path& aPath, wil::unique_hmodule aModule);
+ 
+-    const uint32_t GetApiVersion() const final;
++    uint32_t GetApiVersion() const final;
+     void* GetPluginInfo() final;
+     const void* GetSdkStruct() const final;
+ 
+diff --git a/src/playground/Main.cpp b/src/playground/Main.cpp
+index 0a5a85eaa6c77f93e0b9ef994263c383ccab1929..d9b5de96dccb0f58bbb4614628ccb0c9d6aba6a9 100644
+--- a/src/playground/Main.cpp
++++ b/src/playground/Main.cpp
+@@ -3,8 +3,8 @@
+ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4ext::v1::EMainReason aReason,
+                                         const RED4ext::v1::Sdk* aSdk)
+ {
+-    RED4EXT_UNUSED_PARAMETER(aHandle);
+-    RED4EXT_UNUSED_PARAMETER(aSdk);
++    static_cast<void>(aHandle);
++    static_cast<void>(aSdk);
+ 
+     switch (aReason)
+     {
