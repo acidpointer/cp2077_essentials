@@ -94,12 +94,16 @@
         {
           "path": "patches/input-loader/002-re-input-hardening.patch",
           "sha256": "0ff3033bb3c2944d87ee9835b1e28490e2f70b097f56a949c439d2f660621571"
+        },
+        {
+          "path": "patches/input-loader/003-durable-input-pipeline.patch",
+          "sha256": "9509371a97ed9487c97869412fd74875bd32e731008a8fe18c5b91ddfb3a91ca"
         }
       ],
       "provenance": {
         "upstream": "https://github.com/jackhumbert/cyberpunk2077-input-loader",
         "version_tag": "v0.2.3",
-        "notes": "Version retains the latest upstream numeric tag; the Gitlink pins subsequent upstream merge/startup fixes. Local patch adapts the shared SDK v1 API and adds an explicit algorithm include.",
+        "notes": "Version retains the latest upstream numeric tag; the Gitlink pins subsequent upstream merge/startup fixes. 001 adapts the shared SDK v1 API; 002 backports independently researched defenses; 003 implements immutable generation publication, deterministic snapshot merging and startup lifecycle fixes documented in docs/input-loader-2.5-audit.txt.",
         "binary_reference": {
           "project": "InputLoaderReborn",
           "author": "Keen",

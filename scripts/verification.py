@@ -115,8 +115,8 @@ def distribution(folder):
             dll = build / 'bin' / (c.binary_name(project) + '.dll')
             if not {'Main', 'Query', 'Supports'} <= exports(dll):
                 raise ValueError(f'{project}: plugin exports missing')
-            if project == 'input-loader' and 'Add' not in exports(dll):
-                raise ValueError('Input Loader: public Add export missing')
+            if project == 'input-loader' and not {'Add', 'TryAdd', 'Remove'} <= exports(dll):
+                raise ValueError('Input Loader: public Add/TryAdd/Remove exports missing')
         binary(dll, dll.with_suffix('.pdb'))
         print(f'{c.NAMES[project]}: source/SDK provenance, AMD64 DLL, exports, symbols, ZIP payload and SHA256 passed')
 

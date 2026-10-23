@@ -72,7 +72,9 @@ target_include_directories(InputLoader SYSTEM PRIVATE "${RED4EXT_SDK_DIR}/includ
   "${RED4EXT_SDK_DIR}/vendor/D3D12MemAlloc")
 target_precompile_headers(InputLoader PRIVATE "${input_src}/src/stdafx.hpp")
 target_compile_definitions(InputLoader PRIVATE
-  WINVER=0x0601 _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX
+  # FileIdInfo supplies the full 128-bit identity (including ReFS). The game
+  # itself requires a newer Windows version than this API's Windows 8 minimum.
+  WINVER=0x0602 _WIN32_WINNT=0x0602 WIN32_LEAN_AND_MEAN NOMINMAX
   UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS DLLDIR_EX
   SPDLOG_WCHAR_TO_UTF8_SUPPORT SPDLOG_WCHAR_FILENAMES
   MOD_VERSION_STR="${input_version}" MOD_VERSION_MAJOR=${input_major}

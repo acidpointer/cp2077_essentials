@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.26)
+project(InputLoaderLifecycle LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreadedDLL)
+add_executable(input-loader-lifecycle ../input_loader_lifecycle.cpp)
+target_include_directories(input-loader-lifecycle SYSTEM PRIVATE ../../../sources/red4ext-sdk/include)
+target_compile_definitions(input-loader-lifecycle PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN UNICODE _UNICODE)
+target_compile_options(input-loader-lifecycle PRIVATE /EHsc /utf-8)

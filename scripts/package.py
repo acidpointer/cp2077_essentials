@@ -8,6 +8,10 @@ import zipfile
 import common as c
 import patches
 
+INPUT_LOADER_NEUTRAL_INI = (
+    b'; Input Loader essentials: neutral until a complete cache pair is ready\n'
+    b'[Player/Input]\n'
+)
 
 def original_version(project, source, build):
     if project == 'input-loader':
@@ -49,7 +53,10 @@ def input_loader_payload(source, build):
         prefix + 'licenses/spdlog.txt': c.ROOT / c.config()['dependencies']['spdlog']['path'] / 'LICENSE',
         'engine/config/platform/pc/input_loader.ini': source / 'input_loader.ini',
     }
-    return {name: path.read_bytes() for name, path in paths.items()}
+    payload = {name: path.read_bytes() for name, path in paths.items()}
+    if payload['engine/config/platform/pc/input_loader.ini'] != INPUT_LOADER_NEUTRAL_INI:
+        raise ValueError('Input Loader package must ship the neutral selector, without generated cache paths')
+    return payload
 
 
 def create(project, config):

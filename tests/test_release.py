@@ -98,7 +98,7 @@ class InputLoaderPayload(unittest.TestCase):
             'red4ext/plugins/input_loader/license.md': b'upstream license',
             'red4ext/plugins/input_loader/licenses/pugixml.txt': b'XML parser license',
             'red4ext/plugins/input_loader/licenses/spdlog.txt': b'logging license',
-            'engine/config/platform/pc/input_loader.ini': b'[Player/Input]\r\nconfig fixture',
+            'engine/config/platform/pc/input_loader.ini': package.INPUT_LOADER_NEUTRAL_INI,
         }
         inputs = {
             self.build / 'bin/input_loader.dll': self.expected['red4ext/plugins/input_loader/input_loader.dll'],
@@ -117,7 +117,7 @@ class InputLoaderPayload(unittest.TestCase):
         for mocked in [patch.object(c, 'ROOT', self.root), patch.object(c, 'config', return_value=lock),
                        patch.object(package.patches, 'identity', return_value={}),
                        patch.object(verification, 'binary'),
-                       patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports', 'Add'})]:
+                       patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports', 'Add', 'TryAdd', 'Remove'})]:
             mocked.start()
             self.addCleanup(mocked.stop)
         self.record = package.create('input-loader', 'Release')
@@ -155,9 +155,16 @@ class InputLoaderPayload(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'payload differs'):
             verification.distribution(self.root)
         self.rewrite_runtime(lambda payload: None)
-        with patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports'}):
-            with self.assertRaisesRegex(ValueError, 'public Add export'):
-                verification.distribution(self.root)
+        for missing in ['Add', 'TryAdd', 'Remove']:
+            with patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports', 'Add', 'TryAdd', 'Remove'} - {missing}):
+                with self.assertRaisesRegex(ValueError, 'public Add/TryAdd/Remove exports'):
+                    verification.distribution(self.root)
+
+    def test_package_rejects_preselected_missing_caches(self):
+        (self.source / 'input_loader.ini').write_bytes(
+            b'[Player/Input]\nInputContextFile = "cache\\inputContexts.xml"\n')
+        with self.assertRaisesRegex(ValueError, 'neutral selector'):
+            package.create('input-loader', 'Release')
 
 
 class ReleaseAssets(unittest.TestCase):

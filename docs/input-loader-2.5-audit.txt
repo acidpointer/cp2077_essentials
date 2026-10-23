@@ -1,0 +1,558 @@
+Patched Input Loader: CP2077 2.5 compatibility audit and fix plan
+2026-10-24
+
+Verdict
+
+The available evidence supports basic file/API compatibility with CP2077
+2.5, executable 3.0.88.46235. It does not establish in-game stability.
+The audited 002 backport had reproducible correctness defects, including
+activation of inconsistent cache files and incomplete failure cleanup.
+The original findings and plan below describe that build. The implementation
+status section at the end records fixes in layer 003 and their validation.
+No plugin source or saved patch was changed during the initial audit; its
+generated harnesses and copied data stay under build/. No game/MO2 files were
+changed during either the audit or implementation.
+
+Evidence boundary
+
+- Root revision inspected: 9ff2ae6; upstream Input Loader pin: f92f7dc.
+- Patch 002 SHA256:
+  0ff3033bb3c2944d87ee9835b1e28490e2f70b097f56a949c439d2f660621571
+- Existing Release DLL tested, SHA256:
+  1b8e1af4a7cb6e8958d3bece960caa0cd24c7999346e1bbfa74657e527871d8e
+- Its package's source/SDK identities matched the lockfile at audit time.
+- The installed executable's VS_FIXEDFILEINFO reports 3.0.88.46235.
+- Installed input XMLs match the Root Builder backup for that version byte
+  for byte. This is not an independent Steam/GOG verification of vanilla data.
+- Copied inputContexts.xml: 122987 bytes, SHA256
+  ec2186f01bc6637d613bffb66e0258482b51d39e42090cb603d3716990923fcf
+- Copied inputUserMappings.xml: 102074 bytes, SHA256
+  6bd75c50e34484c1022d879ec3eea90eb9655459fd14256a98ffbbaebb5f4782
+
+The existing six native XML tests pass. Additional host probes exercise the
+actual Merge.hpp and pinned pugixml. Seventeen isolated Windows harness
+scenarios completed without timeouts; the harness loads the
+actual Release DLL under Wine with a stub v1 SDK, copied 2.5 XMLs and fake
+game-root directories. It exercises exports, startup, Add, callbacks and I/O
+failures. It does not run RED4ext's real hooks, the game, MO2's virtual file
+system, Proton's actual prefix, or the game's input parser. No claim about
+game crashes, gameplay, saves or save compatibility follows from these tests.
+
+Generated evidence/reproducers: build/research/input-loader-audit/
+  game-xml-evidence.json, xml_probe.cpp, xml-probe.log, harness.cpp,
+  run_wine.py, native-make/audit.exe, existing-tests.log, cases/*/run.log,
+  cases/*/summary.json, results.json.
+The harness accepts a scenario name; it writes only its generated case tree.
+Its callback stub captures the requested callback, including rejected calls;
+a captured callback is not proof the real loader registered one.
+
+Compatibility facts that checked out
+
+1. API/ABI: Query advertises runtime independence and SDK 0.5 compatibility;
+   Supports returns API 0. Our loader accepts API 0/1 and SDK >= 0.5. The
+   v1 SDK GameStates pointer and callback layout agree on both sides. The
+   callback ignores CGameApplication; the active merge flow does not dereference
+   retail game objects or use address hashes. No shared SDK pin change or new
+   game address is justified by these findings.
+
+2. Ordering: RED4ext's WinMain hook calls App::Startup before original WinMain;
+   PluginSystem loads plugins during that startup. A normal Add during another
+   plugin's Main(Load) can therefore update the cache before original WinMain.
+   This source evidence does not locate the game's first configuration read
+   precisely or exclude reads during earlier CRT initialization.
+
+3. State ordering: BaseInitialization OnEnter runs the original handler before
+   plugin callbacks. OnExit runs plugin callbacks BEFORE the original handler.
+   Do not describe OnExit as necessarily after the game's original OnExit.
+   The source comment's approximate 50 seconds is not a measured 2.5 timing
+   guarantee. Real entry/read timing still requires a game trace.
+
+4. Both copied 2.5 base XMLs parse with the pinned parser, and normal DLL startup
+   succeeds and publishes parseable caches. All eleven currently supported
+   top-level kinds occur in the expected document families. Existing action/id
+   matching is appropriate for those kinds. Native wide filename reads/writes
+   and early merge are improvements that must remain.
+
+Findings, prioritized
+
+P0-A. Startup failure can leave an active INI pointing at absent caches.
+Confirmed DLL reproduction: log-denied returns MAIN=0; the INI remains and
+neither cache file exists. CreateLogger throws before MergeAll, and Main's
+catch handlers do not neutralize the override. Missing-DLL installation has
+the same activation hazard without Main being called at all. The runtime ZIP
+preinstalls the cache-pointing INI, so plugin disablement, loader rejection or
+missing CRT imports can bypass every runtime safeguard.
+References: Main.cpp:402-441; Utils.cpp:7-23; scripts/package.py:40-49.
+An unsafe reference is proven; a resulting game crash was not reproduced.
+
+P0-B. Cache pair publication is not a transaction.
+Confirmed DLL reproduction: late-save-fail locks the mappings cache against
+write, then registers XML that adds both LateContext and LateMapping. The
+context cache contains LateContext; the mappings cache lacks LateMapping;
+the cache-pointing INI remains active. SaveCache writes the two final files
+separately. SyncIni validates syntax/root presence, not common generation.
+Add ignores SaveCache's false result. Interruption or two simultaneous game
+processes can also expose mixed/truncated generations; those interleavings
+are source-derived risks, not separately injected power-loss reproductions.
+References: Main.cpp:164-216, 255-258.
+
+P1-A. 2.5 context transitions cannot be modified or added by mod XMLs.
+Confirmed against local 2.5 data: five <transition action=...> blocks exist,
+covering ToggleVehCamera, ToggleMenu and three NotificationOpen variants.
+MergeBinding returns Unsupported for a transition. KeyAttribute would also
+need action matching. Existing base transitions survive untouched; normal
+vanilla input is not lost merely because this type is unsupported. This is
+not a claim that transition was first introduced in 2.5.
+References: Merge.hpp:33-59; game-xml-evidence.json; xml-probe.log.
+
+P1-B. Syntactic root checks accept unsafe base documents.
+Confirmed host and DLL reproductions: <bindings/><other/> is accepted,
+Main returns true and publishes a multiple-root document rejected by a strict
+XML parser. An empty <bindings/> base is also accepted; after a small mod,
+the game receives essentially no original contexts. Presence of one named
+element is not full document or baseline validation. The game's response to
+these outputs remains untested.
+References: Merge.hpp:21-30; Main.cpp:144-146, 319-325.
+
+P1-C. Allocation failure silently corrupts a successful merge.
+Confirmed using pinned pugixml's allocation hook: replace an existing mapping
+with a large attribute while pugixml allocation fails. MergeResult is Replaced,
+the old mapping is gone, and the new payload is absent. append_copy failure
+is unchecked; replacement deletes the original before copying. In this pinned
+pugixml, a non-null copied node can itself have an incomplete subtree, so a
+simple null-result check is insufficient. Partial append can likewise occur.
+References: Merge.hpp:70-81; pugixml.cpp:6067-6081; xml-probe.log.
+
+P1-D. Applying the same input more than once is not idempotent.
+Confirmed DLL reproduction: a file discovered by the scanner and registered
+twice through Add produces three identical appended actions. No path registry
+deduplicates scanner entries, registrations or aliases. Repeated Add calls
+can grow the queue and reapply children; unkeyed blend entries are affected.
+References: Main.cpp:46, 255-258, 336-361; Merge.hpp:70-76.
+
+P1-E. Shared state has no concurrency or lifecycle protection.
+Source-confirmed lack of synchronization: Add, MergeAll and refresh access
+both global XML documents and document_paths directly. Concurrent calls can
+race with XML replacement, vector growth/iteration and file publication.
+This is undefined behavior if called concurrently. No current caller's
+concurrent behavior or resulting game crash was demonstrated. The public Add
+API documents no thread or phase restrictions. Protect the API rather than
+assuming every third-party caller always runs on the startup thread.
+References: Main.cpp:43-46, 229-263, 319-385; include/InputLoader.hpp.
+
+P1-F. Late refresh can rewrite or deactivate already working configuration.
+Confirmed DLL cases: replacing the base after initial merge causes OnExit to
+replace the cache; emptying the base causes it to delete the active INI while
+leaving the previous cache. Refresh reloads directly into globals and has no
+previous-good snapshot. Its bool result is ignored. Whether the game has read
+each file by that point is unmeasured; unconditional late I/O is unjustified.
+References: Main.cpp:300-306, 374-385; loader States/BaseInitializationState.cpp.
+
+P2-A. Discovery order and incomplete scans silently decide the result.
+recursive_directory_iterator order is not sorted. Conflicting replacements
+have no explicit precedence or provenance diagnostics. An iteration error
+aborts the remaining tree; Add registrations still run and SaveCache can
+return success. The scan-fail fixture makes r6/input a regular file and still
+gets MAIN=1 with only base data. A tolerant skip policy can be useful, but
+partial discovery must be distinguishable from a complete successful merge.
+Directory symlinks/junctions also need an explicit tested traversal policy.
+References: Main.cpp:329-371; Merge.hpp:11-18.
+
+P2-B. Real 2.5 data contains a duplicate key; first-match behavior is ambiguous.
+The base has two identical acceptedEvents entries for action OpenPerksMenu.
+A replacement removes only one, appends the new block and leaves the other
+old block. Confirmed host result: two matches, only one changed. Which entry
+the game's parser prefers has not been established. Do not blindly deduplicate
+all base data or assume this necessarily breaks input; first/last/combined
+engine behavior must inform a documented collision policy.
+References: Merge.hpp:64-81; xml-probe.log.
+
+P2-C. Required attributes and semantic consistency are not validated.
+Confirmed: a mapping without name is accepted as Added. Missing/empty required
+keys for context, action-keyed blocks, buttonGroup, etc. can be serialized into
+otherwise parseable caches. Existing tests explicitly accept some empty keys.
+There are no checks for incomplete copies, contradictory duplicate blocks or
+critical baseline loss. Do not reject every unresolved reference: this 2.5
+baseline itself has three action map references absent from the mappings file
+(the two UI_vehicle_customization_slider_* mappings and showAll_popup).
+Some names may be engine-provided; their semantics require investigation.
+References: Merge.hpp:64-72; tests/input_loader.cpp:109-118.
+
+P2-D. INI success can be reported before buffered writes have completed.
+SyncIni tests the stream before explicit flush/close and writes directly to
+the final INI. A close-time/disk-full failure or interruption can leave an
+empty or partial INI despite an earlier success decision. Directory-creation
+error details are discarded. This is a source-level failure path; late-close
+failure was not injected in the Wine harness.
+References: Main.cpp:182-194. Pugixml's own save_file does check flush and close;
+that behavior must not be incorrectly attributed to the separate INI stream.
+
+P2-E. Add hides failures and retains registrations without owner lifecycle.
+SaveCache status is discarded; bad files are enqueued before successful merge
+and retried at refresh. Registration retains only a path, not the plugin
+owner. A caller that registers and then fails its own initialization has no
+unregister path. Add after successful startup can change only disk state;
+there is no engine reload. A void ABI cannot communicate acceptance/failure.
+The public readme overpromises prevention of inputs from plugins that do not
+load. Preserve binary compatibility while adding diagnostics/lifecycle rules.
+References: Main.cpp:229-263; include/InputLoader.hpp; readme.md:14-33.
+
+P2-F. Filesystem/root and recovery ownership need clearer contracts.
+GetRootDir examines GetLastError after successful GetModuleFileName instead
+of deciding from its returned length; zero return is not handled. Stale-error
+did not reproduce a hang under this Wine version, so that specific hang is
+not a confirmed Windows defect. Resolve/validate/cache the executable root
+once. Add(nullptr, relative_path) silently resolves from the executable rather
+than a plugin. RemoveIni/SyncIni delete or replace the whole named file without
+checking for custom content/ownership; removal can fail on read-only/virtual
+files. These need tested policy, including MO2/Root Builder deployment.
+References: Utils.cpp:26-49; Main.cpp:149-194, 235-252.
+
+P3-A. Hash warnings and diagnostics lack an evidenced 2.5 baseline.
+Both copied 2.5 files trigger unknown-file warnings. That is not a reason to
+claim they are modified: the table covers only 2.30/2.31. Record verified
+retail 2.5 hashes/provenance before adding a whitelist entry. Hashing rereads
+both files and allocates their complete contents on every full merge; logging
+flushes every event. Repeated full merges/Add calls amplify startup I/O.
+References: Main.cpp:77-142, 300-306; Utils.cpp:7-23.
+
+P3-B. Dead helpers contain unrelated latent bugs.
+ToWString constructs a wstring from L"" with the input byte count, reading
+past the literal for inputs longer than one byte, then uses unchecked locale
+conversion.
+FileStream treats successful short reads as full reads and Flush is a stub.
+Neither helper is used by the active merge flow; these are not diagnosed
+2.5 failures. Remove dead code or repair it with dedicated tests if retained.
+References: Utils.cpp:52-59; IO/FileStream.cpp:27-39, 92-95.
+
+P3-C. Packaging/docs have unsafe or obsolete assumptions.
+The shipped readme's Add example passes a narrow literal to a wchar_t API;
+its advertised uninstall BAT is not packaged. Runtime-created cache/INI files
+can survive removing just the DLL, especially across Root Builder deploys.
+Query's original mod version is intentionally retained by repository policy;
+use provenance manifests for patched-build identification, not a cosmetic bump.
+References: readme.md:27,79; scripts/package.py:40-49.
+
+Non-findings / cautions against inappropriate fixes
+
+- No evidence calls for guessing native addresses or changing SDK structures.
+- The action/id fix should remain; reverting to Reborn's name-only matching
+  would discard a real compatibility improvement.
+- Current malformed-XML handling does discard partial parsed mod trees; the
+  malformed-mod DLL case does not leak the partial context into the cache.
+- null-sdk, callback rejection, bad-base and cache-directory failure cases
+  return false and remove the INI in their explicit branches. The uncovered
+  issue is incomplete failure coverage, not an absence of every safeguard.
+- The stale-last-error scenario succeeds on the tested Wine implementation.
+- DisableThreadLibraryCalls can fail for static TLS and is not itself a
+  guaranteed stability fix. It is a harmless optional optimization here with
+  the dynamic CRT; keep initialization outside DllMain.
+
+Fix plan, in implementation order
+
+1. Preserve evidence and add reproducing tests before changing behavior.
+   Promote the generated scenarios into durable XML/lifecycle/publication
+   tests. Cover log failure before merge, missing DLL/disabled plugin, both
+   cache-write failures, INI create/write/close failure, interrupted commits,
+   repeated/scanner-plus-Add registration, scan errors, allocation failure,
+   multiple roots, empty base, required keys and all five transition actions.
+   Keep host tests and Windows DLL harness results clearly separate from
+   actual game tests. Existing six tests alone are insufficient.
+
+2. Make activation and publication fail-safe (P0).
+   Recommend immutable generation directories containing both validated XMLs,
+   with a single INI update selecting the complete pair. Write/flush/close and
+   validate a new generation before switching the INI; retain the previous
+   working generation on any failure. Serialize publishers per game root,
+   including multiple processes. Two separate final-file renames are NOT an
+   atomic pair. Validate the chosen Windows replacement operation on Wine
+   and native Windows rather than assuming POSIX semantics.
+
+   The packaged INI must not select nonexistent generated caches when no DLL
+   can execute. Review a neutral/default packaged INI or runtime-only override,
+   updating the payload tests/docs and current preservation invariant together.
+   Do not silently change that invariant during implementation. Define legacy
+   fixed-path migration, ownership markers, recovery and retention policy.
+   A generated subdirectory path also needs an actual 2.5 acceptance test.
+
+3. Introduce explicit startup/registration state and failure propagation.
+   Separate collection, candidate build, publication and active state. Make
+   logging nonfatal where possible. Use one cleanup/fallback path for every
+   initialization failure, including exceptions before MergeAll. Retain a
+   previous validated configuration instead of destroying it on refresh
+   failure. Check all save/publication results; keep the existing Add symbol
+   ABI and log rejected/deferred registrations. Resolve paths before locks
+   to avoid loader-lock inversion; serialize mutation and iterate snapshots.
+   Define startup-only versus next-launch semantics for late registrations.
+   Owner tracking can detect some unloads; full failed-plugin activation
+   tracking may require a loader/API extension, not merely an HMODULE check.
+
+4. Make merging deterministic, transactional and schema-aware (P1/P2).
+   Support transition in context documents with action identity. Canonicalize
+   and deduplicate paths across discovery and Add; choose a documented stable
+   ordering and expose conflicts with file provenance. Build a fresh candidate
+   from a preserved base and unique registrations, rather than incrementally
+   reapplying append blocks. Commit the in-memory candidate only on complete
+   success. Detect partial copies as well as null copies under allocation
+   failure; merely checking append_copy's return is not enough.
+
+   Enforce one bindings element, required attributes per kind, and evidenced
+   baseline viability. Empty mod files can be no-ops; empty base files must
+   not become the active baseline. Validate cross-file references after all
+   mods are combined, initially warning on unresolved names with comparison
+   to the known baseline. Establish the game's duplicate-key precedence
+   before consolidating duplicated acceptedEvents or blend relationships.
+   Distinguish complete success, intentionally skipped bad input and incomplete
+   discovery. Pick a deliberate symlink/junction policy and test it.
+
+5. Reduce unneeded late I/O and clean up supporting contracts.
+   Verify when 2.5 reads the INI/XMLs before retaining or removing OnExit
+   refresh; keep early startup and legitimate startup Add registrations.
+   Cache a validated game root, preserve/recognize managed INI ownership,
+   improve errors, add verified hashes, correct the public example/uninstall
+   guidance, and remove or test the unused helpers. Profile before adding
+   broad caching/indexing or changing logging policy.
+
+6. Integrate as a new reviewed patch and validate in layers.
+   Use a separate 003 layer; preserve 001/002 bytes and the upstream Gitlink.
+   Run portable regressions, independent patch reconstruction and the isolated
+   Windows DLL scenarios. Build Input Loader Release with the same shared SDK;
+   source-only changes do not require a new SDK pin. Verify DLL/exports/PDB,
+   complete package payload, source/SDK identity and checksums. A package-layout
+   change also needs packaging/release regression tests and documentation.
+
+   Then perform explicitly authorized real 2.5 tests with a disposable setup:
+   fresh caches, warm caches, malformed mod input, two conflicting mods, a
+   scanner-plus-Add file, early/late plugin load orders, Unicode/long paths,
+   read-only files, Proton and native Windows, and MO2/Root Builder redeploy/
+   uninstall. Record loaded config paths and read timing, check controls from
+   the title screen through character/vehicle/menu contexts, and examine logs.
+   Gameplay/save claims need their own tests. Do not install into the user's
+   current game as part of implementing or planning these fixes.
+
+Acceptance invariants
+
+- The active INI never selects a missing, partial or mixed-generation pair.
+- A failed build, registration or publish preserves the last known-good pair.
+- Each accepted source is applied once in a documented order.
+- Allocation failure cannot be reported as a successful partial merge.
+- Every supported 2.5 root kind, including transition, is routed/keyed correctly.
+- Bad XML cannot erase unrelated original controls or activate malformed output.
+- Public calls have defined lifecycle/thread semantics and actionable errors.
+- No game-address guesses, upstream pin changes or weakened ABI assertions.
+
+Primary API documentation consulted
+
+GetModuleFileNameW return/error semantics:
+https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulefilenamew
+DLL loader-lock restrictions:
+https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-best-practices
+ReplaceFileW access/failure constraints:
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-replacefilew
+FlushFileBuffers and durable-write considerations:
+https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-flushfilebuffers
+DisableThreadLibraryCalls and static TLS:
+https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-disablethreadlibrarycalls
+Parser behavior was checked against the pinned pugixml implementation, rather
+than assuming the current online manual describes our older pin exactly.
+
+
+Implementation status: 003-durable-input-pipeline.patch
+2026-10-24
+
+The upstream Gitlink and bytes/checksums of layers 001 and 002 are preserved.
+Layer 003 contains the implementation; root changes enforce its package policy,
+compile the full file-identity API and add regression coverage. Original mod
+version and author attribution remain unchanged. This is an implementation of
+the audited defects, not a diagnosis of Reborn's reported game crash.
+
+Resolution map
+
+P0-A: The shipped INI is neutral, including when the DLL never executes. Package
+creation and verification enforce its exact bytes. File logging is nonfatal.
+Startup recovery precedes SDK/base/scan validation, recognizing old fixed-cache
+selectors and our own marker. A damaged owned selector is restored from a valid
+runtime-scoped journal or neutralized. Unknown custom content is preserved and
+startup fails with a diagnostic. Access-denied recovery cannot be magically
+completed; it fails explicitly. Disabling an already-used DLL still requires
+removing its previously active managed INI; documented cleanup is essential.
+
+P0-B/P2-D: Store.hpp stages an immutable generation containing both XMLs. The
+Windows backend uses create-new files, checked WriteFile loops, FlushFileBuffers,
+checked close and exact readback. Only a same-directory MoveFileExW selector
+replacement activates the pair. No copy-across-volume fallback is permitted.
+Late reported commit errors are reconciled by exact selector readback. Memory
+fault injection covers partial/flush/close failure paths; actual Wine tests
+cover denied replacement. A per-root exclusive file lock serializes processes.
+Backup-journal failure after activation reports a warning without falsely
+reporting publication failure. Old generations and abandoned staging data stay
+until offline cleanup; automatic deletion could break another running process.
+These checks do not prove power-loss behavior on every Windows/MO2 filesystem.
+
+P1-A: transition is routed to contexts and keyed by action, alongside the older
+action/id/name rules. All supported keyed kinds have native helper coverage.
+P1-B/P2-C: strict parsing rejects multiple roots, out-of-root text, malformed
+partial trees, unsupported kinds and empty required top-level identities.
+Base/final pairs must have a context and mapping, correct document families,
+and complete mapping types even when an append attribute is present. Invalid
+files cannot become partially parsed inputs. This is a conservative validator
+for evidenced root kinds, not a complete specification of the game XML schema.
+Only newly unresolved action map names warn; the baseline's three unresolved
+names are not used as grounds to reject otherwise valid input.
+P1-C: checked recursive copies validate every insertion, name/value and attribute
+assignment. Every build uses disposable candidate documents copied from the
+immutable baseline. Parser OOM propagates as allocation failure rather than a
+successful partial scan. Allocation failure never commits a partial candidate.
+P1-D: physical file identity (volume and 128-bit file ID) deduplicates scanner,
+API, canonical aliases, file symlinks and hardlinks. Repeat registration updates
+snapshots and rebuilds from the base. Separate files with identical text still
+apply separately, allowing intentional independent contributions.
+P1-E/P2-E: one private mutex serializes registration/build/publication; another
+lock covers publishers in other processes. Collecting/Starting/Ready/Sealed/
+Stopped/Failed phases define acceptance. Add retains its void ABI; TryAdd and
+Remove report results. Failed calls leave the registry and active pair intact.
+Pre-Main acceptance queues a snapshot and does not promise successful startup.
+Registrations require a real non-null module handle and resolve relative to its
+DLL. Startup cancellation is explicit; owner handles alone cannot prove another
+plugin's Main succeeded, especially while callbacks/imports keep its DLL mapped.
+Pruning detects unloaded owners at subsequent collection/publication. Callers
+must Remove before returning failure; there is no automatic failed-plugin
+activation guarantee. Diagnostics cannot throw a second exception across exports.
+P1-F: the baseline is read once; the entry callback only seals registration.
+No BaseInitialization OnExit rescan, rewrite or INI deletion remains. Stop keeps
+the selected pair because the running game may still read it.
+
+P2-A: normalized canonical path order is explicit; later sources win, with
+conflicting source paths logged. A physical file applies at its lowest known
+path. Directory symlinks/junctions are skipped with diagnostics; file links are
+resolved/deduplicated. Missing r6/input is an empty scan; enumeration/stat errors
+fail the candidate. Malformed individual XMLs are deliberately rejected/logged.
+P2-B: untouched baseline duplicates are preserved. Explicit append updates every
+matching definition; explicit replacement replaces all matches at the first
+match's position. This removes dependence on unknown first/last precedence for
+an explicitly overridden key without rewriting unrelated original duplicates.
+Unkeyed blends append; two different sources can intentionally add the same
+relationship. We do not claim to have established the engine's duplicate policy.
+P2-F: root resolution is cached, validates bin/x64 and uses module-name return
+lengths with bounded growth. Ownership/recovery policy no longer deletes custom
+INI settings. Runtime publication is separate from game-state callbacks.
+
+P3-A: removed the unverified hash-whitelist warning. Read-once bytes get a
+length-framed SHA256 snapshot identity in diagnostics, not a vanilla verdict.
+No independently verified 2.5 vanilla whitelist has been invented. Logger flushes
+warnings/errors rather than every event; unchanged output avoids generation and
+selector writes. Content-addressed generations can be reused without rewriting.
+P3-B: removed unused ToWString and FileStream code rather than keeping latent
+memory/short-read/flush defects. Active native I/O has checked reads and writes.
+P3-C: corrected wide-string/v1 public API examples, removed the nonexistent BAT
+instruction, and documented manual removal, ownership, retention and Root
+Builder/MO2 effective-view cleanup. Package version remains 0.2.3.
+
+Durable validation
+
+- tests/input_loader.cpp and test_input_loader.py compile the actual helpers
+  against upstream-pinned pugixml with host warnings treated as errors. Long
+  attribute-name/value OOM cases cover the parser's unchecked internal name copy
+  too; build/research/input-loader-attribute-oom/before.log reproduces the previous
+  helper returning success. Ten
+  focused cases cover routing, keys, transitions, required attributes, strict
+  documents, duplicate policy, OOM, recovery, failed publication and reuse.
+- tests/native/input_loader_lifecycle.cpp loads the actual Windows DLL and
+  supplies a v1 SDK stub; tests/test_input_loader_windows.py drives isolated
+  fake roots. It covers registration before Main, repeated/concurrent calls,
+  post-entry/post-unload rejection, cancellation, base immutability, unavailable
+  logger, null SDK, callback rejection, bad bases/scans/cache directories,
+  custom/legacy selectors, denied commit, file aliases and multiple publishers.
+  Real-data runs use copied 2.5 XMLs described above, never the real game root.
+- tests/test_release.py verifies neutral installation, public API exports,
+  complete payload/license preservation and separate symbols. A cache-pointing
+  packaged INI is rejected even if it matches the source file.
+
+Reproduction (Windows executable; Wine optional on Linux):
+  cmake -S tests/native/input-loader -B build/tests/input-loader-windows \
+    -G 'Unix Makefiles' \
+    -DCMAKE_TOOLCHAIN_FILE="$PWD/cmake/toolchains/clang-cl-linux.cmake" \
+    -DXWIN_ROOT="$PWD/build/toolchains/xwin" -DCMAKE_BUILD_TYPE=Release
+  cmake --build build/tests/input-loader-windows --parallel 4
+  CP2077_REQUIRE_INPUT_TESTS=1 python3 -m unittest discover -s tests -v
+  CP2077_INPUT_HARNESS="$PWD/build/tests/input-loader-windows/input-loader-lifecycle.exe" \
+    CP2077_INPUT_RUNNER=wine WINEPREFIX="$PWD/build/research/input-loader-audit/wineprefix" \
+    WINEDEBUG=-all python3 -m unittest discover -s tests -p test_input_loader_windows.py -v
+
+CP2077_INPUT_DLL optionally selects a different built DLL; CP2077_INPUT_BASE
+selects a directory containing copied inputContexts.xml/inputUserMappings.xml.
+Without CP2077_INPUT_HARNESS, the Windows tests are explicitly skipped. Native
+Windows can omit the runner. A usable isolated Wine prefix needs the DLL's
+Microsoft runtime dependencies. Wine is not a build/release dependency.
+
+The workspace SDK initially had unrelated unexported edits. They were left
+intact. That work later saved its own 002-dynarray-lifetime.patch independently;
+the final isolated package includes that saved layer as well. The package build uses private clean SDK/Input Loader checkouts
+under build/validation/input-loader-durable with the saved patch stacks applied,
+existing pinned dependencies/toolchain and the changed root build/package rules.
+That build is an Input Loader-only distribution, not a replacement for the
+workspace's full-set dist/release. Its package verifier must run with
+CP2077_ROOT="$PWD/build/validation/input-loader-durable". No provenance check was
+disabled or silently overridden to permit unexported SDK contents.
+
+Remaining runtime acceptance
+
+- The game must accept cache/input_loader/game-<runtime>/<generation>/ paths
+  through its INI on a cold first launch, and read the published pair after
+  RED4ext startup registration. Real ordering is still unmeasured.
+- Native Windows replacement behavior and the actual MO2/Root Builder/Proton
+  deployment view require startup/profile-switch/disable/uninstall checks.
+- Journals are scoped by the SDK's product-version SemVer, which does not
+  distinguish executable hotfixes with the same product version. A valid new
+  baseline always produces its own snapshot/generation, but offline cleanup
+  is required when intentionally discarding an old profile/last-good fallback.
+- Failed-plugin cancellation requires cooperating callers; no SDK extension
+  exposes another plugin's Main outcome. No input engine reload is implemented.
+- Gameplay, vehicle/menu controls, save/load and save compatibility remain
+  untested. No game/MO2 deployment was performed.
+
+
+Recorded final validation and artifacts
+
+All checks passed on the final saved layer:
+- Host suite: 54 discovered tests; 44 executed/passed and ten optional Windows
+  groups explicitly skipped. The ten focused native helper cases are included.
+- Windows DLL suite: all ten integration groups passed under Wine with copied
+  2.5 XMLs, covering 26 DLL process invocations including concurrent publishers.
+  This final run used the actual clean-reconstructed packaged DLL.
+- Clean Release clang-cl/lld build and explicit ABI assertions passed.
+- Independent patch reconstruction passed for all six root projects.
+- Saved source/SDK provenance, AMD64 DLL, Main/Query/Supports/Add/TryAdd/Remove
+  exports, matching PDB, complete ZIP payload and SHA256SUMS passed.
+- Official source-boundary and root diff whitespace checks passed.
+- The previous attribute helper fails the added long-name allocation regression;
+  the final helper passes. This is a negative control, not a game test.
+
+Logs under build/logs/:
+  input-loader-full-tests.log, input-loader-windows-final.log,
+  input-loader-durable-package.log, input-loader-patch-check.log,
+  input-loader-clean-verify.log, input-loader-checksums.log,
+  input-loader-final-result.json.
+
+Runtime ZIP:
+  build/validation/input-loader-durable/dist/release/InputLoader-0.2.3-game2.5.zip
+Symbols ZIP:
+  build/validation/input-loader-durable/dist/release/symbols/InputLoader-0.2.3-game2.5-symbols.zip
+Manifest/SHA256SUMS: the same isolated dist/release directory.
+
+Input Loader layer 003 SHA256:
+  9509371a97ed9487c97869412fd74875bd32e731008a8fe18c5b91ddfb3a91ca
+DLL SHA256:
+  df1975577462bfccc6c356ad817f9af0e138901e624da4b428acc112c19bf886
+Source tree:
+  ad907e71b7f57a4702c009000ae66c16b602b8b1
+Source / SDK fingerprints:
+  410195ed636d83341749d32b5a08c8146dad3deb5500546bf04d9a97eeaefbea
+  e7d15e7e2ece8ac0363d5e077489e0b907cbeada7fb6e883fe5229a0f1365e2d
+Runtime ZIP SHA256:
+  dd59799d5937b9875cdcc0d533fdfb9c28262376b32fdbcb54a47b474fd6a0f0
+
+Additional primary API references for this implementation:
+https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-movefileexw
+https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfileinformationbyhandle
+https://learn.microsoft.com/en-us/windows/win32/api/fileapi/ns-fileapi-by_handle_file_information

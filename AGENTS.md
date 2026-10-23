@@ -238,8 +238,15 @@ Input Loader uses the shared SDK, header-only pinned spdlog with wide-character
 support and its upstream-pinned `deps/pugixml`; leave its other dependencies
 uninitialized. Keep `input_loader.dll`/`input_loader.pdb` names, upstream readme,
 license and `engine/config/platform/pc/input_loader.ini` in packages, plus XML
-parser/logging license notices. Its 2.30/2.31 vanilla XML hashes may warn on 2.5;
-input merging and first-launch behavior are untested. No address hooks are used.
+parser/logging license notices. The packaged INI must remain neutral, with no
+generated-cache overrides. Runtime publication uses immutable, version-scoped
+generation pairs and a single selector switch; keep the portable failure tests
+and optional Windows DLL harness in `tests/test_input_loader*.py`. Never overwrite
+a selected generation in place or remove it while another process may read it.
+Registrations are startup-only, sealed at BaseInitialization OnEnter; keep the
+legacy Add ABI alongside TryAdd/Remove. Read the packaged readme for cancellation,
+recovery and Root Builder cleanup rules. Generation paths and first-launch input
+behavior still need an actual 2.5 game test. No address hooks are used.
 
 ArchiveXL still lacks `JournalTree_ProcessJournalIndex` and
 `ResourceLoader_OnUpdate`: journal indexing and resource hot reload remain

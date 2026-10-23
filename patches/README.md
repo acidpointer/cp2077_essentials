@@ -26,7 +26,7 @@ identity stay consistent; do not create cumulative diffs over later layers.
 | archive-xl | Alexey-shishkin4's [PR 31](https://github.com/psiberx/cp2077-archive-xl/pull/31), including contributed fixes | Header include spelling for case-sensitive hosts |
 | codeware | KelpHect's [PR 63](https://github.com/psiberx/cp2077-codeware/pull/63), including contributed fixes | Explicit base-handle conversion under Clang |
 | tweak-xl | KelpHect's [PR 22](https://github.com/psiberx/cp2077-tweak-xl/pull/22) | Root build supplies the shared SDK |
-| input-loader | Pinned official upstream plus defensive behavior researched in Keen's InputLoaderReborn binary | Shared SDK v1 API adaptation; `002-re-input-hardening.patch` retains newer upstream startup/cache and action/id fixes; [evidence](../docs/input-loader-research.txt) |
+| input-loader | Pinned official upstream plus defensive behavior researched in Keen's InputLoaderReborn binary | Shared SDK v1 API adaptation; `002-re-input-hardening.patch` retains newer upstream startup/cache and action/id fixes; [binary evidence](../docs/input-loader-research.txt). `003-durable-input-pipeline.patch` implements transactional generation publication, deterministic snapshot merging and startup lifecycle fixes from the [2.5 audit](../docs/input-loader-2.5-audit.txt). |
 | red4ext-sdk | KelpHect's [retail layout update](https://github.com/wopss/RED4ext.SDK/pull/228), then [ArchiveScope::Mod correction](https://github.com/wopss/RED4ext.SDK/pull/229) | Correct RTTI include casing |
 
 Exact imported source revisions are retained in `sources.lock.json` provenance.

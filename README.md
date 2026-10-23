@@ -27,7 +27,7 @@ and build tools**. It does not vendor the upstream source trees.
 | ArchiveXL | [psiberx/cp2077-archive-xl](https://github.com/psiberx/cp2077-archive-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-archive-xl/pull/31) |
 | Codeware | [psiberx/cp2077-codeware](https://github.com/psiberx/cp2077-codeware) | [Community 2.5 port](https://github.com/psiberx/cp2077-codeware/pull/63), explicit handle conversion |
 | TweakXL | [psiberx/cp2077-tweak-xl](https://github.com/psiberx/cp2077-tweak-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-tweak-xl/pull/22) |
-| Input Loader | [jackhumbert/cyberpunk2077-input-loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) | Shared SDK build integration; runtime untested |
+| Input Loader | [jackhumbert/cyberpunk2077-input-loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) | Shared SDK; audited input/cache fixes; game untested |
 | Shared SDK | [wopss/RED4ext.SDK](https://github.com/wopss/RED4ext.SDK) | [Retail layout fixes](https://github.com/wopss/RED4ext.SDK/pull/228), [archive scope fix](https://github.com/wopss/RED4ext.SDK/pull/229), include casing |
 
 The Gitlinks record exact official upstream commits. Compatibility changes are
@@ -47,8 +47,11 @@ with a release. Disable the older versions of these five mods first.
   `red4ext/plugins/<name>/` layout. Their scripts, metadata and assets are
   required alongside the DLLs.
 - Keep Input Loader at `red4ext/plugins/input_loader/` and preserve its
-  `engine/config/platform/pc/input_loader.ini`. Its merged XMLs are generated
-  at runtime from the game's own `r6/config/` files; no vanilla XMLs are shipped.
+  neutral `engine/config/platform/pc/input_loader.ini`. At runtime a complete
+  merged XML pair is written below `r6/cache/input_loader/` before activating
+  its selector; no vanilla XMLs are shipped. When disabling after a successful
+  run, close the game and remove the managed selector as well as the DLL.
+  Check Root Builder/MO2's generated output when changing profiles.
 - On Proton, preserve the native `winmm` override and launch through MO2.
 - Use Release builds and a disposable save for testing. PDB archives are optional.
 
@@ -57,10 +60,12 @@ with a release. Disable the older versions of these five mods first.
 ArchiveXL's journal-index extension and resource hot reload remain disabled:
 their 2.5 addresses have not been identified. Element-level edits of cooked
 instanced-mesh and collision nodes are limited; whole-node edits remain available.
-Input Loader has passed a Release build and static checks only. Its upstream
-vanilla-input hash table covers 2.30/2.31, so vanilla 2.5 XMLs may trigger an
-unknown-file warning. The warning does not block merging; 2.5 input merging
-and first-launch behavior still need in-game testing.
+Input Loader has portable merge/publication regressions and an isolated Windows
+DLL test harness. Its generation paths, first-launch timing and input behavior
+still need a 2.5 game test. It records the baseline snapshot identity rather than
+classifying unverified 2.5 XML hashes as modified. The
+[compatibility audit](docs/input-loader-2.5-audit.txt) records the defects,
+implementation and remaining runtime checks.
 Defensive checks observed in Keen's InputLoaderReborn binary are backported
 in a separate patch; see the [research evidence](docs/input-loader-research.txt).
 The reported 2.5 crash of that binary remains undiagnosed.

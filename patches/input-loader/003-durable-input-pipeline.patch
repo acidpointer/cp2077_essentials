@@ -1,0 +1,1758 @@
+diff --git a/include/InputLoader.hpp b/include/InputLoader.hpp
+index 89f6e5b69bb2bc6a8df205c61568e6621786eacd..c9427642e14fd2cadbf124cd511ea2a0559a36b9 100644
+--- a/include/InputLoader.hpp
++++ b/include/InputLoader.hpp
+@@ -12,6 +12,11 @@
+ 
+ namespace InputLoader {
+ 
+-extern "C" DLLDIR void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t * str);
++// Register during Main(Load). Add retains its historical ABI; TryAdd reports
++// rejection. Repeated registration replaces the source snapshot, not its effects.
++extern "C" DLLDIR void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t *str);
++extern "C" DLLDIR bool TryAdd(RED4ext::v1::PluginHandle aHandle, const wchar_t *str);
++// Cancel before BaseInitialization OnEnter if a caller's own startup fails.
++extern "C" DLLDIR bool Remove(RED4ext::v1::PluginHandle aHandle, const wchar_t *str);
+ 
+ }
+diff --git a/input_loader.ini b/input_loader.ini
+index 5c088ef954ead00591c170732c20ce39aec8563c..4288afbdc5961975598fdad4feff701cce2fb530 100644
+--- a/input_loader.ini
++++ b/input_loader.ini
+@@ -1,3 +1,2 @@
++; Input Loader essentials: neutral until a complete cache pair is ready
+ [Player/Input]
+-InputContextFile = "cache\inputContexts.xml"
+-InputMappingFile = "cache\inputUserMappings.xml"
+\ No newline at end of file
+diff --git a/readme.md b/readme.md
+index 83e0a4e6c868dbdc06cbc77847526e87ecf78ee4..d708c4993ae2e66808b52f8a66e80b0f58e38cbe 100644
+--- a/readme.md
++++ b/readme.md
+@@ -1,15 +1,36 @@
+ # Cyberpunk 2077 Input Loader
+ 
+-This plugin looks for all `r6/input/*.xml` files and merges them with the appropriate input config file from `r6/config/` and saves results to `r6/cache/`. A configuration file is written to `engine/config/platform/pc/input_loader.ini`, which tells the game to load the merged .xml files.
++This essentials build merges XML files below `r6/input/` with the game's
++`r6/config/inputContexts.xml` and `inputUserMappings.xml`. It writes a complete
++immutable generation below `r6/cache/input_loader/game-<runtime>/` before
++updating `engine/config/platform/pc/input_loader.ini` to select that pair.
++The packaged INI is neutral: installing it cannot select missing cache files
++when the plugin never loads. Original mod version 0.2.3 is retained; use the
++essentials manifest to identify patched builds.
+ 
+ ## Usage
+ 
+ 1. Install [RED4ext](https://github.com/WopsS/RED4ext)
+-2. Install Input Loader using the [latest release](https://github.com/jackhumbert/cyberpunk2077-input-loader/releases/latest), at `red4ext/plugins/`
++2. Install the essentials Input Loader runtime ZIP, preserving its paths.
+ 3. Place a mod's custom .xml file in `r6/input/`
+ 4. Start the game
+ 
+-A log file will be written to `red4ext/logs/input_loader.log` every start-up, if you're having problems. The game's own `r6/config/inputContexts.xml` and `inputUserMappings.xml` must be vanilla (mods that overwrite them break every merge); the log warns when they are not.
++Diagnostics go to `red4ext/logs/input_loader.log` when writable, with console/debug
++fallback. An unavailable file logger does not block loading. Keep the game's
++own base XMLs intact; mods belong under `r6/input/`. The log records the runtime
++and a length-framed SHA256 identity of the bytes read once at startup. This
++identity is for diagnostics, not a verified vanilla-data whitelist.
++
++Discovery accepts regular files with any case of `.xml`, recursively, in
++ascending case-normalized canonical path order. Later files override earlier
++ones, with conflict paths logged. Canonical paths determine ordering; a physical file identity (volume and
++128-bit file ID) deduplicates symlinks, hardlinks and scanner/API registrations.
++A file applies at its lowest known canonical-path position. Separate files
++with identical contents remain distinct sources. Directory symlinks/junctions are skipped and logged; file
++symlinks resolve to their target. Malformed or unsupported individual files
++are rejected with a warning. Directory enumeration errors fail startup rather
++than activate a partial scan. An absent optional `r6/input/` is an empty scan.
++There is no late rescan or engine input reload.
+ 
+ ## Dynamic loading with a RED4ext plugin
+ 
+@@ -18,20 +39,40 @@ Instead of placing .xml files in `r6/input/`, you can dynamically add an input f
+ ```cpp
+ #include <InputLoader.hpp>
+ 
+-RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, 
+-                                        RED4ext::EMainReason aReason, 
+-                                        const RED4ext::Sdk *aSdk)
++RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
++                                        RED4ext::v1::EMainReason aReason,
++                                        const RED4ext::v1::Sdk *aSdk)
+ {
+     switch (aReason) {
+-        case RED4ext::EMainReason::Load: {
+-            InputLoader::Add(aHandle, "inputs.xml");
+-        }
++        case RED4ext::v1::EMainReason::Load:
++            return InputLoader::TryAdd(aHandle, L"inputs.xml");
++        default:
++            break;
+     }
+     return true;
+ }
+ ```
+ 
+-This will prevent the .xml file from being merged if the RED4ext plugin doesn't load (when the game's version doesn't match, etc).
++Use a non-null handle for the calling plugin. Relative wide paths resolve from
++its DLL directory; absolute paths are accepted. Call from `Main(Load)`, outside
++`DllMain`. Registrations before Input Loader's Main are validated and queued;
++a true result then means accepted for startup, not yet published. Afterwards,
++TryAdd returns true only when the complete candidate is accepted/published.
++Legacy `Add` keeps its void ABI and logs failures; prefer `TryAdd` for new code.
++
++Calls are serialized across threads. A repeated path updates its stored
++snapshot and rebuilds from the immutable base; append effects do not accumulate.
++The startup window closes at BaseInitialization OnEnter. Calls after that point,
++after failed startup, or after unload are rejected without changing the files.
++Register before the game starts; the callback does not reload engine state.
++
++If your plugin fails after registering, call
++`InputLoader::Remove(aHandle, L"inputs.xml")` before returning failure, during
++the same startup window. It removes that owner's registration; scanned sources
++remain active. Unloaded handles are pruned at subsequent collection/publication,
++but a still-mapped DLL can have failed initialization: HMODULE cannot prove a
++plugin's load outcome. Cancellation is the caller's responsibility. Inputs are
++never automatically removed merely because a plugin's Main returns false.
+ 
+ ## Node type
+ 
+@@ -51,10 +92,22 @@ Only children of `<bindings>` are supported currently, but they can all be in th
+     * repeat
+     * toggle
+     * acceptedEvents
++    * transition
+ 
+ ## Node attributes
+ 
+-You can add `append="true"` to a node to avoid overwriting. This is the recommeneded method for adding functionality, as multiple mods will be able to do this without conflicts. See below for an example. 
++Every file must have exactly one `<bindings>` root. Named kinds require a
++nonempty `name`; buttonGroup uses `id`; hold, multitap, repeat, toggle,
++acceptedEvents and transition use `action`. A new/replacement mapping requires
++`type`. A blend is unkeyed and requires `from`, `to` and `event`.
++
++`append="true"` adds children while retaining existing attributes. If a key has
++multiple baseline definitions, explicit append updates every match; explicit
++replacement replaces all matches at the first match's position. Untouched base
++duplicates remain intact. Blend entries always append. Different sources can
++still intentionally append identical children; only source aliases/repeated
++registrations are deduplicated. New unresolved action-to-mapping references
++produce warnings, since some names can be supplied by the engine.
+ 
+ ## Example .xml file
+ 
+@@ -76,4 +129,35 @@ You can add `append="true"` to a node to avoid overwriting. This is the recommen
+ 
+ ## Uninstallation
+ 
+-You can run `red4ext/plugins/input_loader_uninstall.bat`, which will delete all of the plugin files, as well as the merged cache files, and the game options file that tells the cache files to be used.
+\ No newline at end of file
++Close all game processes first. Remove `red4ext/plugins/input_loader/` and the
++managed `engine/config/platform/pc/input_loader.ini`, then remove
++`r6/cache/input_loader/` and the optional `.input_loader.lock` in the INI folder.
++Legacy installations can also leave `r6/cache/inputContexts.xml` and
++`inputUserMappings.xml`. No uninstall BAT is supplied. Preserve a custom INI's
++unrelated settings and remove only Input Loader's overrides manually.
++
++Removing only the DLL after a successful run leaves the previous selector and
++cache active. Root Builder/MO2 may preserve runtime output in its overwrite or
++backup/deployment trees: check the effective game-root view and those generated
++files when disabling, changing profiles or uninstalling. Do not delete a
++selected generation while any game process may still read it.
++
++## Publication and recovery
++
++Both generated XMLs are validated, flushed, closed and read back before a
++same-directory selector replacement activates them. Failed writes/registrations
++retain the previous complete pair. A per-root lock serializes publishers across
++processes. Unchanged output reuses its generation. Existing generation contents
++are never repaired in place. The last-good selector journal is runtime-scoped;
++a different game version cannot restore its cached XMLs. Unknown custom INI
++content is preserved and loading fails with a diagnostic. Recognized unsafe
++legacy or damaged managed selectors are restored from a valid journal or made
++neutral before reading the base files. A valid previous pair can remain active
++if new startup validation fails.
++
++Old generations and abandoned staging files are retained deliberately, because
++another process may still use them. With every game process closed, deleting
++`r6/cache/input_loader/` together with the managed INI safely resets this state.
++Power-loss durability depends on the filesystem; Wine tests cannot establish
++all native Windows or MO2 replacement behavior. The game's acceptance/timing
++of generation paths and actual 2.5 input behavior still require a game test.
+\ No newline at end of file
+diff --git a/src/Files.cpp b/src/Files.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..2f21e5a12ad165c7d946e3fb99dc546a16825076
+--- /dev/null
++++ b/src/Files.cpp
+@@ -0,0 +1,166 @@
++#include "stdafx.hpp"
++#include "Files.hpp"
++#include <bcrypt.h>
++#include <array>
++#include <system_error>
++
++namespace InputLoader {
++namespace {
++[[noreturn]] void Failed(const char* operation) {
++  throw std::system_error(static_cast<int>(GetLastError()), std::system_category(), operation);
++}
++struct Handle {
++  HANDLE value;
++  explicit Handle(HANDLE h) : value(h) {}
++  ~Handle() { if (value != INVALID_HANDLE_VALUE) CloseHandle(value); }
++  Handle(const Handle&) = delete;
++  Handle& operator=(const Handle&) = delete;
++};
++std::wstring NativePath(const fs::path& path) {
++  auto name = fs::absolute(path).lexically_normal().wstring();
++  if (name.rfind(L"\\\\?\\", 0) == 0) return name;
++  if (name.rfind(L"\\\\", 0) == 0) return L"\\\\?\\UNC\\" + name.substr(2);
++  return L"\\\\?\\" + name;
++}
++std::string Hex(const unsigned char* bytes, size_t size) {
++  const char* digits = "0123456789abcdef";
++  std::string text;
++  for (size_t i = 0; i < size; ++i) { text += digits[bytes[i] >> 4]; text += digits[bytes[i] & 15]; }
++  return text;
++}
++}
++std::string Hash(const std::string& first, const std::string& second) {
++  BCRYPT_ALG_HANDLE algorithm = nullptr;
++  BCRYPT_HASH_HANDLE hash = nullptr;
++  if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
++    throw std::runtime_error("SHA256 provider unavailable");
++  try {
++    if (!BCRYPT_SUCCESS(BCryptCreateHash(algorithm, &hash, nullptr, 0, nullptr, 0, 0)))
++      throw std::runtime_error("SHA256 initialization failed");
++    for (const auto* text : {&first, &second}) {
++      size_t position = 0;
++      while (position < text->size()) {
++        const auto size = static_cast<ULONG>(std::min<size_t>(65536, text->size() - position));
++        if (!BCRYPT_SUCCESS(BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<char*>(text->data() + position)), size, 0)))
++          throw std::runtime_error("SHA256 update failed");
++        position += size;
++      }
++      // Length framing distinguishes different pairs with the same concatenation.
++      const uint64_t length = text->size();
++      if (!BCRYPT_SUCCESS(BCryptHashData(hash, reinterpret_cast<PUCHAR>(const_cast<uint64_t*>(&length)), sizeof(length), 0)))
++        throw std::runtime_error("SHA256 framing failed");
++    }
++    std::array<unsigned char, 32> digest{};
++    if (!BCRYPT_SUCCESS(BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0)))
++      throw std::runtime_error("SHA256 finalization failed");
++    BCryptDestroyHash(hash); hash = nullptr;
++    BCryptCloseAlgorithmProvider(algorithm, 0); algorithm = nullptr;
++    return Hex(digest.data(), digest.size());
++  } catch (...) {
++    if (hash) BCryptDestroyHash(hash);
++    if (algorithm) BCryptCloseAlgorithmProvider(algorithm, 0);
++    throw;
++  }
++}
++std::string Utf8(const fs::path& path) {
++  const auto text = path.generic_u8string();
++  return {reinterpret_cast<const char*>(text.data()), text.size()};
++}
++fs::path Canonical(const fs::path& path) { return fs::canonical(path); }
++bool LinkedDirectory(const fs::path& path) {
++  const auto attributes = GetFileAttributesW(NativePath(path).c_str());
++  if (attributes == INVALID_FILE_ATTRIBUTES) Failed("stat input directory");
++  return (attributes & FILE_ATTRIBUTE_DIRECTORY) && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
++}
++std::wstring PathKey(const fs::path& path) {
++  // Windows ordinal case folding is independent of the process's C locale.
++  const auto text = path.lexically_normal().generic_wstring();
++  if (text.size() > INT_MAX) throw std::length_error("path is too long");
++  const auto size = static_cast<int>(text.size());
++  const int needed = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, text.data(), size, nullptr, 0, nullptr, nullptr, 0);
++  if (!needed) Failed("normalize path");
++  std::wstring result(needed, L'\0');
++  if (!LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_UPPERCASE, text.data(), size, result.data(), needed, nullptr, nullptr, 0))
++    Failed("normalize path");
++  return result;
++}
++fs::path ModuleFile(HMODULE module) {
++  for (size_t capacity = MAX_PATH + 1; capacity <= 65536; capacity *= 2) {
++    std::wstring text(capacity, L'\0');
++    const DWORD size = GetModuleFileNameW(module, text.data(), static_cast<DWORD>(text.size()));
++    if (!size) Failed("GetModuleFileNameW");
++    if (size < text.size()) { text.resize(size); return fs::path(text); }
++  }
++  throw std::length_error("module path exceeds Windows path limit");
++}
++bool NativeStorage::Exists(const fs::path& path) {
++  const DWORD attrs = GetFileAttributesW(NativePath(path).c_str());
++  if (attrs != INVALID_FILE_ATTRIBUTES) return true;
++  const auto code = GetLastError();
++  if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) return false;
++  Failed("stat file");
++}
++std::string NativeStorage::Read(const fs::path& path) {
++  return Snapshot(path).first;
++}
++std::pair<std::string, std::string> NativeStorage::Snapshot(const fs::path& path) {
++  Handle file(CreateFileW(NativePath(path).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr));
++  if (file.value == INVALID_HANDLE_VALUE) Failed("open input");
++  FILE_ID_INFO identity{};
++  if (!GetFileInformationByHandleEx(file.value, FileIdInfo, &identity, sizeof(identity))) Failed("identify input file");
++  const auto key = Hex(reinterpret_cast<const unsigned char*>(&identity.VolumeSerialNumber), sizeof(identity.VolumeSerialNumber)) +
++                   Hex(identity.FileId.Identifier, sizeof(identity.FileId.Identifier));
++  std::string text;
++  std::array<char, 65536> buffer{};
++  for (;;) {
++    DWORD size = 0;
++    if (!ReadFile(file.value, buffer.data(), static_cast<DWORD>(buffer.size()), &size, nullptr)) Failed("read input");
++    if (!size) break;
++    text.append(buffer.data(), size);
++  }
++  return {std::move(text), key};
++}
++void NativeStorage::Directories(const fs::path& path) { fs::create_directories(fs::path(NativePath(path))); }
++void NativeStorage::Write(const fs::path& path, const std::string& text) {
++  // Generation files and selector temporaries must never replace an existing file.
++  Handle file(CreateFileW(NativePath(path).c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr));
++  if (file.value == INVALID_HANDLE_VALUE) Failed("create staged file");
++  size_t offset = 0;
++  while (offset < text.size()) {
++    DWORD written = 0;
++    const auto size = static_cast<DWORD>(std::min<size_t>(65536, text.size() - offset));
++    if (!WriteFile(file.value, text.data() + offset, size, &written, nullptr)) Failed("write staged file");
++    if (!written) throw std::runtime_error("staged write made no progress");
++    offset += written;
++  }
++  if (!FlushFileBuffers(file.value)) Failed("flush staged file");
++  const HANDLE closing = file.value;
++  file.value = INVALID_HANDLE_VALUE;
++  if (!CloseHandle(closing)) Failed("close staged file");
++}
++void NativeStorage::Replace(const fs::path& temporary, const fs::path& target) {
++  if (!MoveFileExW(NativePath(temporary).c_str(), NativePath(target).c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
++    Failed("commit input selector");
++}
++std::string NativeStorage::Unique() {
++  std::array<unsigned char, 16> bytes{};
++  if (!BCRYPT_SUCCESS(BCryptGenRandom(nullptr, bytes.data(), static_cast<ULONG>(bytes.size()), BCRYPT_USE_SYSTEM_PREFERRED_RNG)))
++    throw std::runtime_error("generation nonce unavailable");
++  return Hex(bytes.data(), bytes.size());
++}
++PublicationLock::PublicationLock(const fs::path& root) {
++  NativeStorage io;
++  const auto directory = root / "engine/config/platform/pc";
++  io.Directories(directory);
++  const auto path = NativePath(directory / ".input_loader.lock");
++  for (int attempt = 0; attempt < 500; ++attempt) {
++    handle = CreateFileW(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
++    if (handle != INVALID_HANDLE_VALUE) return;
++    const auto error = GetLastError();
++    if (error != ERROR_SHARING_VIOLATION && error != ERROR_LOCK_VIOLATION) Failed("lock input publication");
++    Sleep(10);
++  }
++  throw std::runtime_error("input publication lock timed out; previous configuration preserved");
++}
++PublicationLock::~PublicationLock() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
++} // namespace InputLoader
+diff --git a/src/Files.hpp b/src/Files.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..8ddfe04a1026fcaf2268ec3579b9fec34bb95823
+--- /dev/null
++++ b/src/Files.hpp
+@@ -0,0 +1,32 @@
++#pragma once
++#include "Store.hpp"
++#include <Windows.h>
++
++namespace InputLoader {
++std::string Hash(const std::string& first, const std::string& second = {});
++std::string Utf8(const std::filesystem::path& path);
++std::wstring PathKey(const std::filesystem::path& path);
++std::filesystem::path Canonical(const std::filesystem::path& path);
++std::filesystem::path ModuleFile(HMODULE module);
++bool LinkedDirectory(const std::filesystem::path& path);
++
++struct NativeStorage : Storage {
++  // Content and file identity are read through the same handle, with writes and
++  // replacement denied until the snapshot is complete.
++  std::pair<std::string, std::string> Snapshot(const fs::path& path);
++  bool Exists(const fs::path& path) override;
++  std::string Read(const fs::path& path) override;
++  void Directories(const fs::path& path) override;
++  void Write(const fs::path& path, const std::string& text) override;
++  void Replace(const fs::path& temporary, const fs::path& target) override;
++  std::string Unique() override;
++};
++class PublicationLock {
++  HANDLE handle = INVALID_HANDLE_VALUE;
++public:
++  explicit PublicationLock(const fs::path& root);
++  ~PublicationLock();
++  PublicationLock(const PublicationLock&) = delete;
++  PublicationLock& operator=(const PublicationLock&) = delete;
++};
++} // namespace InputLoader
+diff --git a/src/IO/FileStream.cpp b/src/IO/FileStream.cpp
+deleted file mode 100644
+index b099807e30193319ddadfe1c95dba8f92810aa69..0000000000000000000000000000000000000000
+--- a/src/IO/FileStream.cpp
++++ /dev/null
+@@ -1,100 +0,0 @@
+-#include "stdafx.hpp"
+-#include "FileStream.hpp"
+-#include "Utils.hpp"
+-
+-FileStream::FileStream(const std::filesystem::path& aPath, uint32_t aDesiredAccess, uint32_t aShareMode,
+-                       uint32_t aCreationDisposition, uint32_t aFlagsAndAttributes)
+-    : BaseStream(0xA)
+-    , m_path(aPath)
+-{
+-    m_file = CreateFile(aPath.c_str(), aDesiredAccess, aShareMode, nullptr, aCreationDisposition, aFlagsAndAttributes,
+-                        nullptr);
+-}
+-
+-FileStream::~FileStream()
+-{
+-    if (m_file != INVALID_HANDLE_VALUE)
+-    {
+-        CloseHandle(m_file);
+-    }
+-}
+-
+-bool FileStream::IsOpen() const
+-{
+-    return m_file != INVALID_HANDLE_VALUE;
+-}
+-
+-void* FileStream::ReadWrite(void* aBuffer, uint32_t aLength)
+-{
+-    DWORD numberOfBytesRead;
+-    if (!ReadFile(m_file, aBuffer, aLength, &numberOfBytesRead, nullptr))
+-    {
+-        auto fileName = m_path.stem();
+-        spdlog::warn(L"[{}] read error: requested_bytes={}, read={}, errno={:#x}", fileName.c_str(), aLength,
+-                     numberOfBytesRead, GetLastError());
+-
+-        return nullptr;
+-    }
+-
+-    return aBuffer;
+-}
+-
+-size_t FileStream::GetPointerPosition()
+-{
+-    LARGE_INTEGER filePointer{};
+-    if (!SetFilePointerEx(m_file, {0}, &filePointer, FILE_CURRENT))
+-    {
+-        filePointer.QuadPart = -1;
+-    }
+-
+-    return filePointer.QuadPart;
+-}
+-
+-size_t FileStream::GetLength()
+-{
+-    LARGE_INTEGER result{};
+-    if (IsOpen() && GetFileSizeEx(m_file, &result))
+-    {
+-        return result.QuadPart;
+-    }
+-    else
+-    {
+-        result.QuadPart = 0;
+-    }
+-
+-    return result.QuadPart;
+-}
+-
+-bool FileStream::Seek(size_t aDistance)
+-{
+-    return Seek(aDistance, FILE_CURRENT);
+-}
+-
+-bool FileStream::Seek(size_t aDistance, uint32_t aMoveMethod)
+-{
+-    LARGE_INTEGER distance;
+-    distance.QuadPart = aDistance;
+-
+-    if (!SetFilePointerEx(m_file, distance, nullptr, aMoveMethod))
+-    {
+-        auto fileName = m_path.stem();
+-        auto length = GetLength();
+-
+-        spdlog::warn(L"[{}] seek error: distance={}, method={}, file size={}, errno={:#x}", fileName.c_str(), aDistance,
+-                     aMoveMethod, length, GetLastError());
+-
+-        return false;
+-    }
+-
+-    return true;
+-}
+-
+-bool FileStream::Flush()
+-{
+-    return true;
+-}
+-
+-std::filesystem::path FileStream::GetPath() const
+-{
+-    return m_path;
+-}
+diff --git a/src/IO/FileStream.hpp b/src/IO/FileStream.hpp
+deleted file mode 100644
+index 4db1207d0a3a32a91423ff1b3d5a84a3121bfddb..0000000000000000000000000000000000000000
+--- a/src/IO/FileStream.hpp
++++ /dev/null
+@@ -1,25 +0,0 @@
+-#pragma once
+-
+-class FileStream : public RED4ext::BaseStream
+-{
+-public:
+-    FileStream(const std::filesystem::path& aPath, uint32_t aDesiredAccess, uint32_t aShareMode,
+-               uint32_t aCreationDisposition, uint32_t aFlagsAndAttributes);
+-    ~FileStream();
+-
+-    bool IsOpen() const;
+-
+-    virtual void* ReadWrite(void* aBuffer, uint32_t aLength) override;
+-    virtual size_t GetPointerPosition() override;
+-    virtual size_t GetLength() override;
+-
+-    virtual bool Seek(size_t aDistance) override;
+-    bool Seek(size_t aDistance, uint32_t aMoveMethod);
+-
+-    virtual bool Flush() override;
+-    std::filesystem::path GetPath() const;
+-
+-private:
+-    HANDLE m_file;
+-    std::filesystem::path m_path;
+-};
+diff --git a/src/Main.cpp b/src/Main.cpp
+index 4df46f469ffb7cb7074007567f24495096cc0f31..9c11f8df955b4b0a910eaefc3a9610b318c54a9d 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -1,457 +1,286 @@
+-#include <iostream>
+-
+-#include <RED4ext/RED4ext.hpp>
+-
+-#include <pugixml.hpp>
+-
+-#include "Merge.hpp"
+-#include "Utils.hpp"
+ #include "stdafx.hpp"
++#include "Files.hpp"
++#include "Utils.hpp"
+ #include <InputLoader.hpp>
+-
+-#include <bcrypt.h>
++#include <map>
++#include <mutex>
++#include <set>
+ 
+ namespace InputLoader {
+-pugi::xml_document LoadDocument(std::filesystem::path path,
+-                                bool *status = nullptr) {
++namespace {
++enum class Phase { Collecting, Starting, Ready, Sealed, Stopped, Failed };
++struct Owner { HMODULE handle; fs::path module; };
++struct Source {
++  fs::path path;
++  std::string text;
++  std::string identity;
++  bool discovered = false;
++  std::map<HMODULE, Owner> owners;
++};
++struct Configuration { pugi::xml_document contexts, mappings; };
++struct Runtime {
++  std::mutex mutex;
++  Phase phase = Phase::Collecting;
++  fs::path root;
++  std::string scope;
++  NativeStorage io;
++  std::unique_ptr<Store> store;
++  std::unique_ptr<Configuration> base, active;
++  std::map<std::wstring, Source> sources;
++};
++Runtime runtime;
++void Info(std::string_view text) noexcept { Utils::Log(spdlog::level::info, text); }
++void Warn(std::string_view text) noexcept { Utils::Log(spdlog::level::warn, text); }
++void Report(std::string_view prefix, const char* detail) noexcept {
++  // Even constructing a diagnostic can fail during OOM. Never let that second
++  // exception escape an exported function into another plugin or the loader.
++  try { Utils::Log(spdlog::level::err, std::string(prefix) + detail); }
++  catch (...) { OutputDebugStringA("Input Loader: operation rejected; diagnostic unavailable\n"); }
++}
+ 
++Source ReadSource(const fs::path& path, NativeStorage& io) {
++  auto snapshot = io.Snapshot(path);
++  Source source{Canonical(path), std::move(snapshot.first), std::move(snapshot.second), false, {}};
+   pugi::xml_document document;
+-  if (path.is_relative()) {
+-    path = Utils::GetRootDir() / path;
+-  }
+-  pugi::xml_parse_result result;
+-  if (!ReadInputDocument(document, path, result)) {
+-    if (!result) {
+-      spdlog::error(L"XML document parsed with errors: {}", path.c_str());
+-      spdlog::error("Error description: {}", result.description());
+-      spdlog::error("Error offset: {}", result.offset);
+-    } else {
+-      spdlog::error(L"XML document has no <bindings> root: {}", path.c_str());
++  if (!ParseDocument(document, source.text)) throw std::runtime_error("invalid input XML/attributes: " + Utf8(path));
++  return source;
++}
++bool Alive(const Owner& owner) {
++  try { return PathKey(Canonical(ModuleFile(owner.handle))) == PathKey(owner.module); }
++  catch (const std::bad_alloc&) { throw; } // OOM is not evidence of an unloaded owner
++  catch (...) { return false; }
++}
++void Prune(std::map<std::wstring, Source>& sources) {
++  for (auto it = sources.begin(); it != sources.end();) {
++    for (auto owner = it->second.owners.begin(); owner != it->second.owners.end();) {
++      if (!Alive(owner->second)) owner = it->second.owners.erase(owner);
++      else ++owner;
+     }
+-    if (status)
+-      *status = false;
+-    return document;
++    if (!it->second.discovered && it->second.owners.empty()) it = sources.erase(it);
++    else ++it;
+   }
+-
+-  spdlog::debug(L"Loaded document: {}", path.c_str());
+-
+-  if (status)
+-    *status = true;
+-  return document;
+ }
+-
+-pugi::xml_document inputContextsOriginal;
+-pugi::xml_document inputUserMappingsOriginal;
+-
+-static std::vector<std::filesystem::path> document_paths;
+-
+-// The game reads engine/config/platform/pc/input_loader.ini and loads the xmls
+-// it names from r6/. If the ini survives while the cache xmls are missing or
+-// empty (deleted cache, renamed r6/cache, partial uninstall) the game shows
+-// "PRESS [None] TO CONTINUE" and crashes on Space, so never leave that state.
+-static const std::filesystem::path iniPath =
+-    "engine/config/platform/pc/input_loader.ini";
+-static const std::filesystem::path cacheDir = "r6/cache";
+-static const std::filesystem::path cacheContextsPath =
+-    "r6/cache/inputContexts.xml";
+-static const std::filesystem::path cacheMappingsPath =
+-    "r6/cache/inputUserMappings.xml";
+-// Paths are relative to r6/. Same content as the input_loader.ini in the zip.
+-static const char *iniContent =
+-    "[Player/Input]\r\n"
+-    "InputContextFile = \"cache\\inputContexts.xml\"\r\n"
+-    "InputMappingFile = \"cache\\inputUserMappings.xml\"";
+-
+-// A cache xml the game can load: present, non-empty, and parseable with a
+-// <bindings> root (a crash during save can leave a truncated file).
+-bool IsUsableFile(const std::filesystem::path &path) {
+-  std::error_code ec;
+-  if (!std::filesystem::is_regular_file(path, ec) ||
+-      std::filesystem::file_size(path, ec) == 0 || ec)
+-    return false;
+-  pugi::xml_document document;
+-  pugi::xml_parse_result result;
+-  return ReadInputDocument(document, path, result);
+-}
+-
+-// Known vanilla r6/config xmls: size and SHA-256 of the file bytes as the game
+-// ships them (CRLF). Another mod overwriting a base file breaks every merge
+-// built on it (NuclearPulse, harry20199vn), so warn when one is not on this
+-// list. Add the new hashes after a game patch (Get-FileHash on r6/config).
+-struct VanillaFile {
+-  const char *version;
+-  uintmax_t size;
+-  const char *sha256;
+-};
+-static const VanillaFile vanillaContexts[] = {
+-    {"2.30", 103219,
+-     "9130124230e53d5d1ca094795c4794904f041b275ef2a8cfdd65eb2d6a43c6f3"},
+-    {"2.31", 103646,
+-     "ce780595b77a060119a063434eb4b7dab2312e55252c772ef7ff17428bb90d70"},
+-};
+-static const VanillaFile vanillaMappings[] = {
+-    {"2.30/2.31", 74062,
+-     "a57bd58879f3846f300ec9c30fc8111890b9d3aeb6b82842dc4070930e0ff48e"},
+-};
+-
+-std::string Sha256Hex(const std::filesystem::path &path) {
+-  std::ifstream in(path, std::ios::binary);
+-  std::string data((std::istreambuf_iterator<char>(in)),
+-                   std::istreambuf_iterator<char>());
+-  std::string hex;
+-  BCRYPT_ALG_HANDLE alg = nullptr;
+-  if (!BCRYPT_SUCCESS(
+-          BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0)))
+-    return hex;
+-  BCRYPT_HASH_HANDLE hash = nullptr;
+-  if (BCRYPT_SUCCESS(BCryptCreateHash(alg, &hash, nullptr, 0, nullptr, 0, 0))) {
+-    UCHAR digest[32];
+-    if (BCRYPT_SUCCESS(BCryptHashData(hash, (PUCHAR)data.data(),
+-                                      (ULONG)data.size(), 0)) &&
+-        BCRYPT_SUCCESS(BCryptFinishHash(hash, digest, sizeof(digest), 0))) {
+-      static const char *digits = "0123456789abcdef";
+-      for (UCHAR b : digest) {
+-        hex += digits[b >> 4];
+-        hex += digits[b & 15];
+-      }
++std::set<std::string> Unresolved(const Configuration& config) {
++  std::set<std::string> names, missing;
++  for (auto node : config.mappings.child("bindings").children("mapping")) names.emplace(node.attribute("name").value());
++  for (auto context : config.contexts.child("bindings").children("context")) {
++    for (auto action : context.children("action")) {
++      const std::string name = action.attribute("map").value();
++      if (!name.empty() && !names.count(name)) missing.insert(name);
+     }
+-    BCryptDestroyHash(hash);
+   }
+-  BCryptCloseAlgorithmProvider(alg, 0);
+-  return hex;
++  return missing;
+ }
+-
+-template <size_t N>
+-void CheckVanilla(const std::filesystem::path &relPath,
+-                  const VanillaFile (&known)[N]) {
+-  auto path = Utils::GetRootDir() / relPath;
+-  std::error_code ec;
+-  auto size = std::filesystem::file_size(path, ec);
+-  auto hash = Sha256Hex(path);
+-  for (const auto &entry : known) {
+-    if (entry.size == size && hash == entry.sha256) {
+-      spdlog::info("'{}' is the vanilla {} file ({} bytes)", relPath.string(),
+-                   entry.version, size);
+-      return;
++std::unique_ptr<Configuration> Build(const std::map<std::wstring, Source>& sources) {
++  auto result = std::make_unique<Configuration>();
++  CopyDocumentChecked(result->contexts, runtime.base->contexts);
++  CopyDocumentChecked(result->mappings, runtime.base->mappings);
++  std::map<std::string, fs::path> previous;
++  std::set<std::string> applied;
++  for (const auto& [pathKey, source] : sources) {
++    (void)pathKey;
++    if (!applied.insert(source.identity).second) continue;
++    pugi::xml_document input;
++    if (!ParseDocument(input, source.text)) throw std::runtime_error("source snapshot became invalid");
++    for (auto node : input.child("bindings").children()) {
++      if (node.type() != pugi::node_element) continue;
++      const char* key = KeyAttribute(node.name());
++      const std::string identity = std::string(node.name()) + ":" + (key ? node.attribute(key).value() : "<unkeyed>");
++      if (key && previous.count(identity))
++        Info("Override " + identity + ": " + Utf8(previous.at(identity)) + " -> " + Utf8(source.path));
++      const auto merged = MergeBinding(result->contexts, result->mappings, node);
++      if (merged == MergeResult::Invalid || merged == MergeResult::MissingBindings || merged == MergeResult::Unsupported)
++        throw std::runtime_error("invalid merge operation " + identity + " in " + Utf8(source.path));
++      previous[identity] = source.path;
+     }
+   }
+-  spdlog::warn("'{}' is not a known vanilla file ({} bytes, sha256 {}): either "
+-               "a newer game patch or another mod overwrote it. The base "
+-               "r6/config xmls must be vanilla; mod inputs belong in r6/input",
+-               relPath.string(), size, hash);
++  if (!ValidPair(result->contexts, result->mappings)) throw std::runtime_error("merged configuration is invalid");
++  const auto baseline = Unresolved(*runtime.base);
++  for (const auto& name : Unresolved(*result)) {
++    if (!baseline.count(name)) Warn("Unresolved new action mapping '" + name + "' (may be provided by the engine)");
++  }
++  return result;
+ }
+-
+-bool HaveOriginals() {
+-  return inputContextsOriginal.child("bindings") &&
+-         inputUserMappingsOriginal.child("bindings");
++void Publish(std::unique_ptr<Configuration> candidate) {
++  auto contexts = Serialize(candidate->contexts);
++  auto mappings = Serialize(candidate->mappings);
++  PublicationLock lock(runtime.root);
++  // Re-read the global selector under the cross-process lock. Another process
++  // may have published since our previous transaction.
++  runtime.store->Recover();
++  const bool changed = runtime.store->Publish(contexts, mappings, Hash(contexts, mappings));
++  runtime.active = std::move(candidate);
++  if (runtime.store->JournalFailed()) Warn("Input generation is active, but backup-selector update failed");
++  Info(changed ? "Complete input generation activated" : "Input generation unchanged; no files rewritten");
+ }
+-
+-void RemoveIni() {
+-  auto path = Utils::GetRootDir() / iniPath;
+-  std::error_code ec;
+-  if (std::filesystem::remove(path, ec)) {
+-    spdlog::error("Removed '{}' so the game falls back to its own r6/config "
+-                  "input xmls",
+-                  iniPath.string());
+-  } else if (ec) {
+-    spdlog::error("Could not remove '{}' ({}); the game may show PRESS [None] "
+-                  "TO CONTINUE until it is deleted by hand",
+-                  iniPath.string(), ec.message());
++std::map<std::wstring, Source> Discover() {
++  auto sources = runtime.sources;
++  Prune(sources);
++  const auto directory = runtime.root / "r6/input";
++  if (!fs::exists(directory)) return sources; // an absent optional input directory is a complete empty scan
++  if (!fs::is_directory(directory)) throw std::runtime_error("r6/input is not a directory; refusing an incomplete merge");
++  // Directory symlinks/junctions are deliberately not traversed. Single file
++  // symlinks are resolved and deduplicated by their canonical target.
++  for (fs::recursive_directory_iterator it(directory), end; it != end; ++it) {
++    if (it->is_directory() && LinkedDirectory(it->path())) {
++      Warn("Skipped linked input directory: " + Utf8(it->path()));
++      it.disable_recursion_pending();
++      continue;
++    }
++    if (!IsInputFile(*it)) continue;
++    try {
++      auto source = ReadSource(it->path(), runtime.io);
++      const auto key = PathKey(source.path);
++      auto existing = sources.find(key);
++      if (existing != sources.end()) source.owners = existing->second.owners;
++      source.discovered = true;
++      sources[key] = std::move(source);
++    } catch (const std::bad_alloc&) { throw; }
++    catch (const std::exception& error) {
++      Warn("Rejected discovered input " + Utf8(it->path()) + ": " + error.what());
++    }
+   }
++  return sources;
+ }
+-
+-// Writes the ini when both cache xmls are usable, removes it otherwise.
+-bool SyncIni() {
+-  auto root = Utils::GetRootDir();
+-  if (!IsUsableFile(root / cacheContextsPath) ||
+-      !IsUsableFile(root / cacheMappingsPath)) {
+-    spdlog::error("r6/cache/inputContexts.xml or r6/cache/inputUserMappings.xml "
+-                  "is missing or empty");
+-    RemoveIni();
+-    return false;
+-  }
+-  auto path = root / iniPath;
+-  std::string current;
+-  {
+-    std::ifstream in(path, std::ios::binary);
+-    current.assign(std::istreambuf_iterator<char>(in),
+-                   std::istreambuf_iterator<char>());
+-  }
+-  if (current == iniContent)
+-    return true;
+-  std::error_code ec;
+-  std::filesystem::create_directories(path.parent_path(), ec);
+-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
+-  out << iniContent;
+-  if (out) {
+-    spdlog::info("Wrote '{}'", iniPath.string());
+-    return true;
+-  } else {
+-    spdlog::error("Could not write '{}'; the game will use its own r6/config "
+-                  "input xmls",
+-                  iniPath.string());
+-  }
+-  return false;
++bool Seal(RED4ext::CGameApplication*) noexcept {
++  try {
++    std::lock_guard lock(runtime.mutex);
++    if (runtime.phase == Phase::Ready) runtime.phase = Phase::Sealed;
++  } catch (...) { OutputDebugStringA("Input Loader: cannot seal registrations\n"); }
++  return true;
+ }
+-
+-// Saves both documents to r6/cache and checks the result. Any failure
+-// neutralizes the ini so the game never points at broken files.
+-bool SaveCache(const char *what) {
+-  auto root = Utils::GetRootDir();
+-  std::error_code ec;
+-  std::filesystem::create_directories(root / cacheDir, ec);
+-  bool ok = inputContextsOriginal.save_file(
+-      (root / cacheContextsPath).c_str());
+-  ok = inputUserMappingsOriginal.save_file(
+-           (root / cacheMappingsPath).c_str()) &&
+-       ok;
+-  if (ok) {
+-    spdlog::info("{} input configs saved to 'r6/cache/inputContexts.xml' and "
+-                 "'r6/cache/inputUserMappings.xml'",
+-                 what);
++bool Register(HMODULE module, const wchar_t* name, bool remove) {
++  if (!module || !name || !*name) throw std::runtime_error("registration requires a plugin handle and nonempty XML path");
++  // Resolve module/path before taking the private lock (Windows loader-lock order).
++  const auto owner = Owner{module, Canonical(ModuleFile(module))};
++  auto path = fs::path(name);
++  if (path.is_relative()) path = owner.module.parent_path() / path;
++  path = remove ? fs::weakly_canonical(path) : Canonical(path);
++  const auto key = PathKey(path);
++  std::lock_guard lock(runtime.mutex);
++  if (runtime.phase != Phase::Collecting && runtime.phase != Phase::Ready)
++    throw std::runtime_error("registration window closed; register during Main(Load), cancel during failed startup");
++  auto sources = runtime.sources;
++  Prune(sources);
++  if (remove) {
++    auto found = sources.find(key);
++    if (found == sources.end() || !found->second.owners.erase(module)) return false;
++    if (!found->second.discovered && found->second.owners.empty()) sources.erase(found);
+   } else {
+-    spdlog::error("Failed to write {} input configs to r6/cache", what);
++    auto source = ReadSource(path, runtime.io);
++    // Keep every known alias's snapshot current. Build applies the physical
++    // file once, at its lowest known canonical-path position.
++    for (auto& [existingKey, entry] : sources) {
++      (void)existingKey;
++      if (entry.identity == source.identity) entry.text = source.text;
++    }
++    auto found = sources.find(key);
++    if (found != sources.end()) {
++      source.owners = found->second.owners;
++      source.discovered = found->second.discovered;
++    }
++    source.owners[module] = owner;
++    sources[key] = std::move(source);
+   }
+-  bool configured = SyncIni();
+-  return ok && configured;
++  if (runtime.phase == Phase::Ready) Publish(Build(sources));
++  runtime.sources.swap(sources);
++  return true;
+ }
++} // namespace
+ 
+-std::string NodeLabel(pugi::xml_node node) {
+-  std::string label = node.name();
+-  const char *key = KeyAttribute(node.name());
+-  if (key && node.attribute(key))
+-    label += std::string(" ") + key + "=\"" + node.attribute(key).value() + "\"";
+-  return label;
++RED4EXT_C_EXPORT bool TryAdd(RED4ext::v1::PluginHandle module, const wchar_t* path) {
++  try { return Register(module, path, false); }
++  catch (const std::exception& error) { Report("Input registration rejected; previous generation retained: ", error.what()); }
++  catch (...) { OutputDebugStringA("Input Loader: registration rejected\n"); }
++  return false;
+ }
+-
+-bool MergeDocument(std::filesystem::path path);
+-
+-RED4EXT_C_EXPORT void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t *str) {
+-  if (!str || !*str) {
+-    spdlog::error("Cannot register an empty input XML path");
+-    return;
+-  }
+-  try {
+-    std::filesystem::path path(str);
+-    if (path.is_relative()) {
+-      std::wstring filename(MAX_PATH + 1, L'\0');
+-      for (;;) {
+-        DWORD length = GetModuleFileNameW(aHandle, filename.data(),
+-                                         static_cast<DWORD>(filename.size()));
+-        if (!length) {
+-          spdlog::error("Cannot resolve plugin input path: Windows error {}",
+-                        GetLastError());
+-          return;
+-        }
+-        if (length < filename.size()) {
+-          filename.resize(length);
+-          break;
+-        }
+-        filename.resize(filename.size() + MAX_PATH);
+-      }
+-      path = std::filesystem::path(filename).parent_path() / path;
+-    }
+-    spdlog::info(L"Will load document: {}", path.c_str());
+-    document_paths.emplace_back(path);
+-    // Keep synchronous registration for plugins that load after our first merge.
+-    if (HaveOriginals() && MergeDocument(path))
+-      SaveCache("Merged");
+-  } catch (const std::exception &ex) {
+-    spdlog::error("Cannot register input XML: {}", ex.what());
+-  } catch (...) {
+-    spdlog::error("Unknown error registering input XML");
+-  }
++RED4EXT_C_EXPORT void Add(RED4ext::v1::PluginHandle module, const wchar_t* path) { (void)TryAdd(module, path); }
++RED4EXT_C_EXPORT bool Remove(RED4ext::v1::PluginHandle module, const wchar_t* path) {
++  try { return Register(module, path, true); }
++  catch (const std::exception& error) { Report("Input removal rejected; previous generation retained: ", error.what()); }
++  catch (...) { OutputDebugStringA("Input Loader: removal rejected\n"); }
++  return false;
+ }
+ 
+-bool MergeDocument(std::filesystem::path path) {
+-  bool loaded = false;
+-  auto modDocument = LoadDocument(path, &loaded);
+-  if (!loaded)
+-    return false;
+-  spdlog::info(L"Loading document: {}", path.c_str());
+-  size_t processed = 0;
+-  for (auto modNode : modDocument.child("bindings").children()) {
+-    auto result = MergeBinding(inputContextsOriginal, inputUserMappingsOriginal,
+-                               modNode);
+-    switch (result) {
+-    case MergeResult::Unsupported:
+-      spdlog::warn("* <bindings> child '{}' not valid", modNode.name());
+-      continue;
+-    case MergeResult::MissingBindings:
+-      spdlog::error("Cannot merge inputs: destination XML has no <bindings> root");
+-      return false;
+-    case MergeResult::Added:
+-      spdlog::info("* Added <{}>", NodeLabel(modNode));
+-      break;
+-    case MergeResult::Appended:
+-      spdlog::info("* Appended children to <{}>", NodeLabel(modNode));
+-      break;
+-    case MergeResult::Replaced:
+-      spdlog::info("* Replaced <{}>", NodeLabel(modNode));
+-      break;
++bool Start(RED4ext::v1::PluginHandle module, const RED4ext::v1::Sdk* sdk) {
++  const auto root = Utils::GetRootDir();
++  Utils::CreateLogger();
++  std::lock_guard lock(runtime.mutex);
++  if (runtime.phase == Phase::Ready || runtime.phase == Phase::Sealed) return true;
++  if (runtime.phase != Phase::Collecting) return false;
++  runtime.phase = Phase::Starting;
++  runtime.root = root;
++  // Runtime-scoped journals never restore another game version's cached XMLs.
++  runtime.scope = "game-0-0-0";
++  if (sdk && sdk->runtime) {
++    runtime.scope = "game-" + std::to_string(sdk->runtime->major) + "-" + std::to_string(sdk->runtime->minor) + "-" + std::to_string(sdk->runtime->patch);
++  } else {
++    const auto ini = root / "engine/config/platform/pc/input_loader.ini";
++    if (runtime.io.Exists(ini)) {
++      const auto paths = ReadSelector(runtime.io.Read(ini));
++      if (paths && paths->managed) runtime.scope = paths->scope;
+     }
+-    ++processed;
+   }
+-  spdlog::info(L"Finished {}: {} binding block(s) processed", path.c_str(),
+-                processed);
++  runtime.store = std::make_unique<Store>(runtime.io, root, runtime.scope);
++  { PublicationLock publication(root); runtime.store->Recover(); }
++  if (!sdk || !sdk->runtime || !sdk->gameStates || !sdk->gameStates->Add)
++    throw std::runtime_error("RED4ext runtime/GameStates API unavailable");
++  auto base = std::make_unique<Configuration>();
++  const auto contexts = runtime.io.Read(root / "r6/config/inputContexts.xml");
++  const auto mappings = runtime.io.Read(root / "r6/config/inputUserMappings.xml");
++  if (!ParseDocument(base->contexts, contexts) || !ParseDocument(base->mappings, mappings) || !ValidPair(base->contexts, base->mappings))
++    throw std::runtime_error("base XML is malformed, incomplete or has missing required attributes");
++  Info("Read game input baseline, " + runtime.scope + ", snapshot " + Hash(contexts, mappings));
++  runtime.base = std::move(base);
++  auto sources = Discover();
++  auto candidate = Build(sources);
++  RED4ext::v1::GameState state{};
++  state.OnEnter = Seal; // no late reload or disk writes from game-state callbacks
++  if (!sdk->gameStates->Add(module, RED4ext::EGameStateType::BaseInitialization, &state))
++    throw std::runtime_error("BaseInitialization registration seal unavailable");
++  Publish(std::move(candidate));
++  runtime.sources.swap(sources);
++  runtime.phase = Phase::Ready;
++  Info("Input Loader " MOD_VERSION_STR " ready; startup registrations accepted until BaseInitialization OnEnter");
+   return true;
+ }
+-
+-void LoadOriginals() {
+-  spdlog::info("Loading original input configs for merging");
+-
+-  CheckVanilla("r6/config/inputContexts.xml", vanillaContexts);
+-  CheckVanilla("r6/config/inputUserMappings.xml", vanillaMappings);
+-  inputContextsOriginal = LoadDocument("r6/config/inputContexts.xml");
+-  inputUserMappingsOriginal = LoadDocument("r6/config/inputUserMappings.xml");
+-}
+-
+-// Loads the game's r6/config xmls, merges every r6/input xml and every
+-// registered document on top, and writes r6/cache plus the ini.
+-//
+-// Timing: RED4ext loads every plugin (and runs their Load) before the game's
+-// state machine starts, and its BaseInitialization OnEnter callbacks run only
+-// after the game's own CBaseInitializationState::OnEnter (which reads the
+-// options ini), OnExit about 50 s later. So plugin Load is the only point
+-// guaranteed to precede the game's read of input_loader.ini and the cache
+-// xmls; merging at the old OnExit callback was why a fresh install needed a
+-// second launch.
+-bool MergeAll() {
+-  LoadOriginals();
+-  if (!HaveOriginals()) {
+-    spdlog::error("Could not load the game's input xmls from r6/config, not "
+-                  "generating anything");
+-    RemoveIni();
+-    return false;
+-  }
+-  // block mostly copied from
+-  // https://github.com/WopsS/TweakDBext/blob/master/src/Hooks.cpp
+-  auto inputDir = Utils::GetRootDir() / "r6/input";
++void Stop() noexcept {
+   try {
+-    if (!std::filesystem::exists(inputDir)) {
+-      std::filesystem::create_directories(inputDir);
+-    }
+-    // load xml documents in r6/input
+-    spdlog::info("Loading input configs from r6/input");
+-    for (const auto &entry :
+-         std::filesystem::recursive_directory_iterator(inputDir)) {
+-      const auto &path = entry.path();
+-      if (IsInputFile(entry)) {
+-        try {
+-          MergeDocument(path);
+-        } catch (const std::exception &ex) {
+-          spdlog::error(L"An exception occured while trying to load '{}'",
+-                        path.c_str());
+-          spdlog::error("Reason: {}", ex.what());
+-        } catch (...) {
+-          spdlog::error(L"An unknown error occured while trying to load '{}'",
+-                        path.c_str());
+-        }
+-      }
+-    }
+-  } catch (const std::exception &ex) {
+-    spdlog::error(L"Cannot scan input directory '{}'", inputDir.c_str());
+-    spdlog::error("Reason: {}", ex.what());
+-  } catch (...) {
+-    spdlog::error(L"Unknown error reading directory '{}'", inputDir.c_str());
+-  }
+-  spdlog::info("Loading input configs from dynamically added paths");
+-  for (const auto &path : document_paths) {
+-    try {
+-      MergeDocument(path);
+-    } catch (const std::exception &ex) {
+-      spdlog::error(L"Cannot load registered input '{}'", path.c_str());
+-      spdlog::error("Reason: {}", ex.what());
+-    } catch (...) {
+-      spdlog::error(L"Unknown error loading registered input '{}'", path.c_str());
+-    }
+-  }
+-
+-  // save files
+-  return SaveCache("Merged");
++    std::lock_guard lock(runtime.mutex);
++    runtime.phase = Phase::Stopped;
++    runtime.sources.clear();
++    runtime.base.reset(); runtime.active.reset(); runtime.store.reset();
++    // Keep the last valid selector/pair. The running game may still reference it.
++  } catch (...) {}
+ }
+-
+-// Late refresh from a clean r6/config load. The game has most likely read
+-// r6/cache by now, so anything new here applies on the next launch.
+-bool RefreshInputConfigs(RED4ext::CGameApplication *) {
+-  spdlog::info("Refreshing the merged input configs at BaseInitialization exit");
++void FailedStart() noexcept {
+   try {
+-    MergeAll();
+-  } catch (const std::exception &ex) {
+-    spdlog::error("Cannot refresh merged inputs: {}", ex.what());
+-  } catch (...) {
+-    spdlog::error("Unknown error refreshing merged inputs");
+-  }
+-  return true;
++    std::lock_guard lock(runtime.mutex);
++    runtime.phase = Phase::Failed;
++    // Store recovery already neutralized unsafe owned/legacy selectors before
++    // reading the baseline. Publication never modifies a live generation.
++  } catch (...) {}
+ }
+-
+ } // namespace InputLoader
+ 
+-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+-  switch (fdwReason) {
+-  case DLL_PROCESS_ATTACH:
+-    DisableThreadLibraryCalls(hinstDLL);
+-    break;
+-  }
+-  return true;
+-}
+-
+-RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
+-                                        RED4ext::v1::EMainReason aReason,
+-                                        const RED4ext::v1::Sdk *aSdk) {
++BOOL WINAPI DllMain(HINSTANCE, DWORD, LPVOID) { return TRUE; }
++RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle module,
++    RED4ext::v1::EMainReason reason, const RED4ext::v1::Sdk* sdk) {
+   try {
+-    switch (aReason) {
+-    case RED4ext::v1::EMainReason::Load: {
+-      // File I/O and logger allocation belong outside DllMain's loader lock.
+-      Utils::CreateLogger();
+-      spdlog::info("Starting up Input Loader {}", MOD_VERSION_STR);
+-      if (!aSdk || !aSdk->gameStates || !aSdk->gameStates->Add) {
+-        spdlog::error("Cannot initialize Input Loader: GameStates API unavailable");
+-        InputLoader::RemoveIni();
+-        return false;
+-      }
+-      // Synchronous: finish before the game reads the INI and r6/cache.
+-      if (!InputLoader::MergeAll()) {
+-        spdlog::error("Cannot initialize Input Loader: initial input merge failed");
+-        InputLoader::RemoveIni();
+-        return false;
+-      }
+-      RED4ext::v1::GameState initState{};
+-      initState.OnExit = &InputLoader::RefreshInputConfigs;
+-      if (!aSdk->gameStates->Add(aHandle,
+-                                RED4ext::EGameStateType::BaseInitialization,
+-                                &initState)) {
+-        spdlog::error("Cannot register BaseInitialization refresh callback");
+-        InputLoader::RemoveIni();
+-        return false;
+-      }
+-      spdlog::info("Initial input merge complete; refresh callback registered");
+-      break;
+-    }
+-    case RED4ext::v1::EMainReason::Unload:
+-      spdlog::info("Shutting down");
+-      spdlog::shutdown();
+-      break;
+-    }
+-  } catch (const std::exception &ex) {
+-    spdlog::error("Input Loader initialization/shutdown failed: {}", ex.what());
+-    return false;
+-  } catch (...) {
+-    spdlog::error("Unknown Input Loader initialization/shutdown error");
+-    return false;
+-  }
+-  return true;
+-}
+-
+-RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo *aInfo) {
+-  aInfo->name = L"Input Loader";
+-  aInfo->author = L"Jack Humbert";
+-  aInfo->version =
+-      RED4EXT_V1_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
+-  aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_INDEPENDENT;
+-  aInfo->sdk = RED4EXT_V1_SDK_VERSION_1_0_0_COMPAT_0_5_0;
++    if (reason == RED4ext::v1::EMainReason::Load) return InputLoader::Start(module, sdk);
++    if (reason == RED4ext::v1::EMainReason::Unload) InputLoader::Stop();
++    return true;
++  } catch (const std::exception& error) {
++    InputLoader::Report("Input Loader startup rejected: ", error.what());
++  } catch (...) { OutputDebugStringA("Input Loader: startup rejected\n"); }
++  InputLoader::FailedStart();
++  return false;
+ }
+-
+-RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() {
+-  return RED4EXT_API_VERSION_1_COMPAT_0;
++RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* info) {
++  info->name = L"Input Loader";
++  info->author = L"Jack Humbert";
++  info->version = RED4EXT_V1_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
++  info->runtime = RED4EXT_V1_RUNTIME_VERSION_INDEPENDENT;
++  info->sdk = RED4EXT_V1_SDK_VERSION_1_0_0_COMPAT_0_5_0;
+ }
++RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() { return RED4EXT_API_VERSION_1_COMPAT_0; }
+diff --git a/src/Merge.hpp b/src/Merge.hpp
+index 8f711c1652ae8e0e54e388fbb552c62cf3ae5be9..6764cb96f0c787bae5ebf7e5b8183bc9d98907ad 100644
+--- a/src/Merge.hpp
++++ b/src/Merge.hpp
+@@ -3,82 +3,179 @@
+ #include <algorithm>
+ #include <cwctype>
+ #include <filesystem>
++#include <stdexcept>
++#include <string>
+ #include <string_view>
+ #include <pugixml.hpp>
+ 
+ namespace InputLoader {
+ 
+-inline bool IsInputFile(const std::filesystem::directory_entry &entry) {
++inline bool IsInputFile(const std::filesystem::directory_entry& entry) {
+   std::error_code error;
+-  if (!entry.is_regular_file(error) || error)
++  if (!entry.is_regular_file(error)) {
++    if (error) throw std::filesystem::filesystem_error("stat input", entry.path(), error);
+     return false;
++  }
+   auto extension = entry.path().extension().wstring();
+   std::transform(extension.begin(), extension.end(), extension.begin(),
+                  [](wchar_t ch) { return std::towlower(ch); });
+   return extension == L".xml";
+ }
+ 
+-inline bool ReadInputDocument(pugi::xml_document &document,
+-                              const std::filesystem::path &path,
+-                              pugi::xml_parse_result &result) {
+-  result = document.load_file(path.c_str());
+-  if (!result || !document.child("bindings")) {
+-    // pugixml can leave a partial tree after a parse failure. Never merge it.
++inline bool HasSingleBindings(const pugi::xml_document& document) {
++  size_t elements = 0;
++  for (auto node : document.children()) {
++    if (node.type() == pugi::node_pcdata || node.type() == pugi::node_cdata) return false;
++    if (node.type() == pugi::node_element) {
++      if (std::string_view(node.name()) != "bindings") return false;
++      ++elements;
++    }
++  }
++  return elements == 1;
++}
++
++inline bool ReadInputDocument(pugi::xml_document& document,
++                              const std::filesystem::path& path,
++                              pugi::xml_parse_result& result) {
++  // Fragment parsing retains out-of-root text so our single-root check can
++  // reject it; pugixml's default document parser silently discards that text.
++  result = document.load_file(path.c_str(), pugi::parse_default | pugi::parse_fragment);
++  if (result.status == pugi::status_out_of_memory) { document.reset(); throw std::bad_alloc(); }
++  if (!result || !HasSingleBindings(document)) {
+     document.reset();
+     return false;
+   }
+   return true;
+ }
+ 
+-inline const char *KeyAttribute(std::string_view name) {
++inline bool IsContextType(std::string_view name) {
++  return name == "blend" || name == "context" || name == "hold" ||
++         name == "multitap" || name == "repeat" || name == "toggle" ||
++         name == "acceptedEvents" || name == "transition";
++}
++inline bool IsMappingType(std::string_view name) {
++  return name == "mapping" || name == "buttonGroup" ||
++         name == "pairedAxes" || name == "preset";
++}
++inline const char* KeyAttribute(std::string_view name) {
+   if (name == "hold" || name == "multitap" || name == "repeat" ||
+-      name == "toggle" || name == "acceptedEvents")
+-    return "action";
+-  if (name == "buttonGroup")
+-    return "id";
+-  if (name == "blend")
+-    return nullptr;
++      name == "toggle" || name == "acceptedEvents" || name == "transition") return "action";
++  if (name == "buttonGroup") return "id";
++  if (name == "blend") return nullptr;
+   return "name";
+ }
++inline bool HasValue(pugi::xml_node node, const char* key) {
++  return *node.attribute(key).value() != '\0';
++}
++inline bool ValidBinding(pugi::xml_node node) {
++  const std::string_view name = node.name();
++  if (node.type() != pugi::node_element || (!IsContextType(name) && !IsMappingType(name))) return false;
++  if (const auto key = KeyAttribute(name)) {
++    if (!HasValue(node, key)) return false;
++  } else if (!HasValue(node, "from") || !HasValue(node, "to") || !HasValue(node, "event")) {
++    return false;
++  }
++  // append adds children to an existing definition; its attributes stay intact.
++  if (name == "mapping" && !node.attribute("append").as_bool() && !HasValue(node, "type")) return false;
++  return true;
++}
++inline bool ValidDocument(const pugi::xml_document& document) {
++  if (!HasSingleBindings(document)) return false;
++  for (auto node : document.child("bindings").children()) {
++    if (node.type() == pugi::node_element && !ValidBinding(node)) return false;
++  }
++  return true;
++}
++inline bool ValidPair(const pugi::xml_document& contexts, const pugi::xml_document& mappings) {
++  if (!ValidDocument(contexts) || !ValidDocument(mappings)) return false;
++  bool context = false, mapping = false;
++  for (auto node : contexts.child("bindings").children()) {
++    if (node.type() != pugi::node_element) continue;
++    if (!IsContextType(node.name())) return false;
++    context = context || std::string_view(node.name()) == "context";
++  }
++  for (auto node : mappings.child("bindings").children()) {
++    if (node.type() != pugi::node_element) continue;
++    if (!IsMappingType(node.name())) return false;
++    if (std::string_view(node.name()) == "mapping" && !HasValue(node, "type")) return false;
++    mapping = mapping || std::string_view(node.name()) == "mapping";
++  }
++  return context && mapping;
++}
+ 
+-enum class MergeResult { Added, Appended, Replaced, Unsupported, MissingBindings };
++// pugixml's append_copy may return a non-null, incomplete subtree on OOM.
++// Check every allocation and value assignment instead. Callers build candidates
++// off to the side and discard the entire candidate if any operation fails.
++inline pugi::xml_node CopyChecked(pugi::xml_node parent, pugi::xml_node source,
++                                 pugi::xml_node before = {}) {
++  auto copy = before ? parent.insert_child_before(source.type(), before) : parent.append_child(source.type());
++  if (!copy) throw std::bad_alloc();
++  if (*source.name() && !copy.set_name(source.name())) throw std::bad_alloc();
++  if (*source.value() && !copy.set_value(source.value())) throw std::bad_alloc();
++  for (auto attr : source.attributes()) {
++    // append_attribute(name) also ignores its internal set_name failure in
++    // this pugixml pin. Allocate first, then check both assignments explicitly.
++    auto target = copy.append_attribute("");
++    if (!target || !target.set_name(attr.name()) || !target.set_value(attr.value())) throw std::bad_alloc();
++  }
++  for (auto child : source.children()) CopyChecked(copy, child);
++  return copy;
++}
++inline void CopyDocumentChecked(pugi::xml_document& target, const pugi::xml_document& source) {
++  for (auto node : source.children()) CopyChecked(target, node);
++}
+ 
+-inline MergeResult MergeBinding(pugi::xml_document &contexts,
+-                                pugi::xml_document &mappings,
++enum class MergeResult { Added, Appended, Replaced, Unsupported, MissingBindings, Invalid };
++inline MergeResult MergeBinding(pugi::xml_document& contexts, pugi::xml_document& mappings,
+                                 pugi::xml_node node) {
+   const std::string_view name = node.name();
+-  pugi::xml_document *document;
+-  if (name == "blend" || name == "context" || name == "hold" ||
+-      name == "multitap" || name == "repeat" || name == "toggle" ||
+-      name == "acceptedEvents") {
+-    document = &contexts;
+-  } else if (name == "mapping" || name == "buttonGroup" ||
+-             name == "pairedAxes" || name == "preset") {
+-    document = &mappings;
+-  } else {
+-    return MergeResult::Unsupported;
+-  }
+-  auto bindings = document->child("bindings");
+-  if (!bindings)
+-    return MergeResult::MissingBindings;
+-  pugi::xml_node existing;
+-  if (const char *key = KeyAttribute(name)) {
+-    auto id = node.attribute(key);
+-    if (id && *id.value())
+-      existing = bindings.find_child_by_attribute(node.name(), key, id.value());
+-  }
++  if (!IsContextType(name) && !IsMappingType(name)) return MergeResult::Unsupported;
++  if (!ValidBinding(node)) return MergeResult::Invalid;
++  auto root = (IsContextType(name) ? contexts : mappings).child("bindings");
++  if (!root) return MergeResult::MissingBindings;
++  const char* key = KeyAttribute(name);
++  auto existing = key ? root.find_child_by_attribute(node.name(), key, node.attribute(key).value()) : pugi::xml_node{};
+   if (!existing) {
+-    bindings.append_copy(node);
++    // append without an existing definition must still form a valid new node.
++    if (name == "mapping" && !HasValue(node, "type")) return MergeResult::Invalid;
++    CopyChecked(root, node);
+     return MergeResult::Added;
+   }
+   if (node.attribute("append").as_bool()) {
+-    for (auto child : node.children())
+-      existing.append_copy(child);
++    // Preserve untouched vanilla duplicates. Explicit append applies to every
++    // matching definition, so it does not depend on the engine's precedence.
++    for (auto match : root.children(node.name())) {
++      if (std::string_view(match.attribute(key).value()) == node.attribute(key).value())
++        for (auto child : node.children()) CopyChecked(match, child);
++    }
+     return MergeResult::Appended;
+   }
+-  bindings.remove_child(existing);
+-  bindings.append_copy(node);
++  // Explicit replacement defines the complete key: retain its first position,
++  // replace every old match, and leave unrelated duplicate base data alone.
++  auto replacement = CopyChecked(root, node, existing);
++  for (auto match = replacement.next_sibling(); match;) {
++    auto next = match.next_sibling();
++    if (std::string_view(match.name()) == name &&
++        std::string_view(match.attribute(key).value()) == node.attribute(key).value()) root.remove_child(match);
++    match = next;
++  }
+   return MergeResult::Replaced;
+ }
+ 
++struct TextWriter : pugi::xml_writer {
++  std::string text;
++  void write(const void* data, size_t size) override { text.append(static_cast<const char*>(data), size); }
++};
++inline std::string Serialize(const pugi::xml_document& document) {
++  TextWriter writer;
++  document.save(writer, "  ", pugi::format_default, pugi::encoding_utf8);
++  return writer.text;
++}
++inline bool ParseDocument(pugi::xml_document& document, const std::string& text) {
++  const auto result = document.load_buffer(text.data(), text.size(), pugi::parse_default | pugi::parse_fragment);
++  if (result.status == pugi::status_out_of_memory) { document.reset(); throw std::bad_alloc(); }
++  if (!result || !ValidDocument(document)) { document.reset(); return false; }
++  return true;
++}
++
+ } // namespace InputLoader
+diff --git a/src/Store.hpp b/src/Store.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..58f683def1fbeb9de33120e1e776d62bc5b5a52e
+--- /dev/null
++++ b/src/Store.hpp
+@@ -0,0 +1,170 @@
++#pragma once
++#include "Merge.hpp"
++#include <memory>
++#include <optional>
++
++namespace InputLoader {
++namespace fs = std::filesystem;
++inline const std::string NeutralIni = "; Input Loader essentials: neutral until a complete cache pair is ready\n[Player/Input]\n";
++inline const std::string ManagedMarker = "; Input Loader essentials generation v1\r\n";
++
++struct Storage {
++  virtual ~Storage() = default;
++  virtual bool Exists(const fs::path& path) = 0;
++  virtual std::string Read(const fs::path& path) = 0;
++  virtual void Directories(const fs::path& path) = 0;
++  virtual void Write(const fs::path& path, const std::string& text) = 0; // flush AND close, or throw
++  virtual void Replace(const fs::path& temporary, const fs::path& target) = 0;
++  virtual std::string Unique() = 0;
++};
++struct Selection {
++  std::string ini, contexts, mappings;
++};
++inline std::string Trim(std::string text) {
++  const auto first = text.find_first_not_of(" \t\r\n");
++  if (first == std::string::npos) return {};
++  return text.substr(first, text.find_last_not_of(" \t\r\n") - first + 1);
++}
++struct IniPaths { std::string contexts, mappings, scope; bool managed = false; };
++inline std::optional<IniPaths> ReadSelector(const std::string& text) {
++  IniPaths paths;
++  paths.managed = text.rfind(ManagedMarker, 0) == 0;
++  size_t at = 0;
++  bool section = false;
++  while (at < text.size()) {
++    const auto end = text.find('\n', at);
++    const auto line = Trim(text.substr(at, end == std::string::npos ? end : end - at));
++    at = end == std::string::npos ? text.size() : end + 1;
++    if (line.empty() || line[0] == ';') continue;
++    if (line == "[Player/Input]" && !section) { section = true; continue; }
++    if (!section) return {};
++    const auto equal = line.find('=');
++    if (equal == std::string::npos) return {};
++    const auto key = Trim(line.substr(0, equal));
++    const auto value = Trim(line.substr(equal + 1));
++    if (value.size() < 2 || value.front() != '"' || value.back() != '"') return {};
++    auto* target = key == "InputContextFile" ? &paths.contexts : key == "InputMappingFile" ? &paths.mappings : nullptr;
++    if (!target || !target->empty()) return {};
++    *target = value.substr(1, value.size() - 2);
++  }
++  if (!section) return {};
++  if (paths.contexts.empty() && paths.mappings.empty()) return paths;
++  if (!paths.managed) {
++    if (paths.contexts != "cache\\inputContexts.xml" || paths.mappings != "cache\\inputUserMappings.xml") return {};
++    return paths; // recognizable legacy shipped selector
++  }
++  const std::string prefix = "cache\\input_loader\\";
++  if (paths.contexts.rfind(prefix, 0) != 0) return {};
++  const auto scopeEnd = paths.contexts.find('\\', prefix.size());
++  if (scopeEnd == std::string::npos) return {};
++  paths.scope = paths.contexts.substr(prefix.size(), scopeEnd - prefix.size());
++  if (paths.scope.rfind("game-", 0) != 0 || paths.scope.substr(5).empty() ||
++      paths.scope.substr(5).find_first_not_of("0123456789-") != std::string::npos) return {};
++  const auto generationPrefix = prefix + paths.scope + "\\";
++  const auto slash = paths.contexts.find('\\', generationPrefix.size());
++  if (slash == std::string::npos) return {};
++  const auto id = paths.contexts.substr(generationPrefix.size(), slash - generationPrefix.size());
++  if (id.empty() || id.find_first_not_of("0123456789abcdef-") != std::string::npos) return {};
++  if (paths.contexts.substr(slash + 1) != "inputContexts.xml" ||
++      paths.mappings != generationPrefix + id + "\\inputUserMappings.xml") return {};
++  return paths;
++}
++inline std::string Selector(const std::string& id, const std::string& scope) {
++  const std::string prefix = "cache\\input_loader\\" + scope + "\\" + id + "\\";
++  return ManagedMarker + "[Player/Input]\r\nInputContextFile = \"" + prefix +
++         "inputContexts.xml\"\r\nInputMappingFile = \"" + prefix + "inputUserMappings.xml\"\r\n";
++}
++inline fs::path RelativeCachePath(std::string name) {
++  std::replace(name.begin(), name.end(), '\\', '/');
++  return fs::path(name);
++}
++
++class Store {
++  Storage& io;
++  fs::path root;
++  std::string scope;
++  std::optional<Selection> active;
++  bool owned = false;
++  bool journalFailed = false;
++  fs::path Ini() const { return root / "engine/config/platform/pc/input_loader.ini"; }
++  fs::path Cache() const { return root / "r6/cache/input_loader" / scope; }
++  void Atomic(const fs::path& target, const std::string& text) {
++    io.Directories(target.parent_path());
++    const auto temp = fs::path(target.wstring() + L".tmp-" + fs::path(io.Unique()).wstring());
++    io.Write(temp, text);
++    if (io.Read(temp) != text) throw std::runtime_error("write verification failed");
++    try { io.Replace(temp, target); }
++    catch (...) {
++      // A backend can report a late error after the namespace switch. Accept
++      // the commit only if its exact new selector can be read back.
++      bool committed = false;
++      try { committed = io.Read(target) == text; } catch (...) {}
++      if (!committed) throw;
++    }
++  }
++  std::optional<Selection> Validate(const std::string& ini) {
++    const auto paths = ReadSelector(ini);
++    if (!paths || !paths->managed || paths->scope != scope || paths->contexts.empty()) return {};
++    auto c = io.Read(root / "r6" / RelativeCachePath(paths->contexts));
++    auto m = io.Read(root / "r6" / RelativeCachePath(paths->mappings));
++    pugi::xml_document contexts, mappings;
++    if (!ParseDocument(contexts, c) || !ParseDocument(mappings, m) || !ValidPair(contexts, mappings)) return {};
++    return Selection{ini, std::move(c), std::move(m)};
++  }
++public:
++  Store(Storage& storage, fs::path directory, std::string runtimeScope)
++      : io(storage), root(std::move(directory)), scope(std::move(runtimeScope)) {}
++  bool JournalFailed() const { return journalFailed; }
++  bool HasActive() const { return active.has_value(); }
++  const std::optional<Selection>& Active() const { return active; }
++  // Must be called under the per-root publication lock. Unknown custom content
++  // is never overwritten. Invalid owned/legacy selectors become neutral.
++  void Recover() {
++    const auto text = io.Exists(Ini()) ? io.Read(Ini()) : NeutralIni;
++    if (!ReadSelector(text) && text.rfind(ManagedMarker, 0) != 0)
++      throw std::runtime_error("unrecognized custom input_loader.ini; preserved without changes");
++    owned = true;
++    try { active = Validate(text); } catch (const std::bad_alloc&) { throw; } catch (...) { active.reset(); }
++    if (active) return;
++    const auto journal = Cache() / "last-good.ini";
++    try {
++      if (io.Exists(journal)) active = Validate(io.Read(journal));
++    } catch (const std::bad_alloc&) { throw; } catch (...) { active.reset(); }
++    if (active) Atomic(Ini(), active->ini);
++    else if (text != NeutralIni) Atomic(Ini(), NeutralIni);
++  }
++  bool Publish(const std::string& contexts, const std::string& mappings, const std::string& hash) {
++    if (!owned) throw std::runtime_error("store was not recovered");
++    if (hash.size() != 64 || hash.find_first_not_of("0123456789abcdef") != std::string::npos)
++      throw std::runtime_error("invalid generation identity");
++    pugi::xml_document c, m;
++    if (!ParseDocument(c, contexts) || !ParseDocument(m, mappings) || !ValidPair(c, m))
++      throw std::runtime_error("candidate pair failed validation");
++    if (active && active->contexts == contexts && active->mappings == mappings) return false;
++    std::string id = hash;
++    auto directory = Cache() / id;
++    bool reuse = false;
++    if (io.Exists(directory)) {
++      try { reuse = io.Read(directory / "inputContexts.xml") == contexts && io.Read(directory / "inputUserMappings.xml") == mappings; }
++      catch (const std::bad_alloc&) { throw; } catch (...) {}
++      // Never repair an existing (possibly referenced) generation in place.
++      if (!reuse) { id += "-" + io.Unique(); directory = Cache() / id; }
++    }
++    if (!reuse) {
++      io.Directories(directory);
++      io.Write(directory / "inputContexts.xml", contexts);
++      io.Write(directory / "inputUserMappings.xml", mappings);
++      if (io.Read(directory / "inputContexts.xml") != contexts || io.Read(directory / "inputUserMappings.xml") != mappings)
++        throw std::runtime_error("generation verification failed");
++    }
++    auto next = Selection{Selector(id, scope), contexts, mappings};
++    Atomic(Ini(), next.ini); // the only activation point
++    active = std::move(next);
++    // The engine selector is already committed. Journal failure cannot turn a
++    // successful publication into a reported failure or undo the valid pair.
++    journalFailed = false;
++    try { Atomic(Cache() / "last-good.ini", active->ini); } catch (...) { journalFailed = true; }
++    return true;
++  }
++};
++} // namespace InputLoader
+diff --git a/src/Utils.cpp b/src/Utils.cpp
+index 103e6aad9ba25d435f542a8f6cae03650e4d9205..bbb59207288f8545361136fac6b9418386ffca5b 100644
+--- a/src/Utils.cpp
++++ b/src/Utils.cpp
+@@ -1,60 +1,39 @@
+ #include "stdafx.hpp"
+ #include "Utils.hpp"
+-
++#include "Files.hpp"
+ #include <spdlog/sinks/basic_file_sink.h>
+ #include <spdlog/sinks/stdout_color_sinks.h>
+ 
+-void Utils::CreateLogger()
+-{
+-    auto rootDir = GetRootDir();
+-    auto red4extDir = rootDir / L"red4ext";
+-    auto logsDir = red4extDir / L"logs";
+-    spdlog::filename_t logFile = (logsDir / L"input_loader.log");
+-
+-    auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+-    auto file = std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFile, true);
+-
+-    spdlog::sinks_init_list sinks = {console, file};
+-
+-    auto logger = std::make_shared<spdlog::logger>("", sinks);
+-    spdlog::set_default_logger(logger);
+-
+-    logger->flush_on(spdlog::level::trace);
+-    spdlog::set_level(spdlog::level::trace);
++void Utils::Log(spdlog::level::level_enum level, std::string_view text) noexcept {
++  try {
++    if (auto logger = spdlog::default_logger()) logger->log(level, "{}", text);
++    else OutputDebugStringA(std::string(text).c_str());
++  } catch (...) { OutputDebugStringA("Input Loader: diagnostic output failed\n"); }
+ }
+-
+-std::filesystem::path Utils::GetRootDir()
+-{
+-    constexpr auto pathLength = MAX_PATH + 1;
+-
+-    // Try to get the executable path until we can fit the length of the path.
+-    std::wstring filename;
+-    do
+-    {
+-        filename.resize(filename.size() + pathLength, '\0');
+-
+-        auto length = GetModuleFileName(nullptr, filename.data(), static_cast<uint32_t>(filename.size()));
+-        if (length > 0)
+-        {
+-            // Resize it to the real, std::filesystem::path" will use the string's length instead of recounting it.
+-            filename.resize(length);
+-        }
+-    } while (GetLastError() == ERROR_INSUFFICIENT_BUFFER);
+-
+-    auto rootDir = std::filesystem::path(filename)
+-                       .parent_path()  // Resolve to "x64" directory.
+-                       .parent_path()  // Resolve to "bin" directory.
+-                       .parent_path(); // Resolve to game root directory.
+-
+-    return rootDir;
++void Utils::CreateLogger() noexcept {
++  try {
++    std::vector<spdlog::sink_ptr> sinks;
++    sinks.push_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
++    try {
++      const auto file = GetRootDir() / L"red4ext/logs/input_loader.log";
++      sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(file.wstring(), true));
++    } catch (...) {
++      OutputDebugStringA("Input Loader: file log unavailable; continuing with console/debug output\n");
++    }
++    auto logger = std::make_shared<spdlog::logger>("InputLoader", sinks.begin(), sinks.end());
++    logger->set_level(spdlog::level::info);
++    logger->flush_on(spdlog::level::warn);
++    spdlog::set_default_logger(std::move(logger));
++  } catch (...) { OutputDebugStringA("Input Loader: logger initialization unavailable\n"); }
+ }
+-
+-std::wstring Utils::ToWString(const char* aText)
+-{
+-    auto length = strlen(aText);
+-
+-    std::wstring result(L"", length);
+-    mbstowcs(result.data(), aText, length);
+-
+-    return result;
++const std::filesystem::path& Utils::GetRootDir() {
++  static const auto root = [] {
++    const auto executable = InputLoader::Canonical(InputLoader::ModuleFile(nullptr));
++    const auto binary = executable.parent_path();
++    if (InputLoader::PathKey(binary.filename()) != L"X64" ||
++        InputLoader::PathKey(binary.parent_path().filename()) != L"BIN")
++      throw std::runtime_error("Input Loader requires the game's bin/x64 executable layout");
++    return binary.parent_path().parent_path();
++  }();
++  return root;
+ }
+diff --git a/src/Utils.hpp b/src/Utils.hpp
+index 3bf58310619045c036c0425f0ce82a6b1a8913f2..51b76c05881503ba85ca6a11f9532b55c45e5b1c 100644
+--- a/src/Utils.hpp
++++ b/src/Utils.hpp
+@@ -1,9 +1,11 @@
+ #pragma once
+ #include <filesystem>
++#include <string>
++#include <string_view>
++#include <spdlog/common.h>
+ 
+-namespace Utils
+-{
+-void CreateLogger();
+-std::filesystem::path GetRootDir();
+-std::wstring ToWString(const char* aText);
++namespace Utils {
++void CreateLogger() noexcept;
++const std::filesystem::path& GetRootDir();
++void Log(spdlog::level::level_enum level, std::string_view text) noexcept;
+ }
