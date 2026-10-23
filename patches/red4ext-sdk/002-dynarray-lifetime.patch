@@ -1,0 +1,15 @@
+diff --git a/include/RED4ext/Containers/DynArray.hpp b/include/RED4ext/Containers/DynArray.hpp
+index 909d0436d6ec8b23aa220d4e42d782581c4352fd..7fe192629c480e9b845c4d7c4009aab6ee9dc161 100644
+--- a/include/RED4ext/Containers/DynArray.hpp
++++ b/include/RED4ext/Containers/DynArray.hpp
+@@ -593,7 +593,9 @@ private:
+         if (aSrcSizeInBytes == 0)
+             return;
+ 
+-        std::move(aSrcBuffer, aSrcBuffer + aSrcArray->Size(), aDstBuffer);
++        // ResizeBuffer provides raw storage, not live ValueType objects.
++        // Construct the relocated elements before destroying their sources.
++        std::uninitialized_move(aSrcBuffer, aSrcBuffer + aSrcArray->Size(), aDstBuffer);
+         std::destroy(aSrcBuffer, aSrcBuffer + aSrcArray->Size());
+     }
+ 

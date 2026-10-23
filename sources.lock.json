@@ -71,6 +71,10 @@
         {
           "path": "patches/red4ext-sdk/001-essentials.patch",
           "sha256": "ce529c091f79e4fd563aee4960758786a9d8f44f9fecbaa44aebeba11e844808"
+        },
+        {
+          "path": "patches/red4ext-sdk/002-dynarray-lifetime.patch",
+          "sha256": "bf7fbe6fe9817d71653ba99d9aaf4e34932b8ed966a2e0b8eb5ec78415a39685"
         }
       ],
       "provenance": {

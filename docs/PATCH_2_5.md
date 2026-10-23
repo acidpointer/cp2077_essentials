@@ -121,3 +121,35 @@ and scope correction, with include-case fixes. Mod source content was compared
 with the startup-tested trees before the old checkouts were retired. Rebuilt
 packages carry upstream commits and patch fingerprints; another startup test
 is required after the migration. Gameplay remains untested.
+
+
+## Exit-crash candidate: SDK array relocation
+
+The retained 2026-10-24 01:09 session faults on `redDispatcher13` at
+`Cyberpunk2077.exe+0xB0C78A`, reading address `0xD0` through a null vtable.
+The installed executable identifies this thunk as the last-reference handle
+`CanBeDestructed` check. Its surrounding destructor follows the same reference
+counter layout and virtual slot as the SDK. The retained minidump has neither
+an exception stream nor usable thread-stack payloads, so it cannot identify
+the object or component that invalidated it. This remains an unresolved
+runtime failure, not a proven RED4ext shutdown-hook mismatch.
+
+The static audit found a separate, concrete lifetime defect in shared SDK
+`DynArray::MoveEntries`: it used move assignment for fresh allocation storage.
+Retail `ResizeBuffer` zero-fills that storage before calling the relocation
+callback, but zero-filling does not construct nontrivial C++ objects. The fix
+uses `std::uninitialized_move`, then destroys the moved-from source elements.
+It preserves container layout, allocator selection, element count, relocation
+ABI and all enabled functionality. All SDK consumers require rebuilding.
+
+`tests/native/sdk_dynarray_lifetime.cpp` exercises the real SDK against a
+zero-filling allocator boundary modeled on the inspected retail function.
+It rejects assignment into objects whose lifetimes have not begun, checks
+resource/value preservation and exact destruction, and covers growth with
+spare capacity, repeated growth, shrinking and empty relocation. The optimized
+Windows test fails against the previous header with exit code 42 and passes
+after the fix in an isolated Wine prefix. It does not load any game/mod DLLs.
+This establishes the SDK defect and correction; it does not establish that
+this defect caused the reported game exit crash or that the game now exits.
+No diagnostic game build, exception interception, force-exit path, null-vtable
+skip or feature disablement is part of this change.

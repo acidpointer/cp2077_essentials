@@ -207,6 +207,14 @@ layout/scope fixes. Its effective identity includes the patch checksum.
 Keep explicit `cmake/AbiChecks.cpp` assertions: the SDK's general offset macro
 is disabled under Clang. Keep mimalloc 2.2.4 for this TiltedCore; 3.x removes
 the `mi_malloc_size` API it uses.
+SDK `DynArray` relocation must construct elements in fresh storage with
+`std::uninitialized_move`, then destroy the moved-from source elements.
+Zero-filled allocator memory does not construct nontrivial objects. Preserve
+the native regression in `tests/native/sdk_dynarray_lifetime.cpp`; it exercises
+the actual SDK against a fake retail allocator, without loading game DLLs.
+Its old-header failure and fixed-header pass establish this container defect,
+not a confirmed cause or fix of the game exit crash. See `docs/PATCH_2_5.md`.
+
 The loader injects `cmake/LoaderDependencies.cmake` to consume the unchanged
 pinned toml11 headers without its obsolete CMP0127 OLD build configuration.
 Keep header-only mode and upstream compile definitions/options; do not edit
