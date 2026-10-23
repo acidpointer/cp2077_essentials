@@ -28,6 +28,8 @@ class ArchiveNames(unittest.TestCase):
                          'ArchiveXL-1.27.5-game2.5-symbols.zip')
         self.assertEqual(package.archive_name('tweak-xl', '1.11.5', 'Debug', 'runtime'),
                          'TweakXL-1.11.5-game2.5-debug.zip')
+        self.assertEqual(package.archive_name('input-loader', '0.2.3', 'Release', 'runtime'),
+                         'InputLoader-0.2.3-game2.5.zip')
 
     def test_version_suffixes_cannot_leak_into_names(self):
         with self.assertRaises(ValueError):
@@ -83,6 +85,81 @@ class ArchiveNames(unittest.TestCase):
                     verification.distribution(root)
 
 
+class InputLoaderPayload(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='cp2077-input-loader-tests-')
+        self.addCleanup(self.temporary.cleanup)
+        self.root = pathlib.Path(self.temporary.name)
+        self.source = self.root / 'sources/input-loader'
+        self.build = self.root / 'build/plugins/release'
+        self.expected = {
+            'red4ext/plugins/input_loader/input_loader.dll': b'dll fixture',
+            'red4ext/plugins/input_loader/readme.md': b'upstream instructions',
+            'red4ext/plugins/input_loader/license.md': b'upstream license',
+            'red4ext/plugins/input_loader/licenses/pugixml.txt': b'XML parser license',
+            'red4ext/plugins/input_loader/licenses/spdlog.txt': b'logging license',
+            'engine/config/platform/pc/input_loader.ini': b'[Player/Input]\r\nconfig fixture',
+        }
+        inputs = {
+            self.build / 'bin/input_loader.dll': self.expected['red4ext/plugins/input_loader/input_loader.dll'],
+            self.build / 'bin/input_loader.pdb': b'symbol fixture',
+            self.source / 'readme.md': self.expected['red4ext/plugins/input_loader/readme.md'],
+            self.source / 'license.md': self.expected['red4ext/plugins/input_loader/license.md'],
+            self.source / 'deps/pugixml/LICENSE.md': self.expected['red4ext/plugins/input_loader/licenses/pugixml.txt'],
+            self.root / 'build/deps/spdlog/LICENSE': self.expected['red4ext/plugins/input_loader/licenses/spdlog.txt'],
+            self.source / 'input_loader.ini': self.expected['engine/config/platform/pc/input_loader.ini'],
+        }
+        for path, data in inputs.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
+        lock = {'projects': {'input-loader': {'path': 'sources/input-loader', 'version': '0.2.3'}},
+                'dependencies': {'spdlog': {'path': 'build/deps/spdlog'}}}
+        for mocked in [patch.object(c, 'ROOT', self.root), patch.object(c, 'config', return_value=lock),
+                       patch.object(package.patches, 'identity', return_value={}),
+                       patch.object(verification, 'binary'),
+                       patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports', 'Add'})]:
+            mocked.start()
+            self.addCleanup(mocked.stop)
+        self.record = package.create('input-loader', 'Release')
+        self.manifest = {'schema': 2, 'config': 'Release', 'sdk': {}, 'projects': {'input-loader': self.record}}
+        (self.root / 'manifest.json').write_text(json.dumps(self.manifest))
+
+    def rewrite_runtime(self, change):
+        item = self.record['files']['runtime']
+        archive_path = self.root / item['file']
+        payload = dict(self.expected)
+        change(payload)
+        with zipfile.ZipFile(archive_path, 'w') as archive:
+            for name, data in payload.items():
+                archive.writestr(name, data)
+        item['sha256'] = c.sha(archive_path)
+        (self.root / 'manifest.json').write_text(json.dumps(self.manifest))
+
+    def test_preserves_runtime_layout_config_licenses_and_separate_symbols(self):
+        with zipfile.ZipFile(self.root / self.record['files']['runtime']['file']) as archive:
+            self.assertEqual({name: archive.read(name) for name in archive.namelist()}, self.expected)
+        with zipfile.ZipFile(self.root / self.record['files']['symbols']['file']) as archive:
+            self.assertEqual(archive.namelist(), ['red4ext/plugins/input_loader/input_loader.pdb'])
+        verification.distribution(self.root)
+
+    def test_missing_ini_or_license_is_rejected(self):
+        for name in ['engine/config/platform/pc/input_loader.ini',
+                     'red4ext/plugins/input_loader/licenses/pugixml.txt']:
+            with self.subTest(name=name):
+                self.rewrite_runtime(lambda payload: payload.pop(name))
+                with self.assertRaisesRegex(ValueError, 'runtime payload'):
+                    verification.distribution(self.root)
+
+    def test_changed_ini_and_missing_public_export_are_rejected(self):
+        self.rewrite_runtime(lambda payload: payload.update({'engine/config/platform/pc/input_loader.ini': b'changed'}))
+        with self.assertRaisesRegex(ValueError, 'payload differs'):
+            verification.distribution(self.root)
+        self.rewrite_runtime(lambda payload: None)
+        with patch.object(verification, 'exports', return_value={'Main', 'Query', 'Supports'}):
+            with self.assertRaisesRegex(ValueError, 'public Add export'):
+                verification.distribution(self.root)
+
+
 class ReleaseAssets(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='cp2077-release-tests-')
@@ -94,7 +171,7 @@ class ReleaseAssets(unittest.TestCase):
         self.source = self.root / 'dist/release'
         self.source.mkdir(parents=True)
         self.manifest = {'schema': 2, 'config': 'Release', 'projects': {}}
-        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5'}
+        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5', 'input-loader': '0.2.3'}
         for project, version in versions.items():
             record = {'project': c.NAMES[project], 'version': version, 'files': {}}
             for kind in ['runtime', 'symbols'] + (['standard'] if project == 'red4ext' else []):
@@ -117,11 +194,11 @@ class ReleaseAssets(unittest.TestCase):
         destination = release.prepare('v1.0.0')
         self.verify.assert_called_once_with(self.source)
         assets = (destination / 'assets.txt').read_text().splitlines()
-        self.assertEqual(len(assets), 20)  # Nine ZIPs, nine sidecars, manifest and SHA256SUMS.
+        self.assertEqual(len(assets), 24)  # Eleven ZIPs, eleven sidecars, manifest and SHA256SUMS.
         self.assertTrue(all((self.root / name).is_file() for name in assets))
         manifest = json.loads((destination / 'manifest.json').read_text())
         self.assertEqual(manifest['essentials_release'], 'v1.0.0')
-        self.assertEqual(len(list(destination.glob('*.zip'))), 9)
+        self.assertEqual(len(list(destination.glob('*.zip'))), 11)
         for record in manifest['projects'].values():
             for item in record['files'].values():
                 self.assertNotIn('/', item['file'])
@@ -132,7 +209,7 @@ class ReleaseAssets(unittest.TestCase):
     def test_missing_project_or_symbols_refuses_release(self):
         self.manifest['projects'].pop('codeware')
         self.save()
-        with self.assertRaisesRegex(ValueError, 'all four'):
+        with self.assertRaisesRegex(ValueError, 'all five'):
             release.prepare('v1.0.0')
         self.manifest['projects']['codeware'] = {'files': {}}
         self.save()

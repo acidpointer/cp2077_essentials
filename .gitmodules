@@ -18,3 +18,7 @@
 	path = sources/red4ext-sdk
 	ignore = dirty
 	url = https://github.com/wopss/RED4ext.SDK.git
+[submodule "sources/input-loader"]
+	path = sources/input-loader
+	ignore = dirty
+	url = https://github.com/jackhumbert/cyberpunk2077-input-loader.git

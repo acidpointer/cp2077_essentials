@@ -63,8 +63,9 @@ def distribution(folder):
                     if project == 'red4ext':
                         expected_symbols = {value: build / 'install' / value for value in ['bin/x64/winmm.pdb', 'red4ext/RED4ext.pdb']}
                     else:
-                        symbol_path = f'red4ext/plugins/{c.NAMES[project]}/{c.NAMES[project]}.pdb'
-                        expected_symbols = {symbol_path: build / 'bin' / (c.NAMES[project] + '.pdb')}
+                        basename = c.binary_name(project)
+                        symbol_path = f'red4ext/plugins/{basename}/{basename}.pdb'
+                        expected_symbols = {symbol_path: build / 'bin' / (basename + '.pdb')}
                     if set(names) != set(expected_symbols):
                         raise ValueError(f'{path}: invalid symbol payload')
                     for symbol, built in expected_symbols.items():
@@ -78,6 +79,13 @@ def distribution(folder):
                     for value in expected:
                         if archive.read(prefix + value) != (build / 'install' / value).read_bytes():
                             raise ValueError(f'{path}: installed content differs')
+                elif project == 'input-loader':
+                    expected = package.input_loader_payload(source, build)
+                    if set(names) != set(expected):
+                        raise ValueError(f'{path}: wrong Input Loader runtime payload')
+                    for name, data in expected.items():
+                        if archive.read(name) != data:
+                            raise ValueError(f'{path}: Input Loader payload differs: {name}')
                 else:
                     prefix = f'red4ext/plugins/{c.NAMES[project]}/'
                     dll_path = prefix + c.NAMES[project] + '.dll'
@@ -104,9 +112,11 @@ def distribution(folder):
             if exports(dll) != {'RED4ext_ResolveAddress'}:
                 raise ValueError('RED4ext address resolver export missing')
         else:
-            dll = build / 'bin' / (c.NAMES[project] + '.dll')
+            dll = build / 'bin' / (c.binary_name(project) + '.dll')
             if not {'Main', 'Query', 'Supports'} <= exports(dll):
                 raise ValueError(f'{project}: plugin exports missing')
+            if project == 'input-loader' and 'Add' not in exports(dll):
+                raise ValueError('Input Loader: public Add export missing')
         binary(dll, dll.with_suffix('.pdb'))
         print(f'{c.NAMES[project]}: source/SDK provenance, AMD64 DLL, exports, symbols, ZIP payload and SHA256 passed')
 

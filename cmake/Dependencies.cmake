@@ -14,6 +14,10 @@ add_subdirectory("${dep}/mimalloc" deps/mimalloc EXCLUDE_FROM_ALL)
 add_subdirectory("${dep}/minhook" deps/minhook EXCLUDE_FROM_ALL)
 add_subdirectory("${dep}/yaml-cpp" deps/yaml-cpp EXCLUDE_FROM_ALL)
 add_subdirectory("${dep}/spdlog" deps/spdlog EXCLUDE_FROM_ALL)
+# Input Loader uses the XML parser pinned by its upstream Gitlink.
+set(PUGIXML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(PUGIXML_BUILD_SHARED_AND_STATIC_LIBS OFF CACHE BOOL "" FORCE)
+add_subdirectory("${ESSENTIALS_ROOT}/sources/input-loader/deps/pugixml" deps/pugixml EXCLUDE_FROM_ALL)
 # Match TiltedCore's xmake source set and installed header layout.
 file(GLOB tilted_sources CONFIGURE_DEPENDS "${dep}/tiltedcore/Code/core/src/*.cpp")
 file(GLOB tilted_headers "${dep}/tiltedcore/Code/core/include/*.hpp")

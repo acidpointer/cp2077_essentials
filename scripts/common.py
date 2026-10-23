@@ -7,8 +7,12 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(os.environ.get('CP2077_ROOT', pathlib.Path(__file__).resolve().parents[1])).resolve()
-ALIASES = {'archivexl': 'archive-xl', 'tweakxl': 'tweak-xl'}
-NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK'}
+ALIASES = {'archivexl': 'archive-xl', 'tweakxl': 'tweak-xl', 'inputloader': 'input-loader'}
+NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK', 'input-loader': 'InputLoader'}
+
+
+def binary_name(project):
+    return 'input_loader' if project == 'input-loader' else NAMES[project]
 
 
 def run(args, cwd=None, env=None, check=True):

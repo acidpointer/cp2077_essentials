@@ -1,0 +1,81 @@
+diff --git a/include/InputLoader.hpp b/include/InputLoader.hpp
+index 1ef655765d080b63447efe0c49fac9bcd8c3259e..89f6e5b69bb2bc6a8df205c61568e6621786eacd 100644
+--- a/include/InputLoader.hpp
++++ b/include/InputLoader.hpp
+@@ -12,6 +12,6 @@
+ 
+ namespace InputLoader {
+ 
+-extern "C" DLLDIR void Add(RED4ext::PluginHandle aHandle, const wchar_t * str);
++extern "C" DLLDIR void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t * str);
+ 
+ }
+diff --git a/src/Main.cpp b/src/Main.cpp
+index ccfa9ab2b3033ee3b4fe9bc58ec064ec0e8f6226..13b290c8d8b60cc31b702645cfe2e73aac239fa0 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -1,3 +1,4 @@
++#include <algorithm>
+ #include <iostream>
+ 
+ #include <RED4ext/RED4ext.hpp>
+@@ -269,7 +270,7 @@ std::string NodeLabel(pugi::xml_node node) {
+ 
+ void MergeDocument(std::filesystem::path path);
+ 
+-RED4EXT_C_EXPORT void Add(RED4ext::PluginHandle aHandle, const wchar_t * str) {
++RED4EXT_C_EXPORT void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t * str) {
+   std::filesystem::path path(str);
+   if (path.is_relative()) {
+     char dllFilePath[513] = {0};
+@@ -447,15 +448,15 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+   return true;
+ }
+ 
+-RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle,
+-                                        RED4ext::EMainReason aReason,
+-                                        const RED4ext::Sdk *aSdk) {
++RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
++                                        RED4ext::v1::EMainReason aReason,
++                                        const RED4ext::v1::Sdk *aSdk) {
+   switch (aReason) {
+-  case RED4ext::EMainReason::Load: {
++  case RED4ext::v1::EMainReason::Load: {
+     // DisableThreadLibraryCalls(aHandle);
+ 
+     spdlog::info("Connected to RED4ext - registering load callback");
+-    RED4ext::GameState initState;
++    RED4ext::v1::GameState initState;
+     initState.OnEnter = nullptr;
+     initState.OnUpdate = nullptr;
+     initState.OnExit = &InputLoader::RefreshInputConfigs;
+@@ -467,7 +468,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle,
+     InputLoader::MergeAll();
+     break;
+   }
+-  case RED4ext::EMainReason::Unload: {
++  case RED4ext::v1::EMainReason::Unload: {
+     spdlog::info("Shutting down");
+     spdlog::shutdown();
+     break;
+@@ -477,15 +478,15 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle,
+   return true;
+ }
+ 
+-RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::PluginInfo *aInfo) {
++RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo *aInfo) {
+   aInfo->name = L"Input Loader";
+   aInfo->author = L"Jack Humbert";
+   aInfo->version =
+-      RED4EXT_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
+-  aInfo->runtime = RED4EXT_RUNTIME_INDEPENDENT;
+-  aInfo->sdk = RED4EXT_SDK_LATEST;
++      RED4EXT_V1_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
++  aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_INDEPENDENT;
++  aInfo->sdk = RED4EXT_V1_SDK_VERSION_1_0_0_COMPAT_0_5_0;
+ }
+ 
+ RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() {
+-  return RED4EXT_API_VERSION_LATEST;
++  return RED4EXT_API_VERSION_1_COMPAT_0;
+ }

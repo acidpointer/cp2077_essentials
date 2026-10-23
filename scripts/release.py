@@ -19,7 +19,7 @@ def prepare(tag):
     manifest = json.loads((source / 'manifest.json').read_text())
     expected = set(c.NAMES) - {'red4ext-sdk'}
     if manifest.get('config') != 'Release' or set(manifest.get('projects', {})) != expected:
-        raise ValueError('A GitHub release requires all four Release packages.')
+        raise ValueError('A GitHub release requires all five Release packages.')
     for project, record in manifest['projects'].items():
         kinds = {'runtime', 'symbols', 'standard'} if project == 'red4ext' else {'runtime', 'symbols'}
         if set(record['files']) != kinds:
@@ -65,19 +65,20 @@ def prepare(tag):
 | --- | --- |
 {versions}
 
-Install the four runtime ZIPs with MO2. For RED4ext, choose either
+Install the five runtime ZIPs with MO2. For RED4ext, choose either
 `*-mo2-rootbuilder.zip` (requires Root Builder) or `*-game-root.zip` (manual
 game-root installation), never both. `*-symbols.zip` files are optional PDBs.
 
-Disable older versions of these four mods. On Proton, preserve the native
+Disable older versions of these five mods. On Proton, preserve the native
 `winmm` override. All DLLs are compiled from pinned official Git submodules
 with this repository's saved patches and shared SDK. The manifest retains
-source revisions and patch checksums; SHA256SUMS covers all nine archives.
+source revisions and patch checksums; SHA256SUMS covers all eleven archives.
 ArchiveXL's unchanged packed resource is from the pinned official release.
 
-All four Release builds and static package checks pass. The previous local
-essentials set started the game; these CI-built binaries have not been
+Release builds and static package checks pass. The previous local essentials
+set started the game; Input Loader and these CI-built binaries have not been
 playtested. Gameplay, save/load and save compatibility remain untested.
+Input Loader may warn that vanilla 2.5 input XML hashes are unknown.
 ArchiveXL journal indexing and resource hot reload are disabled; cooked
 instanced-mesh/collision-node element edits remain limited.
 '''

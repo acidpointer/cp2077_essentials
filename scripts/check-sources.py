@@ -10,6 +10,7 @@ UPSTREAMS = {
     'archive-xl': 'https://github.com/psiberx/cp2077-archive-xl.git',
     'codeware': 'https://github.com/psiberx/cp2077-codeware.git',
     'tweak-xl': 'https://github.com/psiberx/cp2077-tweak-xl.git',
+    'input-loader': 'https://github.com/jackhumbert/cyberpunk2077-input-loader.git',
     'red4ext-sdk': 'https://github.com/wopss/RED4ext.SDK.git',
 }
 ROOT_FILES = {'.gitattributes', '.gitignore', '.gitmodules', '.vscode/settings.json', 'AGENTS.md',
@@ -36,10 +37,10 @@ def audit():
             raise ValueError(f'{path}: outside reviewed root-owned directories; do not vendor upstream sources.')
     expected = {'sources/' + name for name in UPSTREAMS}
     if set(pins) != expected:
-        raise ValueError('Expected exactly five source Gitlinks; copied source trees are forbidden.')
+        raise ValueError('Expected exactly six source Gitlinks; copied source trees are forbidden.')
     registered = c.git(c.ROOT, 'config', '--file', '.gitmodules', '--get-regexp', r'^submodule\..*\.path$').stdout.decode().splitlines()
     if set(registered) != {f'submodule.{path}.path {path}' for path in expected}:
-        raise ValueError('.gitmodules must register exactly the five source projects.')
+        raise ValueError('.gitmodules must register exactly the six source projects.')
     for name, url in UPSTREAMS.items():
         path = projects[name]['path']
         if path != 'sources/' + name:

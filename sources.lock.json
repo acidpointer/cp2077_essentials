@@ -66,6 +66,21 @@
         "commit": "12e0c33337f8612850854fb9ed5ad9628796afca",
         "additional_port": "https://github.com/wopss/RED4ext.SDK/pull/229"
       }
+    },
+    "input-loader": {
+      "path": "sources/input-loader",
+      "version": "0.2.3",
+      "patches": [
+        {
+          "path": "patches/input-loader/001-essentials.patch",
+          "sha256": "18be2e9926075cfd6d22b6fdcef04aad8aeaa10542b038779d234e5a11f40318"
+        }
+      ],
+      "provenance": {
+        "upstream": "https://github.com/jackhumbert/cyberpunk2077-input-loader",
+        "version_tag": "v0.2.3",
+        "notes": "Version retains the latest upstream numeric tag; the Gitlink pins subsequent upstream merge/startup fixes. Local patch adapts the shared SDK v1 API and adds an explicit algorithm include."
+      }
     }
   },
   "dependencies": {

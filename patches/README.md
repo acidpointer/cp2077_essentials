@@ -11,6 +11,7 @@ patched source snapshot.
 | archive-xl | Alexey-shishkin4's [PR 31](https://github.com/psiberx/cp2077-archive-xl/pull/31), including contributed fixes | Header include spelling for case-sensitive hosts |
 | codeware | KelpHect's [PR 63](https://github.com/psiberx/cp2077-codeware/pull/63), including contributed fixes | Explicit base-handle conversion under Clang |
 | tweak-xl | KelpHect's [PR 22](https://github.com/psiberx/cp2077-tweak-xl/pull/22) | Root build supplies the shared SDK |
+| input-loader | Pinned official upstream, including XML merge and startup fixes after v0.2.3 | Shared SDK v1 API adaptation and explicit algorithm include; root build supplies the SDK |
 | red4ext-sdk | KelpHect's [retail layout update](https://github.com/wopss/RED4ext.SDK/pull/228), then [ArchiveScope::Mod correction](https://github.com/wopss/RED4ext.SDK/pull/229) | Correct RTTI include casing |
 
 Exact imported source revisions are retained in `sources.lock.json` provenance.

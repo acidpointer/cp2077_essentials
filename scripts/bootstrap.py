@@ -52,6 +52,15 @@ def dependencies():
                 missing.append(nested_path)
         if missing:
             c.git(path, 'submodule', 'update', '--init', '--recursive', '--', *missing)
+    source = c.ROOT / lock['projects']['input-loader']['path']
+    nested_path = 'deps/pugixml'
+    nested = source / nested_path
+    base = c.git(source, 'rev-parse', 'HEAD').stdout.decode().strip()
+    pin = patches.gitlinks(source, base)[nested_path]
+    if not (nested / '.git').exists():
+        c.git(source, 'submodule', 'update', '--init', '--', nested_path)
+    if c.git(nested, 'rev-parse', 'HEAD').stdout.decode().strip() != pin or c.git(nested, 'status', '--porcelain').stdout:
+        raise ValueError(f'{nested}: local dependency changes exist; no checkout/reset was attempted.')
     asset = lock['archivexl_assets']
     path = c.ROOT / asset['path']
     if not path.exists():

@@ -52,3 +52,33 @@ endfunction()
 essentials_plugin(Codeware sources/codeware)
 essentials_plugin(TweakXL sources/tweak-xl)
 essentials_plugin(ArchiveXL sources/archive-xl)
+
+# Input Loader has its own source layout; keep upstream build helpers (and their
+# private SDK/dependency initialization) outside the shared essentials build.
+set(input_src "${ESSENTIALS_ROOT}/sources/input-loader")
+file(READ "${ESSENTIALS_ROOT}/sources.lock.json" essentials_lock)
+string(JSON input_version GET "${essentials_lock}" projects input-loader version)
+string(REPLACE "." ";" input_version_parts "${input_version}")
+list(GET input_version_parts 0 input_major)
+list(GET input_version_parts 1 input_minor)
+list(GET input_version_parts 2 input_patch)
+file(GLOB_RECURSE input_sources CONFIGURE_DEPENDS "${input_src}/src/*.cpp")
+add_library(InputLoader SHARED ${input_sources} "${ESSENTIALS_ROOT}/cmake/AbiChecks.cpp")
+set_target_properties(InputLoader PROPERTIES PREFIX "" OUTPUT_NAME input_loader)
+target_include_directories(InputLoader PRIVATE "${input_src}/src" "${input_src}/include")
+target_include_directories(InputLoader SYSTEM PRIVATE "${RED4EXT_SDK_DIR}/include"
+  "${RED4EXT_SDK_DIR}/vendor/D3D12MemAlloc")
+target_precompile_headers(InputLoader PRIVATE "${input_src}/src/stdafx.hpp")
+target_compile_definitions(InputLoader PRIVATE
+  WINVER=0x0601 _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX
+  UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS DLLDIR_EX
+  SPDLOG_WCHAR_TO_UTF8_SUPPORT SPDLOG_WCHAR_FILENAMES
+  MOD_VERSION_STR="${input_version}" MOD_VERSION_MAJOR=${input_major}
+  MOD_VERSION_MINOR=${input_minor} MOD_VERSION_PATCH=${input_patch})
+target_compile_options(InputLoader PRIVATE /GR- /EHsc /bigobj /utf-8
+  "$<$<CONFIG:Release>:/Ob2>" "$<$<CONFIG:Release>:/Gy>")
+target_link_options(InputLoader PRIVATE /DEBUG:FULL /INCREMENTAL:NO
+  "$<$<CONFIG:Release>:/OPT:REF>" "$<$<CONFIG:Release>:/OPT:ICF>")
+# Header-only spdlog keeps Input Loader's wide-character configuration isolated
+# from the compiled spdlog used by the other plugins.
+target_link_libraries(InputLoader PRIVATE spdlog::spdlog_header_only pugixml-static bcrypt)

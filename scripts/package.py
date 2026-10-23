@@ -10,6 +10,8 @@ import patches
 
 
 def original_version(project, source, build):
+    if project == 'input-loader':
+        return c.config()['projects'][project]['version']
     if project == 'red4ext':
         text = (build / 'src/loader/Resource.rc').read_text()
         pattern = r'VALUE "ProductVersion", "([0-9]+\.[0-9]+\.[0-9]+)'
@@ -37,6 +39,19 @@ def archive_name(project, version, config, kind):
     return f'{c.NAMES[project]}-{version}-game2.5{mode}{suffixes[kind]}.zip'
 
 
+def input_loader_payload(source, build):
+    prefix = 'red4ext/plugins/input_loader/'
+    paths = {
+        prefix + 'input_loader.dll': build / 'bin/input_loader.dll',
+        prefix + 'readme.md': source / 'readme.md',
+        prefix + 'license.md': source / 'license.md',
+        prefix + 'licenses/pugixml.txt': source / 'deps/pugixml/LICENSE.md',
+        prefix + 'licenses/spdlog.txt': c.ROOT / c.config()['dependencies']['spdlog']['path'] / 'LICENSE',
+        'engine/config/platform/pc/input_loader.ini': source / 'input_loader.ini',
+    }
+    return {name: path.read_bytes() for name, path in paths.items()}
+
+
 def create(project, config):
     root = c.ROOT
     name = c.NAMES[project]
@@ -52,6 +67,10 @@ def create(project, config):
         install = build / 'install'
         runtime = {p: (install / p).read_bytes() for p in ['bin/x64/winmm.dll', 'red4ext/RED4ext.dll', 'red4ext/LICENSE.txt', 'red4ext/THIRD_PARTY_LICENSES.txt']}
         symbols = {p: (install / p).read_bytes() for p in ['bin/x64/winmm.pdb', 'red4ext/RED4ext.pdb']}
+    elif project == 'input-loader':
+        runtime = input_loader_payload(source, build)
+        symbols = {'red4ext/plugins/input_loader/input_loader.pdb':
+                   (build / 'bin/input_loader.pdb').read_bytes()}
     else:
         prefix = f'red4ext/plugins/{name}/'
         runtime = {}

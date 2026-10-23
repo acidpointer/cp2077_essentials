@@ -68,8 +68,8 @@ commit inside an upstream submodule without a separate explicit request.
 | Original startup-crash evidence | `docs/PATCH_2_5.md` |
 
 Source projects: `sources/red4ext`, `sources/archive-xl`, `sources/codeware`,
-`sources/tweak-xl`, `sources/red4ext-sdk`. These are official upstream
-submodules. Their patched working contents are expected to be modified;
+`sources/tweak-xl`, `sources/input-loader`, `sources/red4ext-sdk`. These are
+official upstream submodules. Their patched working contents are expected to be modified;
 their HEADs must stay at the commits recorded by the root Gitlinks.
 
 ## Normal edit workflow
@@ -133,11 +133,13 @@ Never use `submodule update --remote` as a build step.
 ./build-linux.sh --only codeware --jobs 8
 ./build-linux.sh --only tweakxl --jobs 8
 ./build-linux.sh --only archivexl --jobs 8
+./build-linux.sh --only input-loader --jobs 8
 ```
 
-`--only` accepts both `tweakxl/archivexl` and `tweak-xl/archive-xl`.
-Per-project wrappers are `scripts/build-<red4ext|codeware|tweakxl|archivexl>.sh`.
-Use Release for installation. Shared SDK changes require all four builds.
+`--only` accepts `tweakxl/archivexl/inputloader` and
+`tweak-xl/archive-xl/input-loader`. Per-project wrappers are
+`scripts/build-<red4ext|codeware|tweakxl|archivexl|inputloader>.sh`.
+Use Release for installation. Shared SDK changes require all five builds.
 Do not repeat unchanged native builds after documentation-only edits.
 
 | Output | Path |
@@ -191,6 +193,13 @@ Preserve script bundles, metadata, config/hints/assets and licenses. PDBs and
 the playground plugin do not belong in runtime ZIPs. Reuse only the pinned
 ArchiveXL resource asset, never the old plugin DLL.
 
+Input Loader uses the shared SDK, header-only pinned spdlog with wide-character
+support and its upstream-pinned `deps/pugixml`; leave its other dependencies
+uninitialized. Keep `input_loader.dll`/`input_loader.pdb` names, upstream readme,
+license and `engine/config/platform/pc/input_loader.ini` in packages, plus XML
+parser/logging license notices. Its 2.30/2.31 vanilla XML hashes may warn on 2.5;
+input merging and first-launch behavior are untested. No address hooks are used.
+
 ArchiveXL still lacks `JournalTree_ProcessJournalIndex` and
 `ResourceLoader_OnUpdate`: journal indexing and resource hot reload remain
 disabled. Cooked instanced-mesh/collision-node element edits remain limited.
@@ -214,7 +223,7 @@ Do not alter upstream ignore files, reset source edits or use assume-unchanged
 or skip-worktree flags to hide this expected patch state.
 
 Only when explicitly asked to stage or create an initial commit, stage root
-files and the five `sources/*` Gitlinks. Check
+files and the six `sources/*` Gitlinks. Check
 `git --no-optional-locks diff --cached --check` and inspect
 `git --no-optional-locks diff --cached --stat`.
 No upstream files, build caches or distribution ZIPs belong in that commit.
@@ -237,7 +246,7 @@ python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyb
 Expected unique hash matches: Codeware 107/107, TweakXL 11/11, ArchiveXL 129/131
 with only the two disabled-feature hashes missing.
 
-A release uses the four runtime ZIPs, SHA256SUMS and manifest.json. Standard
+A release uses the five runtime ZIPs, SHA256SUMS and manifest.json. Standard
 RED4ext layout and symbols are separate optional extras. The collector verifies
 a candidate before replacing the old distribution and rejects mixed provenance.
 Release archive names contain original mod versions and meaningful layout
@@ -246,7 +255,7 @@ timestamp or `dirty` suffixes. Debug archives retain `-debug` for clarity.
 `SHA256SUMS` covers runtime, standard-layout and symbol archives.
 
 The tag workflow checks official source boundaries, tests and builds the full
-Release set in an Arch container, then publishes nine ZIPs and checksums using
+Release set in an Arch container, then publishes eleven ZIPs and checksums using
 the repository token. Stable tags use `vX.Y.Z`; RC tags produce prereleases.
 It never overwrites an existing release. Local `scripts/release.py <tag>` only
 prepares flat assets, but its verifier writes Git objects via patch helpers;

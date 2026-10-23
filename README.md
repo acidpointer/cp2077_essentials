@@ -1,7 +1,7 @@
 # Cyberpunk 2077 Essentials · Patch 2.5
 
-**Unofficial, vibe-coded compatibility builds of RED4ext, ArchiveXL, Codeware
-and TweakXL for Cyberpunk 2077 2.5.**
+**Unofficial, vibe-coded compatibility builds of RED4ext, ArchiveXL, Codeware,
+TweakXL and Input Loader for Cyberpunk 2077 2.5.**
 
 This project combines community 2.5 ports, local AI-assisted fixes and a native
 Linux build pipeline. “Vibe-coded” describes our compatibility work and tooling,
@@ -14,9 +14,9 @@ and build tools**. It does not vendor the upstream source trees.
 | Target / check | Status |
 | --- | --- |
 | Game | **2.5**, executable **3.0.88.46235** |
-| Release builds | All four build successfully with the shared patched SDK |
+| Release builds | All five build successfully with the shared patched SDK |
 | Static checks | ABI assertions, DLL exports, matching symbols, payloads and checksums pass |
-| Runtime | The previous essentials set starts the game; packages rebuilt after this source-management migration need another startup test |
+| Runtime | The previous four-mod essentials set starts the game; rebuilt packages and Input Loader need a startup test |
 | Gameplay / save compatibility | **Not playtested** |
 
 ## Included projects
@@ -27,6 +27,7 @@ and build tools**. It does not vendor the upstream source trees.
 | ArchiveXL | [psiberx/cp2077-archive-xl](https://github.com/psiberx/cp2077-archive-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-archive-xl/pull/31) |
 | Codeware | [psiberx/cp2077-codeware](https://github.com/psiberx/cp2077-codeware) | [Community 2.5 port](https://github.com/psiberx/cp2077-codeware/pull/63), explicit handle conversion |
 | TweakXL | [psiberx/cp2077-tweak-xl](https://github.com/psiberx/cp2077-tweak-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-tweak-xl/pull/22) |
+| Input Loader | [jackhumbert/cyberpunk2077-input-loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) | Shared SDK build integration; runtime untested |
 | Shared SDK | [wopss/RED4ext.SDK](https://github.com/wopss/RED4ext.SDK) | [Retail layout fixes](https://github.com/wopss/RED4ext.SDK/pull/228), [archive scope fix](https://github.com/wopss/RED4ext.SDK/pull/229), include casing |
 
 The Gitlinks record exact official upstream commits. Compatibility changes are
@@ -36,8 +37,8 @@ stored in [patches/](patches/README.md), with provenance in
 
 ## Install with Mod Organizer 2
 
-Install the four runtime ZIPs listed in `dist/release/manifest.json` or supplied
-with a release. Disable the older versions of these four mods first.
+Install the five runtime ZIPs listed in `dist/release/manifest.json` or supplied
+with a release. Disable the older versions of these five mods first.
 
 - Use `*-mo2-rootbuilder.zip` for RED4ext with Root Builder; keep its top-level
   `Root/`. The alternative ZIP under `standard/` uses game-root paths.
@@ -45,6 +46,9 @@ with a release. Disable the older versions of these four mods first.
 - Keep ArchiveXL, Codeware and TweakXL in their supplied
   `red4ext/plugins/<name>/` layout. Their scripts, metadata and assets are
   required alongside the DLLs.
+- Keep Input Loader at `red4ext/plugins/input_loader/` and preserve its
+  `engine/config/platform/pc/input_loader.ini`. Its merged XMLs are generated
+  at runtime from the game's own `r6/config/` files; no vanilla XMLs are shipped.
 - On Proton, preserve the native `winmm` override and launch through MO2.
 - Use Release builds and a disposable save for testing. PDB archives are optional.
 
@@ -53,6 +57,10 @@ with a release. Disable the older versions of these four mods first.
 ArchiveXL's journal-index extension and resource hot reload remain disabled:
 their 2.5 addresses have not been identified. Element-level edits of cooked
 instanced-mesh and collision nodes are limited; whole-node edits remain available.
+Input Loader has passed a Release build and static checks only. Its upstream
+vanilla-input hash table covers 2.30/2.31, so vanilla 2.5 XMLs may trigger an
+unknown-file warning. The warning does not block merging; 2.5 input merging
+and first-launch behavior still need in-game testing.
 Other native plugins outside this set may require their own 2.5 updates.
 
 ## Build on Linux
@@ -82,13 +90,19 @@ uses checksum-pinned [xwin](https://github.com/Jake-Shadle/xwin) with
 
 All projects use `sources/red4ext-sdk`. The unused SDK submodules inside the
 plugins are not initialized by our scripts. Other required nested dependencies
-are initialized selectively.
+are initialized selectively, including Input Loader's pinned `deps/pugixml`.
+Its private SDK, Detours, spdlog and CMake helper submodules remain unused;
+the root target uses our pinned spdlog in header-only mode with wide-character
+support. Input Loader retains version 0.2.3 from its latest upstream tag;
+its Gitlink pins the subsequent upstream startup and XML merge fixes.
 
 ```bash
 ./build-linux.sh --only codeware --jobs 8
 ./scripts/build-archivexl.sh --jobs 8
 ./scripts/build-tweakxl.sh --jobs 8
 ./scripts/build-red4ext.sh --jobs 8
+./scripts/build-inputloader.sh --jobs 8
+./build-linux.sh --only input-loader --jobs 8
 ./build-linux.sh --config Debug --jobs 8
 ```
 
@@ -159,7 +173,7 @@ base require a deliberate port; they are not automatically resolved.
 
 ## Packages and release checks
 
-`dist/release/` contains the four runtime ZIPs, individual checksums,
+`dist/release/` contains the five runtime ZIPs, individual checksums,
 `SHA256SUMS` and `manifest.json`. Alternative RED4ext layout and PDBs are under
 `standard/` and `symbols/`.
 
@@ -174,13 +188,14 @@ timestamp or `dirty` suffix:
 | `ArchiveXL-1.27.5-game2.5.zip` | ArchiveXL runtime |
 | `Codeware-1.20.6-game2.5.zip` | Codeware runtime |
 | `TweakXL-1.11.5-game2.5.zip` | TweakXL runtime |
+| `InputLoader-0.2.3-game2.5.zip` | Input Loader runtime |
 | `<mod>-<version>-game2.5-symbols.zip` | Optional debugging symbols |
 
 Debug builds additionally include `-debug` to distinguish them from installable
 Release packages. Exact upstream revisions, patch checksums and shared SDK
 identity remain in the manifest. A distribution is verified before it replaces
 the previous one; packages with incompatible provenance cannot be mixed.
-`SHA256SUMS` covers all nine archives, including standard layout and symbols.
+`SHA256SUMS` covers all eleven archives, including standard layout and symbols.
 After updating older tooling, run the full build once to refresh package names
 and metadata; old cached package records are rejected.
 
@@ -204,16 +219,16 @@ The essentials tag identifies the complete set; archive filenames retain each
 mod's original version.
 
 On an Ubuntu-hosted runner, an Arch Linux container installs LLVM, CMake and
-the other Linux dependencies, then checks out the root and its five official
+the other Linux dependencies, then checks out the root and its six official
 submodules at the recorded commits. It runs the source audit and regression
-tests, applies our saved patches and builds all four Release packages. Nested
+tests, applies our saved patches and builds all five Release packages. Nested
 dependencies are initialized selectively by the existing bootstrap; no copied
 upstream trees or prebuilt plugin DLLs are committed or used as build inputs.
 The unchanged, checksum-pinned ArchiveXL resource asset is the documented
 exception for packaged resources.
 
 Only after verification succeeds does the workflow publish a GitHub release
-with nine ZIPs, their individual checksums, `SHA256SUMS` and `manifest.json`.
+with eleven ZIPs, their individual checksums, `SHA256SUMS` and `manifest.json`.
 GitHub assets are flat: the release manifest uses matching flat filenames,
 while local `dist/release/` retains its `standard/` and `symbols/` directories.
 The automatically generated release notes include installation choices,
