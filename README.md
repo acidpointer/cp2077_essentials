@@ -61,6 +61,9 @@ Input Loader has passed a Release build and static checks only. Its upstream
 vanilla-input hash table covers 2.30/2.31, so vanilla 2.5 XMLs may trigger an
 unknown-file warning. The warning does not block merging; 2.5 input merging
 and first-launch behavior still need in-game testing.
+Defensive checks observed in Keen's InputLoaderReborn binary are backported
+in a separate patch; see the [research evidence](docs/input-loader-research.txt).
+The reported 2.5 crash of that binary remains undiagnosed.
 Other native plugins outside this set may require their own 2.5 updates.
 
 ## Build on Linux
@@ -123,10 +126,20 @@ git add patches/codeware sources.lock.json
 git commit
 ```
 
-Each project initially has one cumulative `001-essentials.patch`, always
-exported relative to its pinned upstream commit. Export includes staged and
-unstaged edits, new files, deletions, renames, binary changes and executable
-permissions. It preserves the submodule's real index.
+Patches apply in the order recorded by `sources.lock.json`. The initial
+`001-essentials.patch` is relative to the pinned upstream commit; each later
+layer is relative to all preceding patches.
+
+Normal `export <project>` updates only the final layer and preserves earlier
+patches. To append a separate layer after editing sources:
+
+```bash
+python3 scripts/patches.py export codeware --new-patch 003-description.patch
+```
+
+Export includes staged and unstaged edits, new files, deletions, renames,
+binary changes and executable permissions. It preserves the submodule's real
+index and refuses empty layers, duplicate names or corrupted preceding patches.
 
 ```bash
 python3 scripts/patches.py status

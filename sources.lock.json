@@ -74,12 +74,24 @@
         {
           "path": "patches/input-loader/001-essentials.patch",
           "sha256": "18be2e9926075cfd6d22b6fdcef04aad8aeaa10542b038779d234e5a11f40318"
+        },
+        {
+          "path": "patches/input-loader/002-re-input-hardening.patch",
+          "sha256": "0ff3033bb3c2944d87ee9835b1e28490e2f70b097f56a949c439d2f660621571"
         }
       ],
       "provenance": {
         "upstream": "https://github.com/jackhumbert/cyberpunk2077-input-loader",
         "version_tag": "v0.2.3",
-        "notes": "Version retains the latest upstream numeric tag; the Gitlink pins subsequent upstream merge/startup fixes. Local patch adapts the shared SDK v1 API and adds an explicit algorithm include."
+        "notes": "Version retains the latest upstream numeric tag; the Gitlink pins subsequent upstream merge/startup fixes. Local patch adapts the shared SDK v1 API and adds an explicit algorithm include.",
+        "binary_reference": {
+          "project": "InputLoaderReborn",
+          "author": "Keen",
+          "version": "1.0.0",
+          "sha256": "10fbf167f0556ee7d8c60ca463a906a2efebfdf0628e2f8a83d13f487eab45f5",
+          "research": "docs/input-loader-research.txt",
+          "notes": "Independently reimplemented defensive XML/file/initialization behavior observed with radare2/r2mcp; preserves newer upstream startup, cache and action/id fixes."
+        }
       }
     }
   },

@@ -1,0 +1,117 @@
+InputLoaderReborn binary research and hardening backport
+
+Evidence and limits
+
+Sample: .research/re_input/red4ext/plugins/input_loader/input_loader.dll
+SHA256: 10fbf167f0556ee7d8c60ca463a906a2efebfdf0628e2f8a83d13f487eab45f5
+Size: 142336 bytes; PE x64; embedded DLL name InputLoaderReborn.dll.
+Query reports InputLoaderReborn 1.0.0, author Keen. Its bundled readme credits
+Jack Humbert and describes AI-assisted modifications for game 2.31. This is
+the author's claim, not evidence of playtesting by this repository.
+
+Analyzed read-only with radare2 6.2.2 and r2mcp, using Ghidra's pdg backend and
+checking important decisions in assembly. Addresses below are preferred VAs
+at image base 0x180000000; subtract that base for RVAs. Working disassembly,
+decompilation and metadata are under build/research/re-input/ and are ignored.
+Decompiler types and variable names are inferred, not recovered source.
+
+Comparisons use official upstream tag v0.2.3 and our pinned f92f7dc source
+plus 001-essentials.patch. Our pin already includes later upstream fixes.
+
+Confirmed differences from upstream v0.2.3
+
+1. DLL initialization: 0x180017540 only conditionally disables thread-library
+   notifications. Logging and path initialization are performed by Main at
+   0x180015060, rather than creating a spdlog logger in DllMain. The replacement
+   logger, 0x180011fe0, opens a plugin-local loader.log for each appended line.
+   This removes substantial initialization from DllMain. A crash reduction
+   attributable to that change has not been demonstrated here.
+
+2. Main verifies the SDK/GameStates pointers, loads the base XMLs, checks
+   failure, and checks the return from GameStates::Add. Fatal failures return
+   false. Upstream v0.2.3 performs unchecked API calls and returns success.
+   See 0x1800155e6 through 0x180015867.
+
+3. Base XML loader 0x18000da30 returns failure on parse errors, tries a backup
+   beside the plugin and then the legacy input_loader backup location, and
+   records whether the originals loaded. No backup XML accompanies this
+   particular sample. Both fallback paths coincide in the supplied layout.
+
+4. File merger 0x1800104b0 skips parse failures and XMLs without <bindings>.
+   The node merger at 0x18000ed30 checks destination <bindings>, filters the
+   same eleven node types as upstream, and reports append/replace/add counts.
+   Its lookup only runs when the node has a nonempty name attribute
+   (0x18000ee62-0x18000eebd). XML parsing at 0x18000e65f uses default flags
+   0x74; there is no special tolerant parser evidenced by this call.
+
+5. Scanner 0x18000fbc0 only processes regular files, lowercases extensions
+   with towlower (0x18000ffd0), and compares against .xml. It handles directory
+   scan errors separately from the later dynamically registered file pass.
+   There is no collect-and-sort pass in this directory loop.
+
+6. Save routine 0x180011870 creates r6/cache and checks both XML save results.
+   It logs each failure instead of reporting unconditional success. The
+   observed writes go directly to final filenames; no atomic rename sequence
+   or INI/cache recovery is present in the inspected application path.
+
+7. Add at 0x180014aa0 checks a null input path and uses GetModuleFileNameW
+   instead of the upstream ANSI call when resolving a relative plugin path.
+   Registrations are queued; this binary does not merge them immediately.
+
+Behavior deliberately retained from our newer source
+
+The sample registers its merger at BaseInitialization OnExit: Main writes the
+callback at structure offset +0x10 at 0x18001567f and passes it to Add at
+0x180015697. The merger is 0x1800110f0. It does not perform the initial merge
+during Main(Load), and does not provide our cache-validation/INI recovery.
+Our source already has those later upstream fixes and retains them.
+
+The sample still identifies all existing XML blocks by name. It has no
+action-key matching for hold/multitap/repeat/toggle/acceptedEvents or id-key
+matching for buttonGroup. Our newer upstream source has these fixes; the
+backport preserves them and always appends unkeyed blend nodes.
+
+2.5 crash investigation
+
+Query at 0x180015890 writes SDK version 1.30.0 (not a game version), plugin
+version 1.0.0 and runtime-independent FileVer ffff:ffff:ffff:ffff. Supports at
+0x180015920 returns API 1. Our RED4ext accepts API 0/1 and only checks a lower
+SDK bound (sources/red4ext/src/dll/Systems/PluginSystem.cpp). Consequently,
+these values alone do not establish a 2.5 incompatibility. Main uses the
+GameStates pointer at SDK offset +0x18, matching our shared SDK's v1 layout.
+No game-address hook or direct CGameApplication field access was identified
+in the inspected plugin entry points and merge flow.
+
+The reported game crash has no matching runtime log or crash trace, so its
+cause remains unresolved. Late cache generation, malformed base XMLs or the
+installation/cache state are hypotheses, not diagnosed causes. The binary
+analysis does not establish that any individual change caused its reported
+stability, nor does a successful build establish game or save compatibility.
+
+Backport scope
+
+002-re-input-hardening.patch reimplements the verified defensive behavior:
+minimal DllMain, checked initialization, XML parse/root validation, nonempty
+merge keys, regular-file and case-insensitive extension filtering, wide plugin
+path resolution, separate scan/registration error handling, and diagnostics.
+It retains our spdlog logger, early merge, late registration merge, action/id
+keys and INI recovery. It also discards pugixml's partial trees on failure and
+uses native paths for XML reads/writes. Initialization checks include INI
+configuration failure and remove the input override when initialization fails
+its API, initial-merge or callback-registration checks. Legacy bundled XML
+fallbacks and the sample's metadata/version claims are not adopted.
+
+The portable helpers in src/Merge.hpp are tested against the pinned pugixml
+with tests/input_loader.cpp via tests/test_input_loader.py. This is host-side
+XML behavior testing, not a Windows DLL execution or in-game test. Release
+CI requires these tests after source patches/dependencies have been prepared.
+
+Validation of this backport
+
+- Input Loader Release DLL built with the shared patched SDK and ABI checks.
+- 39 repository tests passed, including six native XML helper tests.
+- Both Input Loader patch layers reconstructed in an independent clone.
+- AMD64 DLL, exports, matching PDB, payload and SHA256 verification passed.
+- Isolated packages: build/research/re-input/dist/.
+- Original research DLL and 001-essentials.patch checksums are unchanged.
+- No game/MO2 installation, Windows execution or in-game test was performed.

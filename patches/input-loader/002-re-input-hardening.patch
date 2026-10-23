@@ -1,0 +1,582 @@
+diff --git a/src/Main.cpp b/src/Main.cpp
+index 13b290c8d8b60cc31b702645cfe2e73aac239fa0..4df46f469ffb7cb7074007567f24495096cc0f31 100644
+--- a/src/Main.cpp
++++ b/src/Main.cpp
+@@ -1,10 +1,10 @@
+-#include <algorithm>
+ #include <iostream>
+ 
+ #include <RED4ext/RED4ext.hpp>
+ 
+ #include <pugixml.hpp>
+ 
++#include "Merge.hpp"
+ #include "Utils.hpp"
+ #include "stdafx.hpp"
+ #include <InputLoader.hpp>
+@@ -19,47 +19,27 @@ pugi::xml_document LoadDocument(std::filesystem::path path,
+   if (path.is_relative()) {
+     path = Utils::GetRootDir() / path;
+   }
+-  std::string documentPath = (path).string();
+-  pugi::xml_parse_result result = document.load_file(documentPath.c_str());
+-
+-  if (!result) {
+-    spdlog::error("XML document parsed with errors: {}", documentPath);
+-    spdlog::error("Error description: {}", result.description());
+-    spdlog::error("Error offset: {}", result.offset);
++  pugi::xml_parse_result result;
++  if (!ReadInputDocument(document, path, result)) {
++    if (!result) {
++      spdlog::error(L"XML document parsed with errors: {}", path.c_str());
++      spdlog::error("Error description: {}", result.description());
++      spdlog::error("Error offset: {}", result.offset);
++    } else {
++      spdlog::error(L"XML document has no <bindings> root: {}", path.c_str());
++    }
+     if (status)
+       *status = false;
+     return document;
+   }
+ 
+-  // spdlog::info("Loaded document: {}", documentPath);
++  spdlog::debug(L"Loaded document: {}", path.c_str());
+ 
+   if (status)
+     *status = true;
+   return document;
+ }
+ 
+-// https://stackoverflow.com/questions/20303821/how-to-check-if-string-is-in-array-of-strings
+-bool in_array(const std::string &value, const std::vector<std::string> &array) {
+-  return std::find(array.begin(), array.end(), value) != array.end();
+-}
+-
+-std::vector<std::string> valid_inputUserMappings = {
+-  "mapping", 
+-  "buttonGroup",
+-  "pairedAxes", 
+-  "preset"
+-};
+-
+-std::vector<std::string> valid_inputContexts = {
+-  "blend",  
+-  "context", 
+-  "hold",          
+-  "multitap",
+-  "repeat", 
+-  "toggle",  
+-  "acceptedEvents"
+-};
+-
+ pugi::xml_document inputContextsOriginal;
+ pugi::xml_document inputUserMappingsOriginal;
+ 
+@@ -90,8 +70,8 @@ bool IsUsableFile(const std::filesystem::path &path) {
+       std::filesystem::file_size(path, ec) == 0 || ec)
+     return false;
+   pugi::xml_document document;
+-  return document.load_file(path.string().c_str()) &&
+-         document.child("bindings");
++  pugi::xml_parse_result result;
++  return ReadInputDocument(document, path, result);
+ }
+ 
+ // Known vanilla r6/config xmls: size and SHA-256 of the file bytes as the game
+@@ -181,14 +161,14 @@ void RemoveIni() {
+ }
+ 
+ // Writes the ini when both cache xmls are usable, removes it otherwise.
+-void SyncIni() {
++bool SyncIni() {
+   auto root = Utils::GetRootDir();
+   if (!IsUsableFile(root / cacheContextsPath) ||
+       !IsUsableFile(root / cacheMappingsPath)) {
+     spdlog::error("r6/cache/inputContexts.xml or r6/cache/inputUserMappings.xml "
+                   "is missing or empty");
+     RemoveIni();
+-    return;
++    return false;
+   }
+   auto path = root / iniPath;
+   std::string current;
+@@ -198,18 +178,20 @@ void SyncIni() {
+                    std::istreambuf_iterator<char>());
+   }
+   if (current == iniContent)
+-    return;
++    return true;
+   std::error_code ec;
+   std::filesystem::create_directories(path.parent_path(), ec);
+   std::ofstream out(path, std::ios::binary | std::ios::trunc);
+   out << iniContent;
+   if (out) {
+     spdlog::info("Wrote '{}'", iniPath.string());
++    return true;
+   } else {
+     spdlog::error("Could not write '{}'; the game will use its own r6/config "
+                   "input xmls",
+                   iniPath.string());
+   }
++  return false;
+ }
+ 
+ // Saves both documents to r6/cache and checks the result. Any failure
+@@ -219,9 +201,9 @@ bool SaveCache(const char *what) {
+   std::error_code ec;
+   std::filesystem::create_directories(root / cacheDir, ec);
+   bool ok = inputContextsOriginal.save_file(
+-      (root / cacheContextsPath).string().c_str());
++      (root / cacheContextsPath).c_str());
+   ok = inputUserMappingsOriginal.save_file(
+-           (root / cacheMappingsPath).string().c_str()) &&
++           (root / cacheMappingsPath).c_str()) &&
+        ok;
+   if (ok) {
+     spdlog::info("{} input configs saved to 'r6/cache/inputContexts.xml' and "
+@@ -230,34 +212,8 @@ bool SaveCache(const char *what) {
+   } else {
+     spdlog::error("Failed to write {} input configs to r6/cache", what);
+   }
+-  SyncIni();
+-  return ok;
+-}
+-
+-// The attribute the game's own xmls use to identify each <bindings> child.
+-// <blend> has no key (only from/to/event) and is always appended.
+-const char *KeyAttribute(const std::string &name) {
+-  if (name == "hold" || name == "multitap" || name == "repeat" ||
+-      name == "toggle" || name == "acceptedEvents")
+-    return "action";
+-  if (name == "buttonGroup")
+-    return "id";
+-  if (name == "blend")
+-    return nullptr;
+-  return "name"; // context, mapping, pairedAxes, preset
+-}
+-
+-pugi::xml_node FindExisting(pugi::xml_node bindings, pugi::xml_node modNode) {
+-  const char *key = KeyAttribute(modNode.name());
+-  if (!key)
+-    return {};
+-  pugi::xml_attribute id = modNode.attribute(key);
+-  if (!id) {
+-    spdlog::warn("* <{}> has no '{}' attribute, cannot match an existing entry",
+-                 modNode.name(), key);
+-    return {};
+-  }
+-  return bindings.find_child_by_attribute(modNode.name(), key, id.value());
++  bool configured = SyncIni();
++  return ok && configured;
+ }
+ 
+ std::string NodeLabel(pugi::xml_node node) {
+@@ -268,86 +224,77 @@ std::string NodeLabel(pugi::xml_node node) {
+   return label;
+ }
+ 
+-void MergeDocument(std::filesystem::path path);
++bool MergeDocument(std::filesystem::path path);
+ 
+-RED4EXT_C_EXPORT void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t * str) {
+-  std::filesystem::path path(str);
+-  if (path.is_relative()) {
+-    char dllFilePath[513] = {0};
+-    GetModuleFileNameA(aHandle, dllFilePath, 512);
+-    std::filesystem::path dllPath(dllFilePath);
+-    path = dllPath.parent_path() / path;
++RED4EXT_C_EXPORT void Add(RED4ext::v1::PluginHandle aHandle, const wchar_t *str) {
++  if (!str || !*str) {
++    spdlog::error("Cannot register an empty input XML path");
++    return;
+   }
+-  spdlog::info(L"Will load document: {}", path.c_str());
+-  document_paths.emplace_back(path);
+-  // Plugins that load after Input Loader register here after the merge at
+-  // Load already ran; merge and save right away so the cache is complete
+-  // before the game's state machine starts. Plugins that load earlier are
+-  // picked up by MergeAll.
+-  if (HaveOriginals()) {
+-    MergeDocument(path);
+-    SaveCache("Merged");
++  try {
++    std::filesystem::path path(str);
++    if (path.is_relative()) {
++      std::wstring filename(MAX_PATH + 1, L'\0');
++      for (;;) {
++        DWORD length = GetModuleFileNameW(aHandle, filename.data(),
++                                         static_cast<DWORD>(filename.size()));
++        if (!length) {
++          spdlog::error("Cannot resolve plugin input path: Windows error {}",
++                        GetLastError());
++          return;
++        }
++        if (length < filename.size()) {
++          filename.resize(length);
++          break;
++        }
++        filename.resize(filename.size() + MAX_PATH);
++      }
++      path = std::filesystem::path(filename).parent_path() / path;
++    }
++    spdlog::info(L"Will load document: {}", path.c_str());
++    document_paths.emplace_back(path);
++    // Keep synchronous registration for plugins that load after our first merge.
++    if (HaveOriginals() && MergeDocument(path))
++      SaveCache("Merged");
++  } catch (const std::exception &ex) {
++    spdlog::error("Cannot register input XML: {}", ex.what());
++  } catch (...) {
++    spdlog::error("Unknown error registering input XML");
+   }
+ }
+ 
+-void MergeDocument(std::filesystem::path path) {
+-  // inputUserMappings.xml bindings children:
+-  // * mapping
+-  // * buttonGroup
+-  // * pairedAxes
+-  // * preset
+-
+-  // inputContexts.xml bindings children:
+-  // * blend
+-  // * context
+-  // * hold
+-  // * multitap
+-  // * repeat
+-  // * toggle
+-  // * acceptedEvents
+-
+-  // uiInputActions.xml input_actions children:
+-  // * filter
+-
+-  // inputDeadzones.xml deadzones children:
+-  // * radialDeadzone
+-  // * angularDeadzone
+-
+-  // pugi::xml_document modDocument =
+-  // LoadDocument("r6/input/flight_control.xml");
+-  pugi::xml_document modDocument = LoadDocument(path);
++bool MergeDocument(std::filesystem::path path) {
++  bool loaded = false;
++  auto modDocument = LoadDocument(path, &loaded);
++  if (!loaded)
++    return false;
+   spdlog::info(L"Loading document: {}", path.c_str());
+-
+-  // process bindings
+-  for (pugi::xml_node modNode : modDocument.child("bindings").children()) {
+-    spdlog::info("* Processing mod input block: {}", modNode.name());
+-    pugi::xml_document *document;
+-    if (in_array(modNode.name(), valid_inputContexts)) {
+-      document = &inputContextsOriginal;
+-    } else if (in_array(modNode.name(), valid_inputUserMappings)) {
+-      document = &inputUserMappingsOriginal;
+-    } else {
++  size_t processed = 0;
++  for (auto modNode : modDocument.child("bindings").children()) {
++    auto result = MergeBinding(inputContextsOriginal, inputUserMappingsOriginal,
++                               modNode);
++    switch (result) {
++    case MergeResult::Unsupported:
+       spdlog::warn("* <bindings> child '{}' not valid", modNode.name());
+       continue;
+-    }
+-    pugi::xml_node bindings = document->child("bindings");
+-    pugi::xml_node existing = FindExisting(bindings, modNode);
+-    if (existing) {
+-      if (modNode.attribute("append").as_bool()) {
+-        for (pugi::xml_node modNodeChild : modNode.children()) {
+-          existing.append_copy(modNodeChild);
+-        }
+-        spdlog::info("* Appended children to <{}>", NodeLabel(modNode));
+-      } else {
+-        bindings.remove_child(existing);
+-        bindings.append_copy(modNode);
+-        spdlog::info("* Replaced <{}>", NodeLabel(modNode));
+-      }
+-    } else {
+-      bindings.append_copy(modNode);
++    case MergeResult::MissingBindings:
++      spdlog::error("Cannot merge inputs: destination XML has no <bindings> root");
++      return false;
++    case MergeResult::Added:
+       spdlog::info("* Added <{}>", NodeLabel(modNode));
++      break;
++    case MergeResult::Appended:
++      spdlog::info("* Appended children to <{}>", NodeLabel(modNode));
++      break;
++    case MergeResult::Replaced:
++      spdlog::info("* Replaced <{}>", NodeLabel(modNode));
++      break;
+     }
++    ++processed;
+   }
++  spdlog::info(L"Finished {}: {} binding block(s) processed", path.c_str(),
++                processed);
++  return true;
+ }
+ 
+ void LoadOriginals() {
+@@ -369,13 +316,13 @@ void LoadOriginals() {
+ // guaranteed to precede the game's read of input_loader.ini and the cache
+ // xmls; merging at the old OnExit callback was why a fresh install needed a
+ // second launch.
+-void MergeAll() {
++bool MergeAll() {
+   LoadOriginals();
+   if (!HaveOriginals()) {
+     spdlog::error("Could not load the game's input xmls from r6/config, not "
+                   "generating anything");
+     RemoveIni();
+-    return;
++    return false;
+   }
+   // block mostly copied from
+   // https://github.com/WopsS/TweakDBext/blob/master/src/Hooks.cpp
+@@ -389,50 +336,52 @@ void MergeAll() {
+     for (const auto &entry :
+          std::filesystem::recursive_directory_iterator(inputDir)) {
+       const auto &path = entry.path();
+-      if (entry.path().extension() == ".xml") {
++      if (IsInputFile(entry)) {
+         try {
+           MergeDocument(path);
+         } catch (const std::exception &ex) {
+           spdlog::error(L"An exception occured while trying to load '{}'",
+                         path.c_str());
+-          // spdlog::error(ex.what());
++          spdlog::error("Reason: {}", ex.what());
+         } catch (...) {
+           spdlog::error(L"An unknown error occured while trying to load '{}'",
+                         path.c_str());
+         }
+       }
+     }
+-    spdlog::info("Loading input configs from dynamically added paths");
+-    for (const auto &path : document_paths) {
+-      try {
+-        MergeDocument(path);
+-      } catch (const std::exception &ex) {
+-        spdlog::error(L"An exception occured while trying to load '{}'",
+-                      path.c_str());
+-        // spdlog::error(ex.what());
+-      } catch (...) {
+-        spdlog::error(L"An unknown error occured while trying to load '{}'",
+-                      path.c_str());
+-      }
+-    }
+   } catch (const std::exception &ex) {
+-    spdlog::error(L"An exception occured while reading the directory '{}'",
+-                  inputDir.c_str());
+-    // spdlog::error(ex.what());
++    spdlog::error(L"Cannot scan input directory '{}'", inputDir.c_str());
++    spdlog::error("Reason: {}", ex.what());
+   } catch (...) {
+-    spdlog::error(L"An unknown error occured while reading the directory '{}'",
+-                  inputDir.c_str());
++    spdlog::error(L"Unknown error reading directory '{}'", inputDir.c_str());
++  }
++  spdlog::info("Loading input configs from dynamically added paths");
++  for (const auto &path : document_paths) {
++    try {
++      MergeDocument(path);
++    } catch (const std::exception &ex) {
++      spdlog::error(L"Cannot load registered input '{}'", path.c_str());
++      spdlog::error("Reason: {}", ex.what());
++    } catch (...) {
++      spdlog::error(L"Unknown error loading registered input '{}'", path.c_str());
++    }
+   }
+ 
+   // save files
+-  SaveCache("Merged");
++  return SaveCache("Merged");
+ }
+ 
+ // Late refresh from a clean r6/config load. The game has most likely read
+ // r6/cache by now, so anything new here applies on the next launch.
+ bool RefreshInputConfigs(RED4ext::CGameApplication *) {
+   spdlog::info("Refreshing the merged input configs at BaseInitialization exit");
+-  MergeAll();
++  try {
++    MergeAll();
++  } catch (const std::exception &ex) {
++    spdlog::error("Cannot refresh merged inputs: {}", ex.what());
++  } catch (...) {
++    spdlog::error("Unknown error refreshing merged inputs");
++  }
+   return true;
+ }
+ 
+@@ -441,8 +390,7 @@ bool RefreshInputConfigs(RED4ext::CGameApplication *) {
+ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+   switch (fdwReason) {
+   case DLL_PROCESS_ATTACH:
+-    Utils::CreateLogger();
+-    spdlog::info("Starting up Input Loader {}", MOD_VERSION_STR);
++    DisableThreadLibraryCalls(hinstDLL);
+     break;
+   }
+   return true;
+@@ -451,30 +399,47 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
+                                         RED4ext::v1::EMainReason aReason,
+                                         const RED4ext::v1::Sdk *aSdk) {
+-  switch (aReason) {
+-  case RED4ext::v1::EMainReason::Load: {
+-    // DisableThreadLibraryCalls(aHandle);
+-
+-    spdlog::info("Connected to RED4ext - registering load callback");
+-    RED4ext::v1::GameState initState;
+-    initState.OnEnter = nullptr;
+-    initState.OnUpdate = nullptr;
+-    initState.OnExit = &InputLoader::RefreshInputConfigs;
+-
+-    aSdk->gameStates->Add(aHandle, RED4ext::EGameStateType::BaseInitialization,
+-                          &initState);
+-
+-    // Synchronous: must be done before the game reads the ini and r6/cache.
+-    InputLoader::MergeAll();
+-    break;
+-  }
+-  case RED4ext::v1::EMainReason::Unload: {
+-    spdlog::info("Shutting down");
+-    spdlog::shutdown();
+-    break;
+-  }
++  try {
++    switch (aReason) {
++    case RED4ext::v1::EMainReason::Load: {
++      // File I/O and logger allocation belong outside DllMain's loader lock.
++      Utils::CreateLogger();
++      spdlog::info("Starting up Input Loader {}", MOD_VERSION_STR);
++      if (!aSdk || !aSdk->gameStates || !aSdk->gameStates->Add) {
++        spdlog::error("Cannot initialize Input Loader: GameStates API unavailable");
++        InputLoader::RemoveIni();
++        return false;
++      }
++      // Synchronous: finish before the game reads the INI and r6/cache.
++      if (!InputLoader::MergeAll()) {
++        spdlog::error("Cannot initialize Input Loader: initial input merge failed");
++        InputLoader::RemoveIni();
++        return false;
++      }
++      RED4ext::v1::GameState initState{};
++      initState.OnExit = &InputLoader::RefreshInputConfigs;
++      if (!aSdk->gameStates->Add(aHandle,
++                                RED4ext::EGameStateType::BaseInitialization,
++                                &initState)) {
++        spdlog::error("Cannot register BaseInitialization refresh callback");
++        InputLoader::RemoveIni();
++        return false;
++      }
++      spdlog::info("Initial input merge complete; refresh callback registered");
++      break;
++    }
++    case RED4ext::v1::EMainReason::Unload:
++      spdlog::info("Shutting down");
++      spdlog::shutdown();
++      break;
++    }
++  } catch (const std::exception &ex) {
++    spdlog::error("Input Loader initialization/shutdown failed: {}", ex.what());
++    return false;
++  } catch (...) {
++    spdlog::error("Unknown Input Loader initialization/shutdown error");
++    return false;
+   }
+-
+   return true;
+ }
+ 
+diff --git a/src/Merge.hpp b/src/Merge.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..8f711c1652ae8e0e54e388fbb552c62cf3ae5be9
+--- /dev/null
++++ b/src/Merge.hpp
+@@ -0,0 +1,84 @@
++#pragma once
++
++#include <algorithm>
++#include <cwctype>
++#include <filesystem>
++#include <string_view>
++#include <pugixml.hpp>
++
++namespace InputLoader {
++
++inline bool IsInputFile(const std::filesystem::directory_entry &entry) {
++  std::error_code error;
++  if (!entry.is_regular_file(error) || error)
++    return false;
++  auto extension = entry.path().extension().wstring();
++  std::transform(extension.begin(), extension.end(), extension.begin(),
++                 [](wchar_t ch) { return std::towlower(ch); });
++  return extension == L".xml";
++}
++
++inline bool ReadInputDocument(pugi::xml_document &document,
++                              const std::filesystem::path &path,
++                              pugi::xml_parse_result &result) {
++  result = document.load_file(path.c_str());
++  if (!result || !document.child("bindings")) {
++    // pugixml can leave a partial tree after a parse failure. Never merge it.
++    document.reset();
++    return false;
++  }
++  return true;
++}
++
++inline const char *KeyAttribute(std::string_view name) {
++  if (name == "hold" || name == "multitap" || name == "repeat" ||
++      name == "toggle" || name == "acceptedEvents")
++    return "action";
++  if (name == "buttonGroup")
++    return "id";
++  if (name == "blend")
++    return nullptr;
++  return "name";
++}
++
++enum class MergeResult { Added, Appended, Replaced, Unsupported, MissingBindings };
++
++inline MergeResult MergeBinding(pugi::xml_document &contexts,
++                                pugi::xml_document &mappings,
++                                pugi::xml_node node) {
++  const std::string_view name = node.name();
++  pugi::xml_document *document;
++  if (name == "blend" || name == "context" || name == "hold" ||
++      name == "multitap" || name == "repeat" || name == "toggle" ||
++      name == "acceptedEvents") {
++    document = &contexts;
++  } else if (name == "mapping" || name == "buttonGroup" ||
++             name == "pairedAxes" || name == "preset") {
++    document = &mappings;
++  } else {
++    return MergeResult::Unsupported;
++  }
++  auto bindings = document->child("bindings");
++  if (!bindings)
++    return MergeResult::MissingBindings;
++  pugi::xml_node existing;
++  if (const char *key = KeyAttribute(name)) {
++    auto id = node.attribute(key);
++    if (id && *id.value())
++      existing = bindings.find_child_by_attribute(node.name(), key, id.value());
++  }
++  if (!existing) {
++    bindings.append_copy(node);
++    return MergeResult::Added;
++  }
++  if (node.attribute("append").as_bool()) {
++    for (auto child : node.children())
++      existing.append_copy(child);
++    return MergeResult::Appended;
++  }
++  bindings.remove_child(existing);
++  bindings.append_copy(node);
++  return MergeResult::Replaced;
++}
++
++} // namespace InputLoader

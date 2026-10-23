@@ -59,6 +59,11 @@ jobs:
       - name: Build all Release packages
         run: ./build-linux.sh --config Release --jobs 2
 
+      - name: Test patched Input Loader XML behavior
+        env:
+          CP2077_REQUIRE_INPUT_TESTS: '1'
+        run: python3 -m unittest discover -s tests -p test_input_loader.py -v
+
       - name: Prepare verified release assets
         run: |
           python3 scripts/check-sources.py

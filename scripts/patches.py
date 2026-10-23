@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Apply, export, inspect, or independently check cumulative submodule patches."""
+"""Apply, export, inspect, or independently check ordered submodule patches."""
 import argparse
 import contextlib
 import hashlib
 import json
 import os
 import pathlib
+import re
 import tempfile
 
 import common as c
@@ -78,9 +79,9 @@ class Project:
                 if c.sha(path) != item['sha256']:
                     raise ValueError(f'{path}: checksum mismatch. Export intentional source edits; do not bypass validation.')
 
-    def expected(self):
+    def expected(self, count=None):
         with index(self.path, self.base) as env:
-            for patch in self.patch_paths:
+            for patch in self.patch_paths[:count]:
                 if patch.stat().st_size:
                     c.git(self.path, 'apply', '--cached', '--check', patch, env=env)
                     c.git(self.path, 'apply', '--cached', patch, env=env)
@@ -142,18 +143,28 @@ def apply(names):
         print(f'{project.name}: ' + ('local edits preserved (export before build)' if action == 'preserve' else 'patches applied and saved'))
 
 
-def export(names):
+def export(names, new_patch=None):
+    if new_patch is not None and not re.fullmatch(r'[0-9]{3}-[a-z0-9][a-z0-9-]*\.patch', new_patch):
+        raise ValueError('Use a patch basename such as 002-sdk-api-cleanup.patch.')
     lock = c.config()
     pending = []
     for name in names:
         project = Project(name, validate=False)
-        if len(project.patch_paths) != 1:
-            raise ValueError('Export currently supports one cumulative patch per project.')
+        if not project.patch_paths:
+            raise ValueError(f'{name}: no registered patch to export.')
+        prefix_count = len(project.patch_paths) if new_patch else len(project.patch_paths) - 1
+        for item, path in zip(project.record['patches'][:prefix_count], project.patch_paths[:prefix_count]):
+            if c.sha(path) != item['sha256']:
+                raise ValueError(f'{path}: checksum mismatch in a preserved patch layer.')
+        baseline = project.expected(prefix_count)
+        destination = project.patch_paths[0].parent / new_patch if new_patch else project.patch_paths[-1]
+        if new_patch and destination.exists():
+            raise ValueError(f'{destination}: already exists; export without --new-patch to update the last layer.')
         tree = snapshot(project.path, project.base)
-        if tree == project.base_tree:
-            raise ValueError(f'{name}: no changes from upstream. Refusing to erase the compatibility patch.')
-        data = diff(project.path, project.base, tree)
-        with index(project.path, project.base) as env:
+        if tree == baseline:
+            raise ValueError(f'{name}: no changes from the patch baseline. Refusing to erase the compatibility patch or add an empty layer.')
+        data = diff(project.path, baseline, tree)
+        with index(project.path, baseline) as env:
             with tempfile.NamedTemporaryFile(suffix='.patch') as stream:
                 stream.write(data)
                 stream.flush()
@@ -162,14 +173,19 @@ def export(names):
             reconstructed = c.git(project.path, 'write-tree', env=env).stdout.decode().strip()
             if reconstructed != tree:
                 raise ValueError(f'{name}: patch export did not reproduce the working tree.')
-        pending.append((project, data))
-    for project, data in pending:
-        c.atomic_bytes(project.patch_paths[0], data)
-        lock['projects'][project.name]['patches'][0]['sha256'] = hashlib.sha256(data).hexdigest()
+        pending.append((project, destination, data))
+    for project, destination, data in pending:
+        c.atomic_bytes(destination, data)
+        entry = {'path': destination.relative_to(c.ROOT).as_posix(), 'sha256': hashlib.sha256(data).hexdigest()}
+        layers = lock['projects'][project.name]['patches']
+        if new_patch:
+            layers.append(entry)
+        else:
+            layers[-1] = entry
     c.atomic_json(c.ROOT / 'sources.lock.json', lock)
-    for project, data in pending:
+    for project, destination, data in pending:
         Project(project.name).remember()
-        print(f'{project.name}: exported {len(data)} bytes to {project.record["patches"][0]["path"]}')
+        print(f'{project.name}: exported {len(data)} bytes to {destination.relative_to(c.ROOT)}')
 
 
 def unapply(names):
@@ -223,8 +239,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('command', choices=['apply', 'export', 'status', 'check', 'unapply'])
     parser.add_argument('project', nargs='?', default='all')
+    parser.add_argument('--new-patch', metavar='NAME', help='Append a new layer when exporting; default export updates the final layer.')
     args = parser.parse_args()
-    globals()[args.command](c.select(args.project))
+    if args.new_patch and args.command != 'export':
+        parser.error('--new-patch is only valid with export')
+    if args.command == 'export':
+        export(c.select(args.project), args.new_patch)
+    else:
+        globals()[args.command](c.select(args.project))
 
 
 if __name__ == '__main__':

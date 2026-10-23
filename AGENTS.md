@@ -45,8 +45,14 @@ commit inside an upstream submodule without a separate explicit request.
 3. Use the map below; do not dump the SDK tree or full Proton/build logs.
 4. Make the smallest change and run the matching validation.
 
+When asked to research a mod or its source, first check the optional
+`.research/` directory for matching source trees or mod builds. Use relevant
+local material as research evidence. The directory may be absent; if it is
+absent or has no matching material, continue with other available sources.
+
 | Task | File / directory |
 | --- | --- |
+| Mod research sources and builds | `.research/` (optional) |
 | Official upstream URLs and commits | `.gitmodules`, root Gitlinks at `sources/*` |
 | Patches, provenance, dependency/asset pins | `sources.lock.json`, `patches/<project>/` |
 | Apply/export/status/reconstruct patches | `scripts/patches.py` |
@@ -93,10 +99,19 @@ store Gitlinks and patches, never upstream source files. Do not use child
 commits as a substitute for export. Community ports must keep attribution in
 `patches/README.md` and lockfile provenance.
 
-There is one cumulative patch per project. Export diffs the complete desired
-working tree against the recorded upstream base, including staged/unstaged,
-new, deleted, renamed, binary and executable files. It uses a temporary index;
-do not stage files in a submodule merely to make export find them.
+Patch lists are ordered stacks. `001-essentials.patch` is relative to the
+upstream base; later layers are relative to every preceding layer. Default
+`export <project>` updates only the final layer, preserving earlier bytes and
+checksums. Append an intentional layer with:
+
+```bash
+python3 scripts/patches.py export codeware --new-patch 003-description.patch
+```
+
+Export includes staged/unstaged, new, deleted, renamed, binary and executable
+files and verifies reconstruction. It rejects empty layers, duplicate names
+and corrupted prefixes. It uses a temporary index; do not stage submodule
+files merely to make export find them.
 
 ```bash
 python3 scripts/patches.py status

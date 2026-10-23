@@ -144,5 +144,50 @@ class PatchWorkflow(unittest.TestCase):
         self.assertEqual(self.patch.read_bytes(), before)
 
 
+    def test_append_and_update_final_patch_preserves_previous_layers_and_index(self):
+        self.call(patches.apply)
+        original = self.patch.read_bytes()
+        before = self.index_digest()
+        (self.source / 'a.txt').write_text('patched plus cleanup\n')
+        self.call(lambda names: patches.export(names, '002-cleanup.patch'))
+        second = self.patch.parent / '002-cleanup.patch'
+        self.assertEqual(self.patch.read_bytes(), original)
+        self.assertIn(b'-patched', second.read_bytes())
+        self.assertIn(b'+patched plus cleanup', second.read_bytes())
+        self.call(patches.check)
+        (self.source / 'extra.hpp').write_text('new cleanup file\n')
+        self.call(patches.export)
+        self.assertEqual(self.patch.read_bytes(), original)
+        self.assertIn(b'extra.hpp', second.read_bytes())
+        self.assertEqual(self.index_digest(), before)
+        saved = json.loads((self.root / 'sources.lock.json').read_text())
+        self.assertEqual(len(saved['projects']['codeware']['patches']), 2)
+        self.call(patches.check)
+        self.call(patches.unapply)
+        self.assertEqual((self.source / 'a.txt').read_text(), 'base\n')
+        self.assertFalse((self.source / 'extra.hpp').exists())
+        self.call(patches.apply)
+        self.call(patches.apply)
+        self.call(patches.check)
+        self.assertEqual((self.source / 'a.txt').read_text(), 'patched plus cleanup\n')
+        self.assertTrue((self.source / 'extra.hpp').exists())
+        self.assertEqual(self.index_digest(), before)
+
+    def test_new_layer_rejects_empty_invalid_existing_or_corrupt_prefix(self):
+        self.call(patches.apply)
+        original = self.patch.read_bytes()
+        lock = (self.root / 'sources.lock.json').read_bytes()
+        for name in ['../002-cleanup.patch', 'cleanup.patch', '001-essentials.patch', '002-cleanup.patch']:
+            with self.assertRaises(ValueError):
+                self.call(lambda names: patches.export(names, name))
+        self.assertEqual(self.patch.read_bytes(), original)
+        self.assertEqual((self.root / 'sources.lock.json').read_bytes(), lock)
+        (self.source / 'a.txt').write_text('patched plus cleanup\n')
+        self.patch.write_bytes(original + b'corruption')
+        with self.assertRaisesRegex(ValueError, 'checksum mismatch'):
+            self.call(lambda names: patches.export(names, '002-cleanup.patch'))
+        self.assertFalse((self.patch.parent / '002-cleanup.patch').exists())
+
+
 if __name__ == '__main__':
     unittest.main()
