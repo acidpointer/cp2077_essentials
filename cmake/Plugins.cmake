@@ -26,7 +26,9 @@ function(essentials_plugin name directory)
   target_compile_definitions(${name} PRIVATE
     WINVER=0x0601 _WIN32_WINNT=0x0601 WIN32_LEAN_AND_MEAN NOMINMAX
     UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS)
+  # Keep these plugin sources warning-free, including current SDK API usage.
   target_compile_options(${name} PRIVATE /GR- /EHsc /bigobj /utf-8
+    "$<$<COMPILE_LANG_AND_ID:CXX,Clang>:-Werror>"
     "$<$<CONFIG:Release>:/Ob2>" "$<$<CONFIG:Release>:/Gy>")
   target_link_options(${name} PRIVATE /DEBUG:FULL /INCREMENTAL:NO
     "$<$<CONFIG:Release>:/OPT:REF>" "$<$<CONFIG:Release>:/OPT:ICF>")

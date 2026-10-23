@@ -1,0 +1,281 @@
+diff --git a/lib/Red/TypeInfo/Common.hpp b/lib/Red/TypeInfo/Common.hpp
+index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed4c75e290 100644
+--- a/lib/Red/TypeInfo/Common.hpp
++++ b/lib/Red/TypeInfo/Common.hpp
+@@ -59,7 +59,7 @@ template<typename T>
+ concept IsScriptableSystem = std::is_base_of_v<ScriptableSystem, T>;
+ 
+ template<typename T>
+-concept IsType = std::is_base_of_v<CBaseRTTIType, T>;
++concept IsType = std::is_base_of_v<rtti::IType, T>;
+ 
+ template<typename T>
+ concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
+diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
+index 7bd9f7a0ac4249cbb85c6802ff57d62a692e0850..ed1c18a02caa4682d6003dfca7332ede6c39c742 100644
+--- a/lib/Red/TypeInfo/Definition.hpp
++++ b/lib/Red/TypeInfo/Definition.hpp
+@@ -189,8 +189,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a
+ }
+ 
+ template<typename R>
+-inline void AssignReturnValue(R* aRetValue, CBaseRTTIType* aRetValueType,
+-                              FinalRetType<R>* aRetBuffer, CBaseRTTIType* aRetBufferType)
++inline void AssignReturnValue(R* aRetValue, rtti::IType* aRetValueType,
++                              FinalRetType<R>* aRetBuffer, rtti::IType* aRetBufferType)
+ {
+     if (aRetBuffer)
+     {
+@@ -214,7 +214,7 @@ inline ScriptingFunction_t<void*> MakeNativeFunction()
+ 
+     static const auto s_retType = !std::is_void_v<R> ? ResolveType<FinalRetType<R>>() : nullptr;
+ 
+-    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, rtti::IType* aRetType) -> void
+     {
+         Args args;
+         ExtractArgs(aContext, aFrame, args);
+@@ -261,7 +261,7 @@ inline ScriptingFunction_t<void*> MakeNativeGetter()
+ 
+     static const auto s_retType = ResolveType<Value>();
+ 
+-    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, rtti::IType* aRetType) -> void
+     {
+         ++aFrame->code;
+         AssignReturnValue(&(aContext->*AProperty), s_retType, aRet, aRetType);
+@@ -337,26 +337,26 @@ concept IsNativeFunctionPtr = Detail::IsFunctionPtr<F>
+     && std::is_pointer_v<typename Detail::FunctionPtr<F>::template argument_type<3>>
+     && Detail::IsTypeOrVoid<std::remove_pointer_t<typename Detail::FunctionPtr<F>::template argument_type<3>>>;
+ 
+-inline std::string MakeScriptTypeName(CBaseRTTIType* aType)
++inline std::string MakeScriptTypeName(rtti::IType* aType)
+ {
+     switch (aType->GetType())
+     {
+-    case RED4ext::ERTTIType::Class:
++    case RED4ext::rtti::ERTTIType::Class:
+     {
+         return CRTTISystem::Get()->ConvertNativeToScriptName(aType->GetName()).ToString();
+     }
+-    case RED4ext::ERTTIType::Handle:
+-    case RED4ext::ERTTIType::WeakHandle:
++    case RED4ext::rtti::ERTTIType::Handle:
++    case RED4ext::rtti::ERTTIType::WeakHandle:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIHandleType*>(aType)->innerType;
+         return MakeScriptTypeName(pInnerType);
+     }
+-    case RED4ext::ERTTIType::Array:
++    case RED4ext::rtti::ERTTIType::Array:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIArrayType*>(aType)->innerType;
+         return "array<" + MakeScriptTypeName(pInnerType) + ">";
+     }
+-    case RED4ext::ERTTIType::ScriptReference:
++    case RED4ext::rtti::ERTTIType::ScriptReference:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIScriptReferenceType*>(aType)->innerType;
+         return "script_ref<" + MakeScriptTypeName(pInnerType) + ">";
+diff --git a/lib/Red/TypeInfo/Parameters.hpp b/lib/Red/TypeInfo/Parameters.hpp
+index 8d44b13ebc899faeacedb2b1cec2b05f075254b7..d4b10f6e60b524f8356403ea42de4da09551f217 100644
+--- a/lib/Red/TypeInfo/Parameters.hpp
++++ b/lib/Red/TypeInfo/Parameters.hpp
+@@ -190,7 +190,7 @@ struct ScriptRef
+ 
+     void* unk00;         // 00 - VFT
+     bool managed;        // 08 - Actually a pointer, but never used
+-    CBaseRTTIType* type; // 10
++    rtti::IType* type; // 10
+     T* ref;              // 18
+     CName name;          // 20
+ };
+diff --git a/lib/Red/TypeInfo/Resolving.hpp b/lib/Red/TypeInfo/Resolving.hpp
+index 33809e3eb2ccf6a9600b28ee66b1e232720596be..f40d34e210b7de8099b63bfe793aa7229fa60ff0 100644
+--- a/lib/Red/TypeInfo/Resolving.hpp
++++ b/lib/Red/TypeInfo/Resolving.hpp
+@@ -233,7 +233,7 @@ template<CName AType>
+ class TypeLocator
+ {
+ public:
+-    static inline CBaseRTTIType* Get() noexcept
++    static inline rtti::IType* Get() noexcept
+     {
+         if (!s_resolved)
+         {
+@@ -249,7 +249,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Class)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Class)
+             {
+                 s_type = nullptr;
+             }
+@@ -264,7 +264,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Handle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Handle)
+             {
+                 s_type = nullptr;
+             }
+@@ -279,7 +279,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::WeakHandle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::WeakHandle)
+             {
+                 s_type = nullptr;
+             }
+@@ -294,7 +294,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Array)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Array)
+             {
+                 s_type = nullptr;
+             }
+@@ -309,7 +309,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Enum)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Enum)
+             {
+                 s_type = nullptr;
+             }
+@@ -328,7 +328,7 @@ public:
+         return s_type;
+     }
+ 
+-    operator CBaseRTTIType*() const noexcept
++    operator rtti::IType*() const noexcept
+     {
+         return Get();
+     }
+@@ -353,7 +353,7 @@ public:
+         return GetArray();
+     }
+ 
+-    [[nodiscard]] inline CBaseRTTIType* operator->() const noexcept
++    [[nodiscard]] inline rtti::IType* operator->() const noexcept
+     {
+         return Get();
+     }
+@@ -373,7 +373,7 @@ private:
+         }
+     }
+ 
+-    static inline CBaseRTTIType* s_type;
++    static inline rtti::IType* s_type;
+     static inline bool s_resolved;
+ };
+ 
+@@ -383,20 +383,20 @@ class ClassLocator : public TypeLocator<GetTypeName<T>()>
+ };
+ 
+ template<CName AType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     return TypeLocator<AType>::Get();
+ }
+ 
+ template<typename TType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     constexpr auto name = GetTypeName<TType>();
+ 
+     return TypeLocator<name>::Get();
+ }
+ 
+-inline CBaseRTTIType* GetType(CName aTypeName)
++inline rtti::IType* GetType(CName aTypeName)
+ {
+     return CRTTISystem::Get()->GetType(aTypeName);
+ }
+@@ -419,7 +419,7 @@ inline CClass* GetClass(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Class)
++    if (!type || type->GetType() != rtti::ERTTIType::Class)
+     {
+         return nullptr;
+     }
+@@ -457,7 +457,7 @@ inline CEnum* GetEnum(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Enum)
++    if (!type || type->GetType() != rtti::ERTTIType::Enum)
+     {
+         return nullptr;
+     }
+@@ -474,7 +474,7 @@ inline CName ResolveTypeName()
+ }
+ 
+ template<typename T>
+-inline CBaseRTTIType* ResolveType()
++inline rtti::IType* ResolveType()
+ {
+     static const auto s_name = ResolveTypeName<T>();
+     return CRTTISystem::Get()->GetType(s_name);
+@@ -546,7 +546,7 @@ inline bool IsInstanceOf(const WeakHandle<ISerializable>& aObject)
+     return aObject && aObject.instance->GetType()->IsA(Red::GetClass<T>());
+ }
+ 
+-inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void* aRhsValue = nullptr)
++inline bool IsCompatible(rtti::IType* aLhsType, rtti::IType* aRhsType, void* aRhsValue = nullptr)
+ {
+     if (!aLhsType || !aRhsType)
+         return false;
+@@ -555,7 +555,7 @@ inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void*
+     {
+         auto lhsMetaType = aLhsType->GetType();
+ 
+-        if ((lhsMetaType == ERTTIType::Handle || lhsMetaType == ERTTIType::WeakHandle)
++        if ((lhsMetaType == rtti::ERTTIType::Handle || lhsMetaType == rtti::ERTTIType::WeakHandle)
+             && lhsMetaType == aRhsType->GetType())
+         {
+             auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
+diff --git a/src/App/Extensions/Mesh/Extension.cpp b/src/App/Extensions/Mesh/Extension.cpp
+index 1a8e361421cc3386d9c68e0dbc3186fec5107aed..b45d8dfb53aec5c9d6aefc771a8c5108510306ee 100644
+--- a/src/App/Extensions/Mesh/Extension.cpp
++++ b/src/App/Extensions/Mesh/Extension.cpp
+@@ -636,7 +636,7 @@ void App::MeshExtension::ExpandMaterialParams(const Core::SharedPtr<DynamicConte
+     {
+         const auto& param = aMaterialInstance->params[i];
+ 
+-        if (param.data.GetType()->GetType() != Red::ERTTIType::ResourceReference)
++        if (param.data.GetType()->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             continue;
+ 
+         auto& reference = *reinterpret_cast<Red::ResourceReference<>*>(param.data.GetDataPtr());
+@@ -1142,7 +1142,7 @@ void App::MeshExtension::MeshState::EnsureContextReady()
+ 
+     for (const auto& contextParam : contextParams)
+     {
+-        if (contextParam.data.GetType()->GetType() == Red::ERTTIType::Name)
++        if (contextParam.data.GetType()->GetType() == Red::rtti::ERTTIType::Name)
+         {
+             auto attrName = Red::CNamePool::Add(Str::SnakeCase(contextParam.name.ToString()).data());
+             auto attrValue = *reinterpret_cast<Red::CName*>(contextParam.data.GetDataPtr());
+diff --git a/src/Red/TweakDB.hpp b/src/Red/TweakDB.hpp
+index f21e1d5c03ac47b37573830b3923f4aa06309d4a..4177be9e48b71916073e58451b018dd919c0ffed 100644
+--- a/src/Red/TweakDB.hpp
++++ b/src/Red/TweakDB.hpp
+@@ -84,7 +84,7 @@ inline void AppendToFlat(TweakDBID aFlatID, const I& aBegin, const I& aEnd)
+         return;
+ 
+     auto data = flat->GetValue();
+-    if (data.type->GetType() != ERTTIType::Array)
++    if (data.type->GetType() != rtti::ERTTIType::Array)
+         return;
+ 
+     auto copy = *reinterpret_cast<DynArray<T>*>(data.value);

@@ -128,7 +128,9 @@ git commit
 
 Patches apply in the order recorded by `sources.lock.json`. The initial
 `001-essentials.patch` is relative to the pinned upstream commit; each later
-layer is relative to all preceding patches.
+layer is relative to all preceding patches. Codeware, TweakXL and ArchiveXL
+also have `002-sdk-api-cleanup.patch`, which replaces deprecated SDK aliases
+without rewriting the original compatibility work.
 
 Normal `export <project>` updates only the final layer and preserves earlier
 patches. To append a separate layer after editing sources:
@@ -140,6 +142,8 @@ python3 scripts/patches.py export codeware --new-patch 003-description.patch
 Export includes staged and unstaged edits, new files, deletions, renames,
 binary changes and executable permissions. It preserves the submodule's real
 index and refuses empty layers, duplicate names or corrupted preceding patches.
+The three affected plugin targets treat Clang warnings as errors to prevent
+warning floods from returning. Codeware's public redscript enum remains named `ERTTIType`.
 
 ```bash
 python3 scripts/patches.py status
@@ -248,8 +252,12 @@ The automatically generated release notes include installation choices,
 original mod versions, attribution and the current runtime limitations.
 
 The workflow uses the repository's `GITHUB_TOKEN` with `contents: write`;
-no personal access token is needed. It creates a new release and does not
-overwrite a published one. Use a new version tag for subsequent releases.
+no personal access token is needed. Publication creates a missing release or
+attaches the prepared assets to an existing mutable release, replacing only
+matching asset filenames. Existing titles, notes and prerelease settings are
+preserved. Drafts are published only after successful uploads. A rerun whose
+assets already match GitHub's SHA256 digests succeeds without uploading again.
+Immutable releases with different assets require a new version tag.
 The tag must include the committed workflow and tooling. Creating commits,
 tags and pushes remains a maintainer action unless explicitly requested.
 
@@ -264,7 +272,9 @@ python3 scripts/release.py v1.0.0
 Release preparation verifies source identities through the existing patch
 helper, which writes temporary Git indexes/objects. Agents must obtain explicit
 authorization for those Git mutations under [AGENTS.md](AGENTS.md).
-Build logs are retained as a workflow artifact for seven days on failure.
+On failure, build logs and any prepared ZIPs, checksums and manifest are
+retained as separate workflow artifacts for seven days. A publication failure
+does not require losing the completed build outputs.
 CI-built binaries still require in-game testing; automation does not establish
 gameplay or save compatibility.
 

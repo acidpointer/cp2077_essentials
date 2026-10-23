@@ -62,10 +62,12 @@ absent or has no matching material, continue with other available sources.
 | Native LLVM / Microsoft SDK bootstrap | `scripts/toolchain.py`, `cmake/toolchains/clang-cl-linux.cmake` |
 | Plugin targets, generated headers and link libs | `cmake/Plugins.cmake` |
 | Allocator/native dependencies | `cmake/Dependencies.cmake` |
+| Loader header-only dependency integration | `cmake/LoaderDependencies.cmake` |
 | Required ABI assertions | `cmake/AbiChecks.cpp` |
 | Payload composition, original versions and ZIP names | `scripts/package.py` |
 | Tag-triggered release build and publication | `.github/workflows/release.yml` |
 | Flat GitHub assets, checksums and release notes | `scripts/release.py` |
+| Retryable GitHub publication / mocked CLI regression tests | `scripts/publishing.py`, `tests/test_publishing.py` |
 | Read-only official submodule/source boundary audit | `scripts/check-sources.py` |
 | Release naming, payload and preservation tests | `tests/test_release.py` |
 | Atomic distribution collection | `scripts/distribution.py` |
@@ -108,6 +110,8 @@ checksums. Append an intentional layer with:
 python3 scripts/patches.py export codeware --new-patch 003-description.patch
 ```
 
+Codeware, TweakXL and ArchiveXL have `002-sdk-api-cleanup.patch` after their
+compatibility patches. Never collapse these layers or hand-edit their hashes.
 Export includes staged/unstaged, new, deleted, renamed, binary and executable
 files and verifies reconstruction. It rejects empty layers, duplicate names
 and corrupted prefixes. It uses a temporary index; do not stage submodule
@@ -203,6 +207,20 @@ layout/scope fixes. Its effective identity includes the patch checksum.
 Keep explicit `cmake/AbiChecks.cpp` assertions: the SDK's general offset macro
 is disabled under Clang. Keep mimalloc 2.2.4 for this TiltedCore; 3.x removes
 the `mi_malloc_size` API it uses.
+The loader injects `cmake/LoaderDependencies.cmake` to consume the unchanged
+pinned toml11 headers without its obsolete CMP0127 OLD build configuration.
+Keep header-only mode and upstream compile definitions/options; do not edit
+dependency sources or globally silence CMake deprecation warnings.
+
+Use `rtti::IType` and `rtti::ERTTIType` in plugin source, not the deprecated
+SDK aliases. Keep the warnings-as-errors compiler check on the three targets. Codeware's enum
+registration explicitly retains the public redscript name `ERTTIType`, with
+a compile-time hash assertion; do not change this name during native cleanup.
+Codeware's UTF helper uses checked Win32 conversions. The focused Windows test
+is `tests/native/codeware_unicode.cpp`; it has passed in an isolated Wine prefix
+for Unicode, embedded NULs and invalid sequences. Wine is optional for this
+runtime check, never a build dependency. Keep narrowly scoped Clang annotations
+around deliberate polymorphic offsetof checks; never remove the ABI assertions.
 
 Preserve script bundles, metadata, config/hints/assets and licenses. PDBs and
 the playground plugin do not belong in runtime ZIPs. Reuse only the pinned
@@ -272,7 +290,14 @@ timestamp or `dirty` suffixes. Debug archives retain `-debug` for clarity.
 The tag workflow checks official source boundaries, tests and builds the full
 Release set in an Arch container, then publishes eleven ZIPs and checksums using
 the repository token. Stable tags use `vX.Y.Z`; RC tags produce prereleases.
-It never overwrites an existing release. Local `scripts/release.py <tag>` only
+Publication creates absent releases or uploads prepared filenames with
+`--clobber` to existing mutable releases. Preserve existing title/notes and
+prerelease choices; finish drafts only after uploads succeed. Matching asset
+SHA256 digests make completed reruns a no-op; differing immutable releases
+require a new tag. API/auth/network failures must not be treated as missing
+releases. Failed CI retains both build logs and prepared package artifacts.
+`scripts/publishing.py` performs live GitHub writes; never run it locally
+without an explicit publication request. Local `scripts/release.py <tag>` only
 prepares flat assets, but its verifier writes Git objects via patch helpers;
 do not run it without explicit permission for those mutations. A request to
 edit release automation does not authorize a commit, tag, push or live release.

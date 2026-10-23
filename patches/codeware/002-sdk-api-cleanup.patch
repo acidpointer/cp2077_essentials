@@ -1,0 +1,864 @@
+diff --git a/lib/Red/TypeInfo/Common.hpp b/lib/Red/TypeInfo/Common.hpp
+index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed4c75e290 100644
+--- a/lib/Red/TypeInfo/Common.hpp
++++ b/lib/Red/TypeInfo/Common.hpp
+@@ -59,7 +59,7 @@ template<typename T>
+ concept IsScriptableSystem = std::is_base_of_v<ScriptableSystem, T>;
+ 
+ template<typename T>
+-concept IsType = std::is_base_of_v<CBaseRTTIType, T>;
++concept IsType = std::is_base_of_v<rtti::IType, T>;
+ 
+ template<typename T>
+ concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
+diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
+index c8bc311a7e8817f3b59f260c348b85151c22af1c..f42e0e2e25c846b309bb513ea1eb595975a6432f 100644
+--- a/lib/Red/TypeInfo/Definition.hpp
++++ b/lib/Red/TypeInfo/Definition.hpp
+@@ -198,8 +198,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a
+ }
+ 
+ template<typename R>
+-inline void AssignReturnValue(R* aRetValue, CBaseRTTIType* aRetValueType,
+-                              FinalRetType<R>* aRetBuffer, CBaseRTTIType* aRetBufferType)
++inline void AssignReturnValue(R* aRetValue, rtti::IType* aRetValueType,
++                              FinalRetType<R>* aRetBuffer, rtti::IType* aRetBufferType)
+ {
+     if (aRetBuffer)
+     {
+@@ -223,7 +223,7 @@ inline ScriptingFunction_t<void*> MakeNativeFunction()
+ 
+     static const auto s_retType = !std::is_void_v<R> ? ResolveType<FinalRetType<R>>() : nullptr;
+ 
+-    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, rtti::IType* aRetType) -> void
+     {
+         Args args;
+         ExtractArgs(aContext, aFrame, args);
+@@ -270,7 +270,7 @@ inline ScriptingFunction_t<void*> MakeNativeGetter()
+ 
+     static const auto s_retType = ResolveType<Value>();
+ 
+-    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, rtti::IType* aRetType) -> void
+     {
+         ++aFrame->code;
+         AssignReturnValue(&(aContext->*AProperty), s_retType, aRet, aRetType);
+@@ -346,26 +346,26 @@ concept IsNativeFunctionPtr = Detail::IsFunctionPtr<F>
+     && std::is_pointer_v<typename Detail::FunctionPtr<F>::template argument_type<3>>
+     && Detail::IsTypeOrVoid<std::remove_pointer_t<typename Detail::FunctionPtr<F>::template argument_type<3>>>;
+ 
+-inline std::string MakeScriptTypeName(CBaseRTTIType* aType)
++inline std::string MakeScriptTypeName(rtti::IType* aType)
+ {
+     switch (aType->GetType())
+     {
+-    case RED4ext::ERTTIType::Class:
++    case RED4ext::rtti::ERTTIType::Class:
+     {
+         return CRTTISystem::Get()->ConvertNativeToScriptName(aType->GetName()).ToString();
+     }
+-    case RED4ext::ERTTIType::Handle:
+-    case RED4ext::ERTTIType::WeakHandle:
++    case RED4ext::rtti::ERTTIType::Handle:
++    case RED4ext::rtti::ERTTIType::WeakHandle:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIHandleType*>(aType)->innerType;
+         return MakeScriptTypeName(pInnerType);
+     }
+-    case RED4ext::ERTTIType::Array:
++    case RED4ext::rtti::ERTTIType::Array:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIArrayType*>(aType)->innerType;
+         return "array<" + MakeScriptTypeName(pInnerType) + ">";
+     }
+-    case RED4ext::ERTTIType::ScriptReference:
++    case RED4ext::rtti::ERTTIType::ScriptReference:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIScriptReferenceType*>(aType)->innerType;
+         return "script_ref<" + MakeScriptTypeName(pInnerType) + ">";
+diff --git a/lib/Red/TypeInfo/Parameters.hpp b/lib/Red/TypeInfo/Parameters.hpp
+index 8d44b13ebc899faeacedb2b1cec2b05f075254b7..d4b10f6e60b524f8356403ea42de4da09551f217 100644
+--- a/lib/Red/TypeInfo/Parameters.hpp
++++ b/lib/Red/TypeInfo/Parameters.hpp
+@@ -190,7 +190,7 @@ struct ScriptRef
+ 
+     void* unk00;         // 00 - VFT
+     bool managed;        // 08 - Actually a pointer, but never used
+-    CBaseRTTIType* type; // 10
++    rtti::IType* type; // 10
+     T* ref;              // 18
+     CName name;          // 20
+ };
+diff --git a/lib/Red/TypeInfo/Resolving.hpp b/lib/Red/TypeInfo/Resolving.hpp
+index 33809e3eb2ccf6a9600b28ee66b1e232720596be..f40d34e210b7de8099b63bfe793aa7229fa60ff0 100644
+--- a/lib/Red/TypeInfo/Resolving.hpp
++++ b/lib/Red/TypeInfo/Resolving.hpp
+@@ -233,7 +233,7 @@ template<CName AType>
+ class TypeLocator
+ {
+ public:
+-    static inline CBaseRTTIType* Get() noexcept
++    static inline rtti::IType* Get() noexcept
+     {
+         if (!s_resolved)
+         {
+@@ -249,7 +249,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Class)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Class)
+             {
+                 s_type = nullptr;
+             }
+@@ -264,7 +264,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Handle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Handle)
+             {
+                 s_type = nullptr;
+             }
+@@ -279,7 +279,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::WeakHandle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::WeakHandle)
+             {
+                 s_type = nullptr;
+             }
+@@ -294,7 +294,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Array)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Array)
+             {
+                 s_type = nullptr;
+             }
+@@ -309,7 +309,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Enum)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Enum)
+             {
+                 s_type = nullptr;
+             }
+@@ -328,7 +328,7 @@ public:
+         return s_type;
+     }
+ 
+-    operator CBaseRTTIType*() const noexcept
++    operator rtti::IType*() const noexcept
+     {
+         return Get();
+     }
+@@ -353,7 +353,7 @@ public:
+         return GetArray();
+     }
+ 
+-    [[nodiscard]] inline CBaseRTTIType* operator->() const noexcept
++    [[nodiscard]] inline rtti::IType* operator->() const noexcept
+     {
+         return Get();
+     }
+@@ -373,7 +373,7 @@ private:
+         }
+     }
+ 
+-    static inline CBaseRTTIType* s_type;
++    static inline rtti::IType* s_type;
+     static inline bool s_resolved;
+ };
+ 
+@@ -383,20 +383,20 @@ class ClassLocator : public TypeLocator<GetTypeName<T>()>
+ };
+ 
+ template<CName AType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     return TypeLocator<AType>::Get();
+ }
+ 
+ template<typename TType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     constexpr auto name = GetTypeName<TType>();
+ 
+     return TypeLocator<name>::Get();
+ }
+ 
+-inline CBaseRTTIType* GetType(CName aTypeName)
++inline rtti::IType* GetType(CName aTypeName)
+ {
+     return CRTTISystem::Get()->GetType(aTypeName);
+ }
+@@ -419,7 +419,7 @@ inline CClass* GetClass(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Class)
++    if (!type || type->GetType() != rtti::ERTTIType::Class)
+     {
+         return nullptr;
+     }
+@@ -457,7 +457,7 @@ inline CEnum* GetEnum(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Enum)
++    if (!type || type->GetType() != rtti::ERTTIType::Enum)
+     {
+         return nullptr;
+     }
+@@ -474,7 +474,7 @@ inline CName ResolveTypeName()
+ }
+ 
+ template<typename T>
+-inline CBaseRTTIType* ResolveType()
++inline rtti::IType* ResolveType()
+ {
+     static const auto s_name = ResolveTypeName<T>();
+     return CRTTISystem::Get()->GetType(s_name);
+@@ -546,7 +546,7 @@ inline bool IsInstanceOf(const WeakHandle<ISerializable>& aObject)
+     return aObject && aObject.instance->GetType()->IsA(Red::GetClass<T>());
+ }
+ 
+-inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void* aRhsValue = nullptr)
++inline bool IsCompatible(rtti::IType* aLhsType, rtti::IType* aRhsType, void* aRhsValue = nullptr)
+ {
+     if (!aLhsType || !aRhsType)
+         return false;
+@@ -555,7 +555,7 @@ inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void*
+     {
+         auto lhsMetaType = aLhsType->GetType();
+ 
+-        if ((lhsMetaType == ERTTIType::Handle || lhsMetaType == ERTTIType::WeakHandle)
++        if ((lhsMetaType == rtti::ERTTIType::Handle || lhsMetaType == rtti::ERTTIType::WeakHandle)
+             && lhsMetaType == aRhsType->GetType())
+         {
+             auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
+diff --git a/src/App/Depot/ResourceHelper.hpp b/src/App/Depot/ResourceHelper.hpp
+index 5ab34ce9923c855e872ee1494164dfacc51c141f..94fc34fe343c7d313b2fef06539f5309f9bcbbc4 100644
+--- a/src/App/Depot/ResourceHelper.hpp
++++ b/src/App/Depot/ResourceHelper.hpp
+@@ -13,7 +13,7 @@ struct ResourceHelper
+ 
+         auto prop = aOwner->GetType()->GetProperty(aReferencePropName);
+ 
+-        if (!prop || prop->type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!prop || prop->type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return false;
+ 
+         auto ref = prop->GetValuePtr<Red::ResourceReference<>>(aOwner);
+@@ -34,7 +34,7 @@ struct ResourceHelper
+ 
+         auto prop = aOwner->GetType()->GetProperty(aReferencePropName);
+ 
+-        if (!prop || prop->type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!prop || prop->type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return false;
+ 
+         const auto& token = prop->GetValuePtr<Red::ResourceReference<>>(aOwner)->token;
+@@ -50,7 +50,7 @@ struct ResourceHelper
+ 
+         auto prop = aOwner->GetType()->GetProperty(aReferencePropName);
+ 
+-        if (!prop || prop->type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!prop || prop->type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return {};
+ 
+         const auto& token = prop->GetValuePtr<Red::ResourceReference<>>(aOwner)->token;
+@@ -69,7 +69,7 @@ struct ResourceHelper
+ 
+         auto prop = aOwner->GetType()->GetProperty(aReferencePropName);
+ 
+-        if (!prop || prop->type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!prop || prop->type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return {};
+ 
+         return {prop->GetValuePtr<Red::ResourceReference<>>(aOwner)->path};
+diff --git a/src/App/Depot/ResourceReference.hpp b/src/App/Depot/ResourceReference.hpp
+index 4cc1464e3f82602bfa418a811fe14786c85bb120..28e3fed69912ca69ddd78cd742c04745b4f71c4d 100644
+--- a/src/App/Depot/ResourceReference.hpp
++++ b/src/App/Depot/ResourceReference.hpp
+@@ -56,7 +56,7 @@ struct ResourceWrapper
+     {
+         auto type = Red::CRTTISystem::Get()->GetType(aTypeName);
+         
+-        if (!type || type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!type || type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return {};
+         
+         return {type, &reference};
+@@ -66,7 +66,7 @@ struct ResourceWrapper
+     {
+         auto type = aVariant.GetType();
+ 
+-        if (!type || type->GetType() != Red::ERTTIType::ResourceReference)
++        if (!type || type->GetType() != Red::rtti::ERTTIType::ResourceReference)
+             return {};
+ 
+         return {*reinterpret_cast<Red::ResourceReference<>*>(aVariant.GetDataPtr())};
+diff --git a/src/App/Reflection/Reflection.hpp b/src/App/Reflection/Reflection.hpp
+index 9763d6d2314626df6f7bbdf0885de6c0cf22745d..87135cf89e283bbc6bda2b2557dacfab9d949bfc 100644
+--- a/src/App/Reflection/Reflection.hpp
++++ b/src/App/Reflection/Reflection.hpp
+@@ -23,11 +23,11 @@ struct Reflection
+ 
+         switch (type->GetType())
+         {
+-        case Red::ERTTIType::Class:
++        case Red::rtti::ERTTIType::Class:
+             return Red::MakeHandle<ReflectionClass>(reinterpret_cast<Red::CClass*>(type));
+-        case Red::ERTTIType::Enum:
++        case Red::rtti::ERTTIType::Enum:
+             return Red::MakeHandle<ReflectionEnum>(reinterpret_cast<Red::CEnum*>(type));
+-        case Red::ERTTIType::BitField:
++        case Red::rtti::ERTTIType::BitField:
+             return Red::MakeHandle<ReflectionBitfield>(reinterpret_cast<Red::CBitfield*>(type));
+         default:
+             return Red::MakeHandle<ReflectionType>(type);
+@@ -39,20 +39,20 @@ struct Reflection
+         if (aVariant.IsEmpty())
+             return {};
+ 
+-        Red::CBaseRTTIType* declaredType = aVariant.GetType();
++        Red::rtti::IType* declaredType = aVariant.GetType();
+         Red::CClass* resolvedClass{};
+         void* resolvedInstance{};
+ 
+         switch (declaredType->GetType())
+         {
+-        case Red::ERTTIType::Class:
++        case Red::rtti::ERTTIType::Class:
+         {
+             resolvedClass = reinterpret_cast<Red::CClass*>(declaredType);
+             resolvedInstance = aVariant.GetDataPtr();
+             break;
+         }
+-        case Red::ERTTIType::Handle:
+-        case Red::ERTTIType::WeakHandle:
++        case Red::rtti::ERTTIType::Handle:
++        case Red::rtti::ERTTIType::WeakHandle:
+         {
+             auto handleType = reinterpret_cast<Red::CRTTIHandleType*>(declaredType);
+             resolvedClass = reinterpret_cast<Red::CClass*>(handleType->innerType);
+@@ -83,11 +83,11 @@ struct Reflection
+ 
+         switch (type->GetType())
+         {
+-        case Red::ERTTIType::Class:
++        case Red::rtti::ERTTIType::Class:
+             return Red::MakeHandle<ReflectionClass>(reinterpret_cast<Red::CClass*>(type));
+-        case Red::ERTTIType::Enum:
++        case Red::rtti::ERTTIType::Enum:
+             return Red::MakeHandle<ReflectionEnum>(reinterpret_cast<Red::CEnum*>(type));
+-        case Red::ERTTIType::BitField:
++        case Red::rtti::ERTTIType::BitField:
+             return Red::MakeHandle<ReflectionBitfield>(reinterpret_cast<Red::CBitfield*>(type));
+         default:
+             return Red::MakeHandle<ReflectionType>(type);
+@@ -143,7 +143,7 @@ struct Reflection
+         Red::DynArray<Red::Handle<ReflectionType>> wrappers;
+ 
+         auto rtti = Red::CRTTISystem::Get();
+-        rtti->types.ForEach([&wrappers](Red::CName, Red::CBaseRTTIType* aType) {
++        rtti->types.ForEach([&wrappers](Red::CName, Red::rtti::IType* aType) {
+             wrappers.PushBack(Red::MakeHandle<ReflectionType>(aType));
+         });
+ 
+@@ -155,8 +155,8 @@ struct Reflection
+         Red::DynArray<Red::Handle<ReflectionClass>> wrappers;
+ 
+         auto rtti = Red::CRTTISystem::Get();
+-        rtti->types.ForEach([&wrappers](Red::CName, Red::CBaseRTTIType* aType) {
+-            if (aType->GetType() == Red::ERTTIType::Class)
++        rtti->types.ForEach([&wrappers](Red::CName, Red::rtti::IType* aType) {
++            if (aType->GetType() == Red::rtti::ERTTIType::Class)
+             {
+                 wrappers.PushBack(Red::MakeHandle<ReflectionClass>(reinterpret_cast<Red::CClass*>(aType)));
+             }
+@@ -190,8 +190,8 @@ struct Reflection
+         Red::DynArray<Red::Handle<ReflectionEnum>> wrappers;
+ 
+         auto rtti = Red::CRTTISystem::Get();
+-        rtti->types.ForEach([&wrappers](Red::CName, Red::CBaseRTTIType* aType) {
+-            if (aType->GetType() == Red::ERTTIType::Enum)
++        rtti->types.ForEach([&wrappers](Red::CName, Red::rtti::IType* aType) {
++            if (aType->GetType() == Red::rtti::ERTTIType::Enum)
+             {
+                 wrappers.PushBack(Red::MakeHandle<ReflectionEnum>(reinterpret_cast<Red::CEnum*>(aType)));
+             }
+@@ -205,8 +205,8 @@ struct Reflection
+         Red::DynArray<Red::Handle<ReflectionBitfield>> wrappers;
+ 
+         auto rtti = Red::CRTTISystem::Get();
+-        rtti->types.ForEach([&wrappers](Red::CName, Red::CBaseRTTIType* aType) {
+-            if (aType->GetType() == Red::ERTTIType::BitField)
++        rtti->types.ForEach([&wrappers](Red::CName, Red::rtti::IType* aType) {
++            if (aType->GetType() == Red::rtti::ERTTIType::BitField)
+             {
+                 wrappers.PushBack(Red::MakeHandle<ReflectionBitfield>(reinterpret_cast<Red::CBitfield*>(aType)));
+             }
+@@ -245,4 +245,6 @@ RTTI_DEFINE_CLASS(App::Reflection, {
+     RTTI_METHOD(GetGlobalFunctions);
+ });
+ 
+-RTTI_DEFINE_ENUM(Red::ERTTIType);
++// Keep the existing redscript enum name when using the current SDK type.
++RTTI_DEFINE_ENUM(Red::rtti::ERTTIType, "ERTTIType");
++static_assert(Red::GetTypeName<Red::rtti::ERTTIType>().hash == Red::FNV1a64("ERTTIType"));
+diff --git a/src/App/Reflection/ReflectionProp.hpp b/src/App/Reflection/ReflectionProp.hpp
+index 67e6c896a56ae014acea1653e12947e42d18285c..233bf2ed3c2be4e965ca0a2ee76938680f135102 100644
+--- a/src/App/Reflection/ReflectionProp.hpp
++++ b/src/App/Reflection/ReflectionProp.hpp
+@@ -55,11 +55,11 @@ struct ReflectionProp : Red::IScriptable
+     {
+         switch (aVariant.GetType()->GetType())
+         {
+-        case Red::ERTTIType::Class:
++        case Red::rtti::ERTTIType::Class:
+             return aVariant.GetDataPtr();
+-        case Red::ERTTIType::Handle:
++        case Red::rtti::ERTTIType::Handle:
+             return reinterpret_cast<Red::Handle<Red::IScriptable>*>(aVariant.GetDataPtr())->instance;
+-        case Red::ERTTIType::WeakHandle:
++        case Red::rtti::ERTTIType::WeakHandle:
+             return reinterpret_cast<Red::WeakHandle<Red::IScriptable>*>(aVariant.GetDataPtr())->instance;
+         default:
+             return nullptr;
+diff --git a/src/App/Reflection/ReflectionType.hpp b/src/App/Reflection/ReflectionType.hpp
+index 006ca835ec0f7af42039d5c1e7bfb70bb1289d7a..a2a1ee3c58dbd911dd85b22cb4d6a6280f12f3f6 100644
+--- a/src/App/Reflection/ReflectionType.hpp
++++ b/src/App/Reflection/ReflectionType.hpp
+@@ -6,7 +6,7 @@ struct ReflectionType : Red::IScriptable
+ {
+     ReflectionType() = default;
+ 
+-    explicit ReflectionType(Red::CBaseRTTIType* aType)
++    explicit ReflectionType(Red::rtti::IType* aType)
+         : m_type(aType)
+     {
+     }
+@@ -16,46 +16,46 @@ struct ReflectionType : Red::IScriptable
+         return m_type->GetName();
+     }
+ 
+-    [[nodiscard]] Red::ERTTIType GetMetaType() const
++    [[nodiscard]] Red::rtti::ERTTIType GetMetaType() const
+     {
+         return m_type->GetType();
+     }
+ 
+     [[nodiscard]] Red::Handle<ReflectionType> GetInnerType() const
+     {
+-        Red::CBaseRTTIType* innerType;
++        Red::rtti::IType* innerType;
+ 
+         switch (m_type->GetType())
+         {
+-        case Red::ERTTIType::Array:
+-        case Red::ERTTIType::FixedArray:
+-        case Red::ERTTIType::NativeArray:
+-        case Red::ERTTIType::StaticArray:
++        case Red::rtti::ERTTIType::Array:
++        case Red::rtti::ERTTIType::FixedArray:
++        case Red::rtti::ERTTIType::NativeArray:
++        case Red::rtti::ERTTIType::StaticArray:
+         {
+             innerType = reinterpret_cast<Red::CRTTIBaseArrayType*>(m_type)->innerType;
+             break;
+         }
+-        case Red::ERTTIType::Handle:
++        case Red::rtti::ERTTIType::Handle:
+         {
+             innerType = reinterpret_cast<Red::CRTTIHandleType*>(m_type)->innerType;
+             break;
+         }
+-        case Red::ERTTIType::WeakHandle:
++        case Red::rtti::ERTTIType::WeakHandle:
+         {
+             innerType = reinterpret_cast<Red::CRTTIWeakHandleType*>(m_type)->innerType;
+             break;
+         }
+-        case Red::ERTTIType::ResourceReference:
++        case Red::rtti::ERTTIType::ResourceReference:
+         {
+             innerType = reinterpret_cast<Red::CRTTIResourceReferenceType*>(m_type)->innerType;
+             break;
+         }
+-        case Red::ERTTIType::ResourceAsyncReference:
++        case Red::rtti::ERTTIType::ResourceAsyncReference:
+         {
+             innerType = reinterpret_cast<Red::CRTTIResourceAsyncReferenceType*>(m_type)->innerType;
+             break;
+         }
+-        case Red::ERTTIType::ScriptReference:
++        case Red::rtti::ERTTIType::ScriptReference:
+         {
+             innerType = reinterpret_cast<Red::CRTTIScriptReferenceType*>(m_type)->innerType;
+             break;
+@@ -71,7 +71,7 @@ struct ReflectionType : Red::IScriptable
+         return {m_type};
+     }
+ 
+-    Red::CBaseRTTIType* m_type;
++    Red::rtti::IType* m_type;
+ 
+     RTTI_IMPL_TYPEINFO(App::ReflectionType);
+     RTTI_IMPL_ALLOCATOR();
+diff --git a/src/App/Scripting/ScriptingService.cpp b/src/App/Scripting/ScriptingService.cpp
+index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3aa129b8c3 100644
+--- a/src/App/Scripting/ScriptingService.cpp
++++ b/src/App/Scripting/ScriptingService.cpp
+@@ -171,7 +171,7 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
+         return OnValidateScriptType(nativeType, scriptType);
+     }
+ 
+-    if (nativeType->GetType() == Red::ERTTIType::BitField && scriptType->metaType == Red::EScriptType::Primitive)
++    if (nativeType->GetType() == Red::rtti::ERTTIType::BitField && scriptType->metaType == Red::EScriptType::Primitive)
+     {
+         return true;
+     }
+@@ -179,11 +179,11 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
+     return Raw::ScriptValidator::ValidateProperty(aValidator, aScriptProp, aNativeProp);
+ }
+ 
+-bool App::ScriptingService::OnValidateScriptType(Red::CBaseRTTIType* aNativeType, Red::ScriptType* aScriptType)
++bool App::ScriptingService::OnValidateScriptType(Red::rtti::IType* aNativeType, Red::ScriptType* aScriptType)
+ {
+     if (aScriptType->metaType == Red::EScriptType::DynArray)
+     {
+-        if (aNativeType->GetType() == Red::ERTTIType::Array)
++        if (aNativeType->GetType() == Red::rtti::ERTTIType::Array)
+         {
+             auto nativeInnerType = reinterpret_cast<Red::CRTTIBaseArrayType*>(aNativeType)->innerType;
+             auto scriptInnerType = reinterpret_cast<Red::ScriptType*>(aScriptType->innerType);
+@@ -195,9 +195,9 @@ bool App::ScriptingService::OnValidateScriptType(Red::CBaseRTTIType* aNativeType
+ 
+     if (aScriptType->metaType == Red::EScriptType::StaticArray)
+     {
+-        if (aNativeType->GetType() == Red::ERTTIType::StaticArray ||
+-            aNativeType->GetType() == Red::ERTTIType::NativeArray ||
+-            aNativeType->GetType() == Red::ERTTIType::FixedArray)
++        if (aNativeType->GetType() == Red::rtti::ERTTIType::StaticArray ||
++            aNativeType->GetType() == Red::rtti::ERTTIType::NativeArray ||
++            aNativeType->GetType() == Red::rtti::ERTTIType::FixedArray)
+         {
+             auto nativeInnerType = reinterpret_cast<Red::CRTTIBaseArrayType*>(aNativeType)->innerType;
+             auto scriptInnerType = reinterpret_cast<Red::ScriptType*>(aScriptType->innerType);
+@@ -249,7 +249,7 @@ void App::ScriptingService::OnRegisterScriptOpCodes()
+ }
+ 
+ void App::ScriptingService::ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet,
+-                                            Red::CBaseRTTIType*)
++                                            Red::rtti::IType*)
+ {
+     auto instanceType = *reinterpret_cast<Red::CClass**>(aFrame->code);
+     aFrame->code += sizeof(Red::CClass*);
+@@ -261,7 +261,7 @@ void App::ScriptingService::ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame*
+ }
+ 
+ void App::ScriptingService::ScriptOpCodeCast(Red::IScriptable*, Red::CStackFrame* aFrame, void* aLhs,
+-                                             Red::CBaseRTTIType*)
++                                             Red::rtti::IType*)
+ {
+     auto lhsType = *reinterpret_cast<Red::CClass**>(aFrame->code);
+     aFrame->code += sizeof(Red::CClass*);
+@@ -311,7 +311,7 @@ void App::ScriptingService::OnCreateInstance(Red::IScriptable*& aInstance, Red::
+ }
+ 
+ void App::ScriptingService::GetScriptGameInstance(Red::IScriptable*, Red::CStackFrame* aFrame,
+-                                                  Red::ScriptGameInstance* aRet, Red::CBaseRTTIType*)
++                                                  Red::ScriptGameInstance* aRet, Red::rtti::IType*)
+ {
+     ++aFrame->code;
+ 
+diff --git a/src/App/Scripting/ScriptingService.hpp b/src/App/Scripting/ScriptingService.hpp
+index 09a5160e982168a6e9f4055610c5e1e0fa4ff000..9a47a395bb05711d33785951c6cb888a600cf782 100644
+--- a/src/App/Scripting/ScriptingService.hpp
++++ b/src/App/Scripting/ScriptingService.hpp
+@@ -26,13 +26,13 @@ protected:
+     static void OnCreateInstance(Red::IScriptable*& aInstance, Red::CClass* aClass, uint64_t, bool);
+     static void OnValidateScripts(void* aValidator, Red::ScriptBundle* aBundle, void* aReport);
+     static bool OnValidateProperty(void* aValidator, Red::ScriptProperty* aScriptProp, Red::CProperty* aNativeProp);
+-    static bool OnValidateScriptType(Red::CBaseRTTIType* aNativeType, Red::ScriptType* aScriptType);
++    static bool OnValidateScriptType(Red::rtti::IType* aNativeType, Red::ScriptType* aScriptType);
+     static void OnValidateTypeName(bool& aValid, Red::CName aScriptTypeName, Red::CName aNativeTypeName);
+     static void OnRegisterScriptOpCodes();
+-    static void ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::CBaseRTTIType*);
+-    static void ScriptOpCodeCast(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::CBaseRTTIType*);
++    static void ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::rtti::IType*);
++    static void ScriptOpCodeCast(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::rtti::IType*);
+     static void GetScriptGameInstance(Red::IScriptable*, Red::CStackFrame* aFrame,
+-                                      Red::ScriptGameInstance* aRet, Red::CBaseRTTIType*);
++                                      Red::ScriptGameInstance* aRet, Red::rtti::IType*);
+ 
+     inline static std::filesystem::path s_stateDir;
+ };
+diff --git a/src/App/Scripting/VanillaApiCompat.cpp b/src/App/Scripting/VanillaApiCompat.cpp
+index b8cb019723df29729774adee2202404d1e366482..e93581ffff98ced0a81a4772c4e8ed6d1060772c 100644
+--- a/src/App/Scripting/VanillaApiCompat.cpp
++++ b/src/App/Scripting/VanillaApiCompat.cpp
+@@ -34,7 +34,7 @@ Red::CName GetReturnTypeName(Red::CBaseFunction* aFunc)
+ 
+     auto* type = aFunc->returnType->type;
+ 
+-    if (type->GetType() == Red::ERTTIType::Handle)
++    if (type->GetType() == Red::rtti::ERTTIType::Handle)
+     {
+         auto* inner = reinterpret_cast<Red::CRTTIHandleType*>(type)->innerType;
+         return inner ? inner->GetName() : Red::CName{};
+diff --git a/src/App/UI/WidgetInputService.cpp b/src/App/UI/WidgetInputService.cpp
+index d9b4fc46969c3772ef3aa5be085c00882c63ba8e..25d28e1a04c94ceb1d5c414bd503d8bda815422c 100644
+--- a/src/App/UI/WidgetInputService.cpp
++++ b/src/App/UI/WidgetInputService.cpp
+@@ -1,4 +1,5 @@
+ #include "WidgetInputService.hpp"
++#include "App/Utils/Unicode.hpp"
+ #include "App/UI/inkKeyInputEvent.hpp"
+ #include "Red/InkCore.hpp"
+ 
+@@ -48,8 +49,7 @@ std::string App::WidgetInputService::ToCharacter(Red::EInputKey aKey)
+     if (size <= 0)
+         return {};
+ 
+-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+-    return converter.to_bytes(buffer);
++    return WideToUTF8(std::wstring_view(buffer, static_cast<size_t>(size)));
+ }
+ 
+ bool App::WidgetInputService::IsCharacterInput(Red::EInputKey aKey)
+diff --git a/src/App/UI/inkKeyInputEvent.hpp b/src/App/UI/inkKeyInputEvent.hpp
+index d148cbe3cce57fe3cc6c7478720b8153f6a9ff55..16ba3e5776743175a8c9100d8817149b504a1446 100644
+--- a/src/App/UI/inkKeyInputEvent.hpp
++++ b/src/App/UI/inkKeyInputEvent.hpp
+@@ -35,9 +35,17 @@ struct inkKeyInputEvent : Red::inkInputEvent
+ };
+ }
+ 
++// Polymorphic game layouts require Clang's offsetof extension; keep every ABI assertion active.
++#if defined(__clang__)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Winvalid-offsetof"
++#endif
+ static_assert(offsetof(App::inkKeyInputEvent, key) == 0x90);
+ static_assert(offsetof(App::inkKeyInputEvent, action) == 0x94);
+ static_assert(offsetof(App::inkKeyInputEvent, character) == 0x98);
++#if defined(__clang__)
++#pragma clang diagnostic pop
++#endif
+ static_assert(sizeof(App::inkKeyInputEvent) == 0xB8);
+ 
+ RTTI_DEFINE_CLASS(App::inkKeyInputEvent, {
+diff --git a/src/App/Utils/String.hpp b/src/App/Utils/String.hpp
+index 8e2d22b7e72f378084ab4aa484beac67830356ac..7e0477ffc77ee6f12690add77ca669777a0b0e33 100644
+--- a/src/App/Utils/String.hpp
++++ b/src/App/Utils/String.hpp
+@@ -1,5 +1,7 @@
+ #pragma once
+ 
++#include "App/Utils/Unicode.hpp"
++
+ namespace App
+ {
+ inline int32_t UTF8CharSize(const char& aChar)
+@@ -71,18 +73,16 @@ inline Red::CString UTF8StrMid(Red::ScriptRef<Red::CString>& aStr, int32_t aOffs
+ 
+ inline Red::CString UTF8StrLower(Red::ScriptRef<Red::CString>& aStr)
+ {
+-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+-    std::wstring wstr = converter.from_bytes(aStr->c_str());
++    auto wstr = UTF8ToWide(aStr->c_str());
+     std::transform(wstr.begin(), wstr.end(), wstr.begin(), ::towlower);
+-    return converter.to_bytes(wstr);
++    return WideToUTF8(wstr);
+ }
+ 
+ inline Red::CString UTF8StrUpper(Red::ScriptRef<Red::CString>& aStr)
+ {
+-    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+-    std::wstring wstr = converter.from_bytes(aStr->c_str());
++    auto wstr = UTF8ToWide(aStr->c_str());
+     std::transform(wstr.begin(), wstr.end(), wstr.begin(), ::towupper);
+-    return converter.to_bytes(wstr);
++    return WideToUTF8(wstr);
+ }
+ }
+ 
+diff --git a/src/App/Utils/Unicode.hpp b/src/App/Utils/Unicode.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..250092d70d5547b156ec9f88856762134c3caa0c
+--- /dev/null
++++ b/src/App/Utils/Unicode.hpp
+@@ -0,0 +1,44 @@
++#pragma once
++
++#include <Windows.h>
++#include <limits>
++#include <stdexcept>
++#include <string>
++#include <string_view>
++
++namespace App
++{
++inline std::wstring UTF8ToWide(std::string_view aText)
++{
++    if (aText.empty())
++        return {};
++    if (aText.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
++        throw std::length_error("UTF-8 input is too long");
++
++    const auto length = static_cast<int>(aText.size());
++    const auto size = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, aText.data(), length, nullptr, 0);
++    if (size == 0)
++        throw std::range_error("Invalid UTF-8 input");
++    std::wstring result(size, L'\0');
++    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, aText.data(), length, result.data(), size) != size)
++        throw std::range_error("UTF-8 conversion failed");
++    return result;
++}
++
++inline std::string WideToUTF8(std::wstring_view aText)
++{
++    if (aText.empty())
++        return {};
++    if (aText.size() > static_cast<size_t>((std::numeric_limits<int>::max)()))
++        throw std::length_error("UTF-16 input is too long");
++
++    const auto length = static_cast<int>(aText.size());
++    const auto size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, aText.data(), length, nullptr, 0, nullptr, nullptr);
++    if (size == 0)
++        throw std::range_error("Invalid UTF-16 input");
++    std::string result(size, '\0');
++    if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, aText.data(), length, result.data(), size, nullptr, nullptr) != size)
++        throw std::range_error("UTF-16 conversion failed");
++    return result;
++}
++}
+diff --git a/src/Red/GameInstance.hpp b/src/Red/GameInstance.hpp
+index bc09ac24fc58ded7eaad3a9a9125093ec9ede261..0c1924cd7218275bb83ee9267961a8bd3b7a93e7 100644
+--- a/src/Red/GameInstance.hpp
++++ b/src/Red/GameInstance.hpp
+@@ -5,5 +5,5 @@ namespace Raw
+ constexpr auto GetScriptGameInstance = Core::RawFunc<
+     /* addr = */ Red::AddressLib::GetScriptGameInstance,
+     /* type = */ void (*)(Red::IScriptable* aContext, Red::CStackFrame* aFrame,
+-                          Red::ScriptGameInstance* aRet, Red::CBaseRTTIType* aType)>();
++                          Red::ScriptGameInstance* aRet, Red::rtti::IType* aType)>();
+ }
+diff --git a/src/Red/ScriptBundle.hpp b/src/Red/ScriptBundle.hpp
+index ea9be1c48a3a84868266ff50a493e586a96638ad..80f3300f1d08d521e1bf1bcfd2e7b1762878c4d8 100644
+--- a/src/Red/ScriptBundle.hpp
++++ b/src/Red/ScriptBundle.hpp
+@@ -72,7 +72,7 @@ enum class EScriptType : uint8_t
+ 
+ struct ScriptType : ScriptDefinition
+ {
+-    CBaseRTTIType* rttiType;     // 18
++    rtti::IType* rttiType;     // 18
+     ScriptDefinition* innerType; // 20
+     int32_t arraySize;           // 28
+     EScriptType metaType;        // 2C
+@@ -198,6 +198,11 @@ struct ScriptClass : ScriptDefinition
+ // parent at +0x48, properties +0x50/+0x5C, functions +0x90/+0x9C, flags byte +0xD1 (importonly 0x02,
+ // abstract 0x04, struct 0x10, new testonly 0x20); the definition collector 0xB2C408 walks a class's
+ // +0x50, +0x60 and +0x90 arrays.
++// Polymorphic game layouts require Clang's offsetof extension; keep every ABI assertion active.
++#if defined(__clang__)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Winvalid-offsetof"
++#endif
+ static_assert(offsetof(ScriptClass, parent) == 0x48);
+ static_assert(offsetof(ScriptClass, properties) == 0x50);
+ static_assert(offsetof(ScriptClass, overrides) == 0x60);
+@@ -206,6 +211,9 @@ static_assert(offsetof(ScriptClass, flags) == 0xD1);
+ static_assert(offsetof(ScriptProperty, type) == 0xB8);
+ static_assert(offsetof(ScriptType, innerType) == 0x48);
+ static_assert(offsetof(ScriptType, metaType) == 0x54);
++#if defined(__clang__)
++#pragma clang diagnostic pop
++#endif
+ 
+ struct ScriptConstant : ScriptDefinition
+ {
+diff --git a/src/Red/Scripting.hpp b/src/Red/Scripting.hpp
+index cd67e8718c4a3f1621f37a9d2e4b7f5312818263..320cd75785ff6ae63d97b8bac486cb175e923b10 100644
+--- a/src/Red/Scripting.hpp
++++ b/src/Red/Scripting.hpp
+@@ -35,7 +35,7 @@ constexpr auto ValidateProperty = Core::RawFunc<
+ 
+ constexpr auto CompareType = Core::RawFunc<
+     /* addr = */ Red::AddressLib::ScriptValidator_CompareType,
+-    /* type = */ bool (*)(Red::CBaseRTTIType* aNativeType, Red::ScriptType* aScriptType)>();
++    /* type = */ bool (*)(Red::rtti::IType* aNativeType, Red::ScriptType* aScriptType)>();
+ 
+ constexpr auto CompareTypeName = Core::RawFunc<
+     /* addr = */ Red::AddressLib::ScriptValidator_CompareTypeName,
+@@ -51,7 +51,7 @@ constexpr auto Destruct = Core::RawFunc<
+ 
+ namespace Raw::ScriptOpCodes
+ {
+-using Handler = void(*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::CBaseRTTIType* aType);
++using Handler = void(*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::rtti::IType* aType);
+ 
+ constexpr uint8_t New = 48;
+ constexpr uint8_t Cast = 90;
+@@ -66,11 +66,11 @@ constexpr auto Handlers = Core::RawPtr<
+ 
+ constexpr auto HandlerNew = Core::RawFunc<
+     /* addr = */ Red::AddressLib::ScriptOpCodes_Handlers_New,
+-    /* type = */ void (*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::CBaseRTTIType* aType)>();
++    /* type = */ void (*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::rtti::IType* aType)>();
+ 
+ constexpr auto HandlerCast = Core::RawFunc<
+     /* addr = */ Red::AddressLib::ScriptOpCodes_Handlers_Cast,
+-    /* type = */ void (*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::CBaseRTTIType* aType)>();
++    /* type = */ void (*)(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet, Red::rtti::IType* aType)>();
+ }
+ 
+ namespace Raw::ISerializable
+@@ -85,9 +85,9 @@ constexpr auto Clone = Core::RawFunc<
+ // {
+ // constexpr auto CheckClass = Core::RawFunc<
+ //     /* addr = */ Red::AddressLib::IScriptable_CheckClass,
+-//     /* type = */ void (*)(Red::IScriptable* aContext, Red::CStackFrame*, bool* aRet, Red::CBaseRTTIType*)>();
++//     /* type = */ void (*)(Red::IScriptable* aContext, Red::CStackFrame*, bool* aRet, Red::rtti::IType*)>();
+ //
+ // constexpr auto CheckExactClass = Core::RawFunc<
+ //     /* addr = */ Red::AddressLib::IScriptable_CheckExactClass,
+-//     /* type = */ void (*)(Red::IScriptable* aContext, Red::CStackFrame*, bool* aRet, Red::CBaseRTTIType*)>();
++//     /* type = */ void (*)(Red::IScriptable* aContext, Red::CStackFrame*, bool* aRet, Red::rtti::IType*)>();
+ // }
+diff --git a/src/Red/TweakDB.hpp b/src/Red/TweakDB.hpp
+index 7b46ecc66e1d2c80a65616d620f6a8b17e7cd42f..9df7069e43ab42d34425f882d7db5cd326d613bc 100644
+--- a/src/Red/TweakDB.hpp
++++ b/src/Red/TweakDB.hpp
+@@ -30,7 +30,7 @@ inline void AppendToFlat(TweakDBID aRecordID, const char* aProp, const Core::Vec
+ 
+     auto data = flat->GetValue();
+ 
+-    if (data.type->GetType() != ERTTIType::Array)
++    if (data.type->GetType() != rtti::ERTTIType::Array)
+         return;
+ 
+     auto copy = *reinterpret_cast<DynArray<T>*>(data.value);
+diff --git a/src/pch.hpp b/src/pch.hpp
+index 8169dccf71b1b07253252992c66814cc82672e29..af263ffb89bdba855c4525069f7d4e87371951af 100644
+--- a/src/pch.hpp
++++ b/src/pch.hpp
+@@ -1,7 +1,6 @@
+ #pragma once
+ 
+ #include <algorithm>
+-#include <codecvt>
+ #include <concepts>
+ #include <cstddef>
+ #include <cstdint>

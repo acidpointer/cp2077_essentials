@@ -65,6 +65,7 @@ def main():
                 source = c.ROOT / lock['projects'][name]['path']
                 command = ['cmake', '-S', source, *configure_args(build, xwin, args.config),
                            '-DFETCHCONTENT_SOURCE_DIR_RED4EXT.SDK=' + str(c.ROOT / lock['projects']['red4ext-sdk']['path']),
+                           '-DCMAKE_PROJECT_RED4ext_INCLUDE=' + str(c.ROOT / 'cmake/LoaderDependencies.cmake'),
                            '-DRED4EXT_GIT_METADATA=ON', '-DRED4EXT_EXTRA_WARNINGS=ON',
                            '-DRED4EXT_TREAT_WARNINGS_AS_ERRORS=ON', '-DFETCHCONTENT_UPDATES_DISCONNECTED=ON']
                 for cmake_name, dependency in lock['loader_dependencies'].items():

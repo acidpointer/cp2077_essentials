@@ -20,6 +20,10 @@
         {
           "path": "patches/archive-xl/001-essentials.patch",
           "sha256": "d65744074adf66b671ddfc86e2615a11308d5e809a9606ff2952cefd613c82ab"
+        },
+        {
+          "path": "patches/archive-xl/002-sdk-api-cleanup.patch",
+          "sha256": "8aa219e84d51537fc3c5d2c1a64fba11b5ea76c207331ca2d6a7140e812e00de"
         }
       ],
       "provenance": {
@@ -33,6 +37,10 @@
         {
           "path": "patches/codeware/001-essentials.patch",
           "sha256": "cddac229d9d33b5c00338e6d860a31798aaf9eff7aabbcb41ceb5380c9409209"
+        },
+        {
+          "path": "patches/codeware/002-sdk-api-cleanup.patch",
+          "sha256": "f57655bc41d75a9e14475399af6779e9664319e12651685914379fde03e8df45"
         }
       ],
       "provenance": {
@@ -46,6 +54,10 @@
         {
           "path": "patches/tweak-xl/001-essentials.patch",
           "sha256": "0a9547aeedebc1db1ab59f25b8c4f2a60f90a82bdc6d0031970e7287e01da6c1"
+        },
+        {
+          "path": "patches/tweak-xl/002-sdk-api-cleanup.patch",
+          "sha256": "4944b728e702204e0bbe1088c1ff819b306f8c386d7789bca0ec726baba68d8a"
         }
       ],
       "provenance": {

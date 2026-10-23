@@ -10,6 +10,14 @@ static_assert(sizeof(void*) == 8);
 static_assert(sizeof(FixedCallback) == 0x48);
 static_assert(offsetof(FixedCallback, handler) == 0x40);
 static_assert(sizeof(RED4ext::CGameEngine) == 0x390);
+// The engine is polymorphic; this deliberate Clang extension still checks its real ABI.
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winvalid-offsetof"
+#endif
 static_assert(offsetof(RED4ext::CGameEngine, framework) == 0x348);
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 static_assert(sizeof(RED4ext::CStackFrame) == 0xA8);
 static_assert(static_cast<unsigned>(RED4ext::ArchiveScope::Mod) == 6);

@@ -5,6 +5,16 @@ commit recorded by its root Gitlink. `sources.lock.json` records application
 order and checksums. The initial `001-essentials.patch` is cumulative against
 upstream; later patches apply after all preceding layers.
 
+Codeware, TweakXL and ArchiveXL additionally use `002-sdk-api-cleanup.patch`
+to replace deprecated `CBaseRTTIType`/`ERTTIType` aliases with `rtti::IType` and
+`rtti::ERTTIType`. These name changes preserve type identity and ABI. Codeware
+explicitly retains its public redscript enum name `ERTTIType` and checks the
+name hash at compile time. Its cleanup also replaces deprecated codecvt-based
+conversion with checked Windows UTF APIs. TweakXL fixes explicit-specialization
+syntax and explicitly handles no-op null/undefined YAML nodes. Deliberate
+polymorphic layout assertions are locally annotated, with every assertion
+still active. Original compatibility patches remain unchanged.
+
 `python3 scripts/patches.py export <project>` updates only the final layer.
 Use `--new-patch 003-description.patch` to append a separate layer. Generate
 through this exporter so preceding layers, binary files, modes and source

@@ -1,0 +1,1082 @@
+diff --git a/lib/Red/TypeInfo/Common.hpp b/lib/Red/TypeInfo/Common.hpp
+index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed4c75e290 100644
+--- a/lib/Red/TypeInfo/Common.hpp
++++ b/lib/Red/TypeInfo/Common.hpp
+@@ -59,7 +59,7 @@ template<typename T>
+ concept IsScriptableSystem = std::is_base_of_v<ScriptableSystem, T>;
+ 
+ template<typename T>
+-concept IsType = std::is_base_of_v<CBaseRTTIType, T>;
++concept IsType = std::is_base_of_v<rtti::IType, T>;
+ 
+ template<typename T>
+ concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
+diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
+index 7bd9f7a0ac4249cbb85c6802ff57d62a692e0850..ed1c18a02caa4682d6003dfca7332ede6c39c742 100644
+--- a/lib/Red/TypeInfo/Definition.hpp
++++ b/lib/Red/TypeInfo/Definition.hpp
+@@ -189,8 +189,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a
+ }
+ 
+ template<typename R>
+-inline void AssignReturnValue(R* aRetValue, CBaseRTTIType* aRetValueType,
+-                              FinalRetType<R>* aRetBuffer, CBaseRTTIType* aRetBufferType)
++inline void AssignReturnValue(R* aRetValue, rtti::IType* aRetValueType,
++                              FinalRetType<R>* aRetBuffer, rtti::IType* aRetBufferType)
+ {
+     if (aRetBuffer)
+     {
+@@ -214,7 +214,7 @@ inline ScriptingFunction_t<void*> MakeNativeFunction()
+ 
+     static const auto s_retType = !std::is_void_v<R> ? ResolveType<FinalRetType<R>>() : nullptr;
+ 
+-    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, rtti::IType* aRetType) -> void
+     {
+         Args args;
+         ExtractArgs(aContext, aFrame, args);
+@@ -261,7 +261,7 @@ inline ScriptingFunction_t<void*> MakeNativeGetter()
+ 
+     static const auto s_retType = ResolveType<Value>();
+ 
+-    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, rtti::IType* aRetType) -> void
+     {
+         ++aFrame->code;
+         AssignReturnValue(&(aContext->*AProperty), s_retType, aRet, aRetType);
+@@ -337,26 +337,26 @@ concept IsNativeFunctionPtr = Detail::IsFunctionPtr<F>
+     && std::is_pointer_v<typename Detail::FunctionPtr<F>::template argument_type<3>>
+     && Detail::IsTypeOrVoid<std::remove_pointer_t<typename Detail::FunctionPtr<F>::template argument_type<3>>>;
+ 
+-inline std::string MakeScriptTypeName(CBaseRTTIType* aType)
++inline std::string MakeScriptTypeName(rtti::IType* aType)
+ {
+     switch (aType->GetType())
+     {
+-    case RED4ext::ERTTIType::Class:
++    case RED4ext::rtti::ERTTIType::Class:
+     {
+         return CRTTISystem::Get()->ConvertNativeToScriptName(aType->GetName()).ToString();
+     }
+-    case RED4ext::ERTTIType::Handle:
+-    case RED4ext::ERTTIType::WeakHandle:
++    case RED4ext::rtti::ERTTIType::Handle:
++    case RED4ext::rtti::ERTTIType::WeakHandle:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIHandleType*>(aType)->innerType;
+         return MakeScriptTypeName(pInnerType);
+     }
+-    case RED4ext::ERTTIType::Array:
++    case RED4ext::rtti::ERTTIType::Array:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIArrayType*>(aType)->innerType;
+         return "array<" + MakeScriptTypeName(pInnerType) + ">";
+     }
+-    case RED4ext::ERTTIType::ScriptReference:
++    case RED4ext::rtti::ERTTIType::ScriptReference:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIScriptReferenceType*>(aType)->innerType;
+         return "script_ref<" + MakeScriptTypeName(pInnerType) + ">";
+diff --git a/lib/Red/TypeInfo/Parameters.hpp b/lib/Red/TypeInfo/Parameters.hpp
+index 8d44b13ebc899faeacedb2b1cec2b05f075254b7..d4b10f6e60b524f8356403ea42de4da09551f217 100644
+--- a/lib/Red/TypeInfo/Parameters.hpp
++++ b/lib/Red/TypeInfo/Parameters.hpp
+@@ -190,7 +190,7 @@ struct ScriptRef
+ 
+     void* unk00;         // 00 - VFT
+     bool managed;        // 08 - Actually a pointer, but never used
+-    CBaseRTTIType* type; // 10
++    rtti::IType* type; // 10
+     T* ref;              // 18
+     CName name;          // 20
+ };
+diff --git a/lib/Red/TypeInfo/Resolving.hpp b/lib/Red/TypeInfo/Resolving.hpp
+index 33809e3eb2ccf6a9600b28ee66b1e232720596be..f40d34e210b7de8099b63bfe793aa7229fa60ff0 100644
+--- a/lib/Red/TypeInfo/Resolving.hpp
++++ b/lib/Red/TypeInfo/Resolving.hpp
+@@ -233,7 +233,7 @@ template<CName AType>
+ class TypeLocator
+ {
+ public:
+-    static inline CBaseRTTIType* Get() noexcept
++    static inline rtti::IType* Get() noexcept
+     {
+         if (!s_resolved)
+         {
+@@ -249,7 +249,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Class)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Class)
+             {
+                 s_type = nullptr;
+             }
+@@ -264,7 +264,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Handle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Handle)
+             {
+                 s_type = nullptr;
+             }
+@@ -279,7 +279,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::WeakHandle)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::WeakHandle)
+             {
+                 s_type = nullptr;
+             }
+@@ -294,7 +294,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Array)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Array)
+             {
+                 s_type = nullptr;
+             }
+@@ -309,7 +309,7 @@ public:
+         {
+             Resolve();
+ 
+-            if (s_type && s_type->GetType() != ERTTIType::Enum)
++            if (s_type && s_type->GetType() != rtti::ERTTIType::Enum)
+             {
+                 s_type = nullptr;
+             }
+@@ -328,7 +328,7 @@ public:
+         return s_type;
+     }
+ 
+-    operator CBaseRTTIType*() const noexcept
++    operator rtti::IType*() const noexcept
+     {
+         return Get();
+     }
+@@ -353,7 +353,7 @@ public:
+         return GetArray();
+     }
+ 
+-    [[nodiscard]] inline CBaseRTTIType* operator->() const noexcept
++    [[nodiscard]] inline rtti::IType* operator->() const noexcept
+     {
+         return Get();
+     }
+@@ -373,7 +373,7 @@ private:
+         }
+     }
+ 
+-    static inline CBaseRTTIType* s_type;
++    static inline rtti::IType* s_type;
+     static inline bool s_resolved;
+ };
+ 
+@@ -383,20 +383,20 @@ class ClassLocator : public TypeLocator<GetTypeName<T>()>
+ };
+ 
+ template<CName AType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     return TypeLocator<AType>::Get();
+ }
+ 
+ template<typename TType>
+-inline CBaseRTTIType* GetType() noexcept
++inline rtti::IType* GetType() noexcept
+ {
+     constexpr auto name = GetTypeName<TType>();
+ 
+     return TypeLocator<name>::Get();
+ }
+ 
+-inline CBaseRTTIType* GetType(CName aTypeName)
++inline rtti::IType* GetType(CName aTypeName)
+ {
+     return CRTTISystem::Get()->GetType(aTypeName);
+ }
+@@ -419,7 +419,7 @@ inline CClass* GetClass(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Class)
++    if (!type || type->GetType() != rtti::ERTTIType::Class)
+     {
+         return nullptr;
+     }
+@@ -457,7 +457,7 @@ inline CEnum* GetEnum(CName aTypeName)
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Enum)
++    if (!type || type->GetType() != rtti::ERTTIType::Enum)
+     {
+         return nullptr;
+     }
+@@ -474,7 +474,7 @@ inline CName ResolveTypeName()
+ }
+ 
+ template<typename T>
+-inline CBaseRTTIType* ResolveType()
++inline rtti::IType* ResolveType()
+ {
+     static const auto s_name = ResolveTypeName<T>();
+     return CRTTISystem::Get()->GetType(s_name);
+@@ -546,7 +546,7 @@ inline bool IsInstanceOf(const WeakHandle<ISerializable>& aObject)
+     return aObject && aObject.instance->GetType()->IsA(Red::GetClass<T>());
+ }
+ 
+-inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void* aRhsValue = nullptr)
++inline bool IsCompatible(rtti::IType* aLhsType, rtti::IType* aRhsType, void* aRhsValue = nullptr)
+ {
+     if (!aLhsType || !aRhsType)
+         return false;
+@@ -555,7 +555,7 @@ inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void*
+     {
+         auto lhsMetaType = aLhsType->GetType();
+ 
+-        if ((lhsMetaType == ERTTIType::Handle || lhsMetaType == ERTTIType::WeakHandle)
++        if ((lhsMetaType == rtti::ERTTIType::Handle || lhsMetaType == rtti::ERTTIType::WeakHandle)
+             && lhsMetaType == aRhsType->GetType())
+         {
+             auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
+diff --git a/src/App/Tweaks/Batch/TweakChangelog.cpp b/src/App/Tweaks/Batch/TweakChangelog.cpp
+index 5240368385183bf836018c395ac3040396990da8..9e0e75cbe50ecfc1411f0f892da8201615d0dffa 100644
+--- a/src/App/Tweaks/Batch/TweakChangelog.cpp
++++ b/src/App/Tweaks/Batch/TweakChangelog.cpp
+@@ -171,7 +171,7 @@ void App::TweakChangelog::RevertChanges(const Core::SharedPtr<Red::TweakDBManage
+             continue;
+         }
+ 
+-        if (flatData.type->GetType() != Red::ERTTIType::Array)
++        if (flatData.type->GetType() != Red::rtti::ERTTIType::Array)
+         {
+             LogWarning("Cannot restore {}, it's not an array.", aManager->GetName(flatId));
+             continue;
+diff --git a/src/App/Tweaks/Batch/TweakChangeset.cpp b/src/App/Tweaks/Batch/TweakChangeset.cpp
+index 9369aebd9fb0f79f0715d04dc1a0edaedb2650e0..bdcdfd4ee39e4ae5427085902e6851864a636541 100644
+--- a/src/App/Tweaks/Batch/TweakChangeset.cpp
++++ b/src/App/Tweaks/Batch/TweakChangeset.cpp
+@@ -5,7 +5,7 @@ namespace
+ constexpr auto StringTypeName = Red::GetTypeName<Red::CString>();
+ }
+ 
+-bool App::TweakChangeset::SetFlat(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++bool App::TweakChangeset::SetFlat(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                   const Red::InstancePtr<>& aValue)
+ {
+     if (!aFlatId.IsValid() || !aType || !aValue)
+@@ -63,7 +63,7 @@ bool App::TweakChangeset::UpdateRecord(Red::TweakDBID aRecordId)
+     return true;
+ }
+ 
+-bool App::TweakChangeset::AppendElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++bool App::TweakChangeset::AppendElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                         const Red::InstancePtr<>& aValue, bool aUnique)
+ {
+     if (!aFlatId.IsValid() || !aType || !aValue)
+@@ -75,7 +75,7 @@ bool App::TweakChangeset::AppendElement(Red::TweakDBID aFlatId, const Red::CBase
+     return true;
+ }
+ 
+-bool App::TweakChangeset::PrependElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++bool App::TweakChangeset::PrependElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                          const Red::InstancePtr<>& aValue, bool aUnique)
+ {
+     if (!aFlatId.IsValid() || !aType || !aValue)
+@@ -87,7 +87,7 @@ bool App::TweakChangeset::PrependElement(Red::TweakDBID aFlatId, const Red::CBas
+     return true;
+ }
+ 
+-bool App::TweakChangeset::RemoveElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++bool App::TweakChangeset::RemoveElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                         const Red::InstancePtr<>& aValue)
+ {
+     if (!aFlatId.IsValid() || !aType || !aValue)
+@@ -406,7 +406,7 @@ void App::TweakChangeset::Commit(const Core::SharedPtr<Red::TweakDBManager>& aMa
+ 
+         auto flatData = aManager->GetFlat(flatId);
+ 
+-        if (!flatData.instance || flatData.type->GetType() != Red::ERTTIType::Array)
++        if (!flatData.instance || flatData.type->GetType() != Red::rtti::ERTTIType::Array)
+             continue;
+ 
+         auto* targetType = reinterpret_cast<const Red::CRTTIArrayType*>(flatData.type);
+@@ -581,7 +581,7 @@ void App::TweakChangeset::Commit(const Core::SharedPtr<Red::TweakDBManager>& aMa
+ 
+             flatData.type = aManager->GetReflection()->GetArrayType(elementType);
+         }
+-        else if (flatData.type->GetType() != Red::ERTTIType::Array)
++        else if (flatData.type->GetType() != Red::rtti::ERTTIType::Array)
+         {
+             LogError("Cannot modify {}, it's not an array.", aManager->GetName(flatId));
+             continue;
+diff --git a/src/App/Tweaks/Batch/TweakChangeset.hpp b/src/App/Tweaks/Batch/TweakChangeset.hpp
+index 0e2babd87fd82e90d7ea245c14993a1d8365e627..55086ce796c906e766ed699cc0c13d9ab48a91d6 100644
+--- a/src/App/Tweaks/Batch/TweakChangeset.hpp
++++ b/src/App/Tweaks/Batch/TweakChangeset.hpp
+@@ -13,7 +13,7 @@ class TweakChangeset
+ public:
+     struct FlatEntry
+     {
+-        const Red::CBaseRTTIType* type;
++        const Red::rtti::IType* type;
+         Red::InstancePtr<> value;
+     };
+ 
+@@ -25,14 +25,14 @@ public:
+ 
+     struct InsertionEntry
+     {
+-        const Red::CBaseRTTIType* type;
++        const Red::rtti::IType* type;
+         Red::InstancePtr<> value;
+         bool unique;
+     };
+ 
+     struct DeletionEntry
+     {
+-        const Red::CBaseRTTIType* type;
++        const Red::rtti::IType* type;
+         Red::InstancePtr<> value;
+     };
+ 
+@@ -58,17 +58,17 @@ public:
+         std::string appendix;
+     };
+ 
+-    bool SetFlat(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType, const Red::InstancePtr<>& aValue);
++    bool SetFlat(Red::TweakDBID aFlatId, const Red::rtti::IType* aType, const Red::InstancePtr<>& aValue);
+     bool ReinheritFlat(Red::TweakDBID aFlatId, Red::TweakDBID aSourceId, const std::string& aAppendix);
+ 
+     bool MakeRecord(Red::TweakDBID aRecordId, const Red::CClass* aType, Red::TweakDBID aSourceId = {});
+     bool UpdateRecord(Red::TweakDBID aRecordId);
+ 
+-    bool AppendElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++    bool AppendElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                        const Red::InstancePtr<>& aValue, bool aUnique = false);
+-    bool PrependElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++    bool PrependElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                         const Red::InstancePtr<>& aValue, bool aUnique = false);
+-    bool RemoveElement(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++    bool RemoveElement(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                        const Red::InstancePtr<>& aValue);
+     bool RemoveAllElements(Red::TweakDBID aFlatId);
+     bool AppendFrom(Red::TweakDBID aFlatId, Red::TweakDBID aSourceId);
+diff --git a/src/App/Tweaks/Declarative/Red/RedReader.cpp b/src/App/Tweaks/Declarative/Red/RedReader.cpp
+index f78ecd3daf42195090844710ed2351c0e9e7d4c2..f5ae94ae829b5d0d9c0ad92c085016f379fc191e 100644
+--- a/src/App/Tweaks/Declarative/Red/RedReader.cpp
++++ b/src/App/Tweaks/Declarative/Red/RedReader.cpp
+@@ -228,7 +228,7 @@ App::RedReader::FlatStatePtr App::RedReader::HandleFlat(App::TweakChangeset& aCh
+                                                         const Red::TweakFlatPtr& aFlat,
+                                                         const std::string& aParentName,
+                                                         const std::string& aParentPath,
+-                                                        const Red::CBaseRTTIType* aRequiredType,
++                                                        const Red::rtti::IType* aRequiredType,
+                                                         const Red::CClass* aForeignType)
+ {
+     if (!CheckConditions(aFlat->tags))
+@@ -464,7 +464,7 @@ App::RedReader::FlatStatePtr App::RedReader::ResolveFlatState(App::TweakChangese
+                                                               const Red::TweakFlatPtr& aFlat,
+                                                               const std::string& aParentName,
+                                                               const std::string& aParentPath,
+-                                                              const Red::CBaseRTTIType* aRequiredType,
++                                                              const Red::rtti::IType* aRequiredType,
+                                                               const Red::CClass* aForeignType)
+ {
+     auto state = Core::MakeShared<FlatState>();
+diff --git a/src/App/Tweaks/Declarative/Red/RedReader.hpp b/src/App/Tweaks/Declarative/Red/RedReader.hpp
+index 1d3efe7ab95dfe3d325fca38e34b1747cfafed5c..517663297e4a5e7e6a187167942307d59cf982ee 100644
+--- a/src/App/Tweaks/Declarative/Red/RedReader.hpp
++++ b/src/App/Tweaks/Declarative/Red/RedReader.hpp
+@@ -50,10 +50,10 @@ private:
+ 
+         bool isArray{};
+         bool isForeignKey{};
+-        const Red::CBaseRTTIType* requiredType{};
++        const Red::rtti::IType* requiredType{};
+         const Red::CClass* requiredKey{};
+-        const Red::CBaseRTTIType* resolvedType{};
+-        const Red::CBaseRTTIType* elementType{};
++        const Red::rtti::IType* resolvedType{};
++        const Red::rtti::IType* elementType{};
+         const Red::CClass* resolvedKey{};
+ 
+         std::string flatPath;
+@@ -73,7 +73,7 @@ private:
+ 
+     FlatStatePtr HandleFlat(App::TweakChangeset& aChangeset, const Red::TweakFlatPtr& aFlat,
+                             const std::string& aParentName, const std::string& aParentPath,
+-                            const Red::CBaseRTTIType* aRequiredType = nullptr,
++                            const Red::rtti::IType* aRequiredType = nullptr,
+                             const Red::CClass* aForeignType = nullptr);
+ 
+     GroupStatePtr ResolveGroupState(App::TweakChangeset& aChangeset, const Red::TweakGroupPtr& aGroup,
+@@ -82,7 +82,7 @@ private:
+ 
+     FlatStatePtr ResolveFlatState(App::TweakChangeset& aChangeset, const Red::TweakFlatPtr& aFlat,
+                                   const std::string& aParentName, const std::string& aParentPath,
+-                                  const Red::CBaseRTTIType* aRequiredType = nullptr,
++                                  const Red::rtti::IType* aRequiredType = nullptr,
+                                   const Red::CClass* aForeignType = nullptr);
+ 
+     Red::InstancePtr<> MakeValue(const FlatStatePtr& aState, const Red::TweakValuePtr& aValue);
+diff --git a/src/App/Tweaks/Declarative/TweakReader.cpp b/src/App/Tweaks/Declarative/TweakReader.cpp
+index c5922e89f715abdf2ad8b9f155c10fa79995c42d..bf7778e0369bb4368d0f924e2353981301ccda7a 100644
+--- a/src/App/Tweaks/Declarative/TweakReader.cpp
++++ b/src/App/Tweaks/Declarative/TweakReader.cpp
+@@ -115,7 +115,7 @@ std::string App::BaseTweakReader::ComposePath(const std::string& aParentPath, in
+     return itemPath;
+ }
+ 
+-const Red::CBaseRTTIType* App::BaseTweakReader::ResolveFlatInstanceType(App::TweakChangeset& aChangeset,
++const Red::rtti::IType* App::BaseTweakReader::ResolveFlatInstanceType(App::TweakChangeset& aChangeset,
+                                                                         Red::TweakDBID aFlatId)
+ {
+     const auto existingFlat = m_manager->GetFlat(aFlatId);
+@@ -159,7 +159,7 @@ std::string App::BaseTweakReader::ToName(const Red::CClass* aType)
+     return m_reflection->GetRecordShortName(aType->GetName());
+ }
+ 
+-std::string App::BaseTweakReader::ToName(const Red::CBaseRTTIType* aType, const Red::CClass* aKey)
++std::string App::BaseTweakReader::ToName(const Red::rtti::IType* aType, const Red::CClass* aKey)
+ {
+     if (!aType)
+         return "<UnknownType>";
+diff --git a/src/App/Tweaks/Declarative/TweakReader.hpp b/src/App/Tweaks/Declarative/TweakReader.hpp
+index f363019b9b59cd673a5853ab2d610c78785fe351..a7ac7995d2a78648958f3787c91b210aac29335e 100644
+--- a/src/App/Tweaks/Declarative/TweakReader.hpp
++++ b/src/App/Tweaks/Declarative/TweakReader.hpp
+@@ -29,13 +29,13 @@ protected:
+     std::string ComposeInlineName(const std::string& aParentName, const Red::CClass* aRecordType,
+                                   const std::filesystem::path& aSource, int32_t aItemIndex = -1);
+ 
+-    const Red::CBaseRTTIType* ResolveFlatInstanceType(TweakChangeset& aChangeset, Red::TweakDBID aFlatId);
++    const Red::rtti::IType* ResolveFlatInstanceType(TweakChangeset& aChangeset, Red::TweakDBID aFlatId);
+     const Red::CClass* ResolveRecordInstanceType(TweakChangeset& aChangeset, Red::TweakDBID aRecordId);
+ 
+     bool IsOriginalBaseRecord(Red::TweakDBID aRecordId);
+ 
+     std::string ToName(const Red::CClass* aType);
+-    std::string ToName(const Red::CBaseRTTIType* aType, const Red::CClass* aKey = nullptr);
++    std::string ToName(const Red::rtti::IType* aType, const Red::CClass* aKey = nullptr);
+ 
+     Core::SharedPtr<Red::TweakDBManager> m_manager;
+     Core::SharedPtr<Red::TweakDBReflection> m_reflection;
+diff --git a/src/App/Tweaks/Declarative/Yaml/YamlReader.Template.cpp b/src/App/Tweaks/Declarative/Yaml/YamlReader.Template.cpp
+index 306365ec1a53b4dfaa90524dde4dad0ebdbd0067..2ace4ff1bae9c67618799b7202bb501fdf0fcf46 100644
+--- a/src/App/Tweaks/Declarative/Yaml/YamlReader.Template.cpp
++++ b/src/App/Tweaks/Declarative/Yaml/YamlReader.Template.cpp
+@@ -137,6 +137,9 @@ void ProcessNode(YAML::Node& aNode, const InstanceData& aInstanceData)
+ {
+     switch (aNode.Type())
+     {
++    case YAML::NodeType::Undefined:
++    case YAML::NodeType::Null:
++        break;
+     case YAML::NodeType::Scalar:
+     {
+         const auto& value = aNode.Scalar();
+diff --git a/src/App/Tweaks/Declarative/Yaml/YamlReader.Values.cpp b/src/App/Tweaks/Declarative/Yaml/YamlReader.Values.cpp
+index 36065048e5846e25806296d49647fc877346b531..c710e2a9cc96f3c51738ed8c9b0f23bb971c57b1 100644
+--- a/src/App/Tweaks/Declarative/Yaml/YamlReader.Values.cpp
++++ b/src/App/Tweaks/Declarative/Yaml/YamlReader.Values.cpp
+@@ -418,7 +418,7 @@ bool App::YamlReader::ConvertArray(const YAML::Node& aNode, Red::InstancePtr<>&
+     return aValue != nullptr;
+ }
+ 
+-Red::InstancePtr<> App::YamlReader::MakeValue(const Red::CBaseRTTIType* aType, const YAML::Node& aNode)
++Red::InstancePtr<> App::YamlReader::MakeValue(const Red::rtti::IType* aType, const YAML::Node& aNode)
+ {
+     return MakeValue(aType->GetName(), aNode);
+ }
+diff --git a/src/App/Tweaks/Declarative/Yaml/YamlReader.cpp b/src/App/Tweaks/Declarative/Yaml/YamlReader.cpp
+index a3499346c1fad7c952176c70c35263e165c860e8..fbeb639bd819515473776057be7537f3996a12be 100644
+--- a/src/App/Tweaks/Declarative/Yaml/YamlReader.cpp
++++ b/src/App/Tweaks/Declarative/Yaml/YamlReader.cpp
+@@ -263,10 +263,10 @@ void App::YamlReader::HandleTopNode(App::TweakChangeset& aChangeset, PropertyMod
+ }
+ 
+ void App::YamlReader::HandleFlatNode(App::TweakChangeset& aChangeset, const std::string& aName, const YAML::Node& aNode,
+-                                     const Red::CBaseRTTIType* aType)
++                                     const Red::rtti::IType* aType)
+ {
+     const auto flatId = Red::TweakDBID(aName);
+-    const Red::CBaseRTTIType* flatType;
++    const Red::rtti::IType* flatType;
+     Red::InstancePtr<> flatValue;
+ 
+     aChangeset.RegisterName(flatId, aName);
+@@ -587,7 +587,7 @@ bool App::YamlReader::ResolveInlineNode(App::TweakChangeset& aChangeset, const s
+ 
+ bool App::YamlReader::HandleMutations(TweakChangeset& aChangeset, const std::string& aPath,
+                                       const std::string& aName, const YAML::Node& aNode,
+-                                      const Red::CBaseRTTIType* aElementType)
++                                      const Red::rtti::IType* aElementType)
+ {
+     if (!aNode.IsSequence())
+         return false;
+@@ -709,12 +709,12 @@ bool App::YamlReader::HandleMutations(TweakChangeset& aChangeset, const std::str
+     return isMutation;
+ }
+ 
+-const Red::CBaseRTTIType* App::YamlReader::ResolveFlatType(const YAML::Node& aNode)
++const Red::rtti::IType* App::YamlReader::ResolveFlatType(const YAML::Node& aNode)
+ {
+     return m_reflection->GetFlatType(aNode.Scalar().c_str());
+ }
+ 
+-const Red::CBaseRTTIType* App::YamlReader::ResolveFlatType(Red::CName aName)
++const Red::rtti::IType* App::YamlReader::ResolveFlatType(Red::CName aName)
+ {
+     return m_reflection->GetFlatType(aName);
+ }
+diff --git a/src/App/Tweaks/Declarative/Yaml/YamlReader.hpp b/src/App/Tweaks/Declarative/Yaml/YamlReader.hpp
+index ce1dcc87c8dc0730ea2a9a6bfd64e8dac6afb8df..99c395466875e7d9e36f7edae1c8a390972808e2 100644
+--- a/src/App/Tweaks/Declarative/Yaml/YamlReader.hpp
++++ b/src/App/Tweaks/Declarative/Yaml/YamlReader.hpp
+@@ -29,20 +29,20 @@ private:
+     void HandleTopNode(TweakChangeset& aChangeset, PropertyMode aPropMode, const std::string& aName,
+                        const YAML::Node& aNode);
+     void HandleFlatNode(TweakChangeset& aChangeset, const std::string& aName, const YAML::Node& aNode,
+-                        const Red::CBaseRTTIType* aType = nullptr);
++                        const Red::rtti::IType* aType = nullptr);
+     void HandleRecordNode(TweakChangeset& aChangeset, PropertyMode aPropMode, const std::string& aRecordPath,
+                           const std::string& aRecordName, const YAML::Node& aNode, const Red::CClass* aRecordType,
+                           Red::TweakDBID aSourceId = {});
+     bool ResolveInlineNode(App::TweakChangeset& aChangeset, const std::string& aPath, const YAML::Node& aNode,
+                            const Red::CClass*& aForeignType, Red::TweakDBID& aSourceId);
+     bool HandleMutations(TweakChangeset& aChangeset, const std::string& aPath, const std::string& aName,
+-                         const YAML::Node& aNode, const Red::CBaseRTTIType* aElementType);
++                         const YAML::Node& aNode, const Red::rtti::IType* aElementType);
+     void UpdateFlatOwner(TweakChangeset& aChangeset, const std::string& aName);
+ 
+     bool CheckConditions(const YAML::Node& aNode);
+     static PropertyMode ResolvePropertyMode(const YAML::Node& aNode, PropertyMode aDefault = PropertyMode::Strict);
+-    const Red::CBaseRTTIType* ResolveFlatType(const YAML::Node& aNode);
+-    const Red::CBaseRTTIType* ResolveFlatType(Red::CName aName);
++    const Red::rtti::IType* ResolveFlatType(const YAML::Node& aNode);
++    const Red::rtti::IType* ResolveFlatType(Red::CName aName);
+     const Red::CClass* ResolveRecordType(const YAML::Node& aNode);
+     Red::TweakDBID ResolveTweakDBID(const YAML::Node& aNode);
+ 
+@@ -59,7 +59,7 @@ private:
+     bool ConvertArray(const YAML::Node& aNode, Red::InstancePtr<>& aValue, bool aStrict = false);
+ 
+     Red::InstancePtr<> MakeValue(Red::CName aTypeName, const YAML::Node& aNode);
+-    Red::InstancePtr<> MakeValue(const Red::CBaseRTTIType* aType, const YAML::Node& aNode);
++    Red::InstancePtr<> MakeValue(const Red::rtti::IType* aType, const YAML::Node& aNode);
+     std::pair<Red::CName, Red::InstancePtr<>> TryMakeValue(const YAML::Node& aNode);
+ 
+     void ProcessTemplates(YAML::Node& aRootNode);
+diff --git a/src/Red/TweakDB/Buffer.cpp b/src/Red/TweakDB/Buffer.cpp
+index 0a026494ddcf30b4a330db74f7f609f26e0b7c49..e76d0df2bab580fb0e3102e679a156d758fa89d1 100644
+--- a/src/Red/TweakDB/Buffer.cpp
++++ b/src/Red/TweakDB/Buffer.cpp
+@@ -53,7 +53,7 @@ int32_t Red::TweakDBBuffer::AllocateValue(const Red::Value<>& aData)
+     return AllocateValue(aData.type, aData.instance);
+ }
+ 
+-int32_t Red::TweakDBBuffer::AllocateValue(const Red::CBaseRTTIType* aType, Red::Instance aInstance)
++int32_t Red::TweakDBBuffer::AllocateValue(const Red::rtti::IType* aType, Red::Instance aInstance)
+ {
+     if (m_bufferEnd != m_tweakDb->flatDataBufferEnd)
+         SyncBufferData();
+@@ -68,8 +68,8 @@ int32_t Red::TweakDBBuffer::AllocateValue(const Red::CBaseRTTIType* aType, Red::
+             return offsetIt->second;
+     }
+ 
+-    const auto offset = m_tweakDb->CreateFlatValue({const_cast<Red::CBaseRTTIType*>(aType), aInstance});
+-    // const auto copy = Red::MakeValue(const_cast<Red::CBaseRTTIType*>(aType), aInstance);
++    const auto offset = m_tweakDb->CreateFlatValue({const_cast<Red::rtti::IType*>(aType), aInstance});
++    // const auto copy = Red::MakeValue(const_cast<Red::rtti::IType*>(aType), aInstance);
+     // const auto offset = m_tweakDb->CreateFlatValue(*copy);
+ 
+     if (offset > 0)
+@@ -81,7 +81,7 @@ int32_t Red::TweakDBBuffer::AllocateValue(const Red::CBaseRTTIType* aType, Red::
+     return offset;
+ }
+ 
+-int32_t Red::TweakDBBuffer::AllocateDefault(const Red::CBaseRTTIType* aType)
++int32_t Red::TweakDBBuffer::AllocateDefault(const Red::rtti::IType* aType)
+ {
+     if (m_bufferEnd != m_tweakDb->flatDataBufferEnd)
+         SyncBufferData();
+@@ -124,7 +124,7 @@ uint64_t Red::TweakDBBuffer::GetValueHash(int32_t aOffset)
+     return ComputeHash(data.type, data.instance);
+ }
+ 
+-uint64_t Red::TweakDBBuffer::ComputeHash(const Red::CBaseRTTIType* aType, Red::Instance aInstance, uint32_t aSize,
++uint64_t Red::TweakDBBuffer::ComputeHash(const Red::rtti::IType* aType, Red::Instance aInstance, uint32_t aSize,
+                                          uint64_t aSeed)
+ {
+     // Case 1: Everything is processed as a sequence of bytes and passed to the hash function,
+@@ -137,7 +137,7 @@ uint64_t Red::TweakDBBuffer::ComputeHash(const Red::CBaseRTTIType* aType, Red::I
+ 
+     uint64_t hash;
+ 
+-    if (aType->GetType() == Red::ERTTIType::Array)
++    if (aType->GetType() == Red::rtti::ERTTIType::Array)
+     {
+         auto* arrayType = reinterpret_cast<const Red::CRTTIArrayType*>(aType);
+         auto* innerType = arrayType->GetInnerType();
+diff --git a/src/Red/TweakDB/Buffer.hpp b/src/Red/TweakDB/Buffer.hpp
+index 9208aba9f6b28cddc9d9e55b9a6e78473bd81778..290c3aa75d57297cee2e594960144ce12e4bd665 100644
+--- a/src/Red/TweakDB/Buffer.hpp
++++ b/src/Red/TweakDB/Buffer.hpp
+@@ -25,8 +25,8 @@ public:
+     explicit TweakDBBuffer(Red::TweakDB* aTweakDb);
+ 
+     int32_t AllocateValue(const Red::Value<>& aData);
+-    int32_t AllocateValue(const Red::CBaseRTTIType* aType, Red::Instance aInstance);
+-    int32_t AllocateDefault(const Red::CBaseRTTIType* aType);
++    int32_t AllocateValue(const Red::rtti::IType* aType, Red::Instance aInstance);
++    int32_t AllocateDefault(const Red::rtti::IType* aType);
+ 
+     Red::Value<> GetValue(int32_t aOffset);
+     Red::Instance GetValuePtr(int32_t aOffset);
+@@ -36,13 +36,13 @@ public:
+ 
+     void Invalidate();
+ 
+-    static uint64_t ComputeHash(const Red::CBaseRTTIType* aType, Red::Instance aInstance, uint32_t aSize = 0,
++    static uint64_t ComputeHash(const Red::rtti::IType* aType, Red::Instance aInstance, uint32_t aSize = 0,
+                                 uint64_t aSeed = 0xCBF29CE484222325);
+ 
+ private:
+     struct FlatTypeInfo
+     {
+-        Red::CBaseRTTIType* type;
++        Red::rtti::IType* type;
+         uintptr_t offset;
+     };
+ 
+diff --git a/src/Red/TweakDB/Manager.cpp b/src/Red/TweakDB/Manager.cpp
+index b5e8d5255c98a8a18abe5c0570097b24fdbea3fa..cf5e9727d507f3658abb664fee56aab543e2e5b4 100644
+--- a/src/Red/TweakDB/Manager.cpp
++++ b/src/Red/TweakDB/Manager.cpp
+@@ -42,7 +42,7 @@ Red::Value<> Red::TweakDBManager::GetFlat(Red::TweakDBID aFlatId)
+     return m_buffer->GetValue(offset);
+ }
+ 
+-Red::Value<> Red::TweakDBManager::GetDefault(const Red::CBaseRTTIType* aType)
++Red::Value<> Red::TweakDBManager::GetDefault(const Red::rtti::IType* aType)
+ {
+     if (!m_reflection->IsFlatType(aType))
+         return {};
+@@ -80,7 +80,7 @@ bool Red::TweakDBManager::IsRecordExists(Red::TweakDBID aRecordId)
+     return m_tweakDb->recordsByID.Get(aRecordId) != nullptr;
+ }
+ 
+-Red::TweakDBManager::Result Red::TweakDBManager::SetFlat(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++Red::TweakDBManager::Result Red::TweakDBManager::SetFlat(Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                                          Red::Instance aInstance)
+ {
+     if (!aFlatId.IsValid())
+@@ -270,7 +270,7 @@ bool Red::TweakDBManager::IsRecordExists(const Red::TweakDBManager::BatchPtr& aB
+ }
+ 
+ Red::TweakDBManager::Result Red::TweakDBManager::SetFlat(const Red::TweakDBManager::BatchPtr& aBatch,
+-                                                         Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++                                                         Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                                          Red::Instance aInstance)
+ {
+     return SetFlat(aBatch, aFlatId, {aType, aInstance});
+@@ -442,7 +442,7 @@ void Red::TweakDBManager::CommitBatch(const BatchPtr& aBatch)
+ 
+ template<class SharedLockable>
+ Red::TweakDBManager::Result Red::TweakDBManager::AssignFlat(Red::SortedUniqueArray<Red::TweakDBID>& aFlats,
+-                                                            Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++                                                            Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                                                             Red::Instance aInstance, SharedLockable& aMutex)
+ {
+     int32_t offset = -1;
+diff --git a/src/Red/TweakDB/Manager.hpp b/src/Red/TweakDB/Manager.hpp
+index a04bc547e419cb5e13183ec3f11a1155721c8d5e..6f3d30fc9e55e4a69b479654921008c376986362 100644
+--- a/src/Red/TweakDB/Manager.hpp
++++ b/src/Red/TweakDB/Manager.hpp
+@@ -37,12 +37,12 @@ public:
+     TweakDBManager& operator=(const TweakDBManager&) = delete;
+ 
+     Red::Value<> GetFlat(Red::TweakDBID aFlatId);
+-    Red::Value<> GetDefault(const Red::CBaseRTTIType* aType);
++    Red::Value<> GetDefault(const Red::rtti::IType* aType);
+     Red::Handle<Red::TweakDBRecord> GetRecord(Red::TweakDBID aRecordId);
+     const Red::CClass* GetRecordType(Red::TweakDBID aRecordId);
+     bool IsFlatExists(Red::TweakDBID aFlatId);
+     bool IsRecordExists(Red::TweakDBID aRecordId);
+-    Result SetFlat(Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType, Red::Instance aInstance);
++    Result SetFlat(Red::TweakDBID aFlatId, const Red::rtti::IType* aType, Red::Instance aInstance);
+     Result SetFlat(Red::TweakDBID aFlatId, const Red::Value<>& aData);
+     bool CreateRecord(Red::TweakDBID aRecordId, const Red::CClass* aType);
+     bool CloneRecord(Red::TweakDBID aRecordId, Red::TweakDBID aSourceId);
+@@ -58,7 +58,7 @@ public:
+     const Red::CClass* GetRecordType(const BatchPtr& aBatch, Red::TweakDBID aRecordId);
+     bool IsFlatExists(const BatchPtr& aBatch, Red::TweakDBID aFlatId);
+     bool IsRecordExists(const BatchPtr& aBatch, Red::TweakDBID aRecordId);
+-    Result SetFlat(const BatchPtr& aBatch, Red::TweakDBID aFlatId, const Red::CBaseRTTIType* aType,
++    Result SetFlat(const BatchPtr& aBatch, Red::TweakDBID aFlatId, const Red::rtti::IType* aType,
+                    Red::Instance aValue);
+     Result SetFlat(const BatchPtr& aBatch, Red::TweakDBID aFlatId, const Red::Value<>& aData);
+     bool CreateRecord(const BatchPtr& aBatch, Red::TweakDBID aRecordId, const Red::CClass* aType);
+@@ -80,7 +80,7 @@ public:
+ private:
+     template<class SharedLockable>
+     inline Result AssignFlat(Red::SortedUniqueArray<Red::TweakDBID>& aFlats, Red::TweakDBID aFlatId,
+-                             const Red::CBaseRTTIType* aType, Red::Instance aInstance, SharedLockable& aMutex);
++                             const Red::rtti::IType* aType, Red::Instance aInstance, SharedLockable& aMutex);
+     inline void InheritFlats(Red::SortedUniqueArray<Red::TweakDBID>& aFlats, Red::TweakDBID aRecordId,
+                              const Red::TweakDBRecordInfo* aRecordInfo);
+     inline void InheritFlats(Red::SortedUniqueArray<Red::TweakDBID>& aFlats, Red::TweakDBID aRecordId,
+diff --git a/src/Red/TweakDB/Reflection.cpp b/src/Red/TweakDB/Reflection.cpp
+index 43fda6a8522af33a28cf162f8510dfe7b9a329b8..8d7a475851f4b0ca2c461964b5a106f005c5b91a 100644
+--- a/src/Red/TweakDB/Reflection.cpp
++++ b/src/Red/TweakDB/Reflection.cpp
+@@ -127,7 +127,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+ 
+             switch (returnType->GetType())
+             {
+-            case Red::ERTTIType::WeakHandle:
++            case Red::rtti::ERTTIType::WeakHandle:
+             {
+                 // Case: Foreign Key => TweakDBID
+                 const auto handleType = reinterpret_cast<Red::CRTTIWeakHandleType*>(returnType);
+@@ -142,7 +142,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+                 funcIndex += 1;
+                 break;
+             }
+-            case Red::ERTTIType::Array:
++            case Red::rtti::ERTTIType::Array:
+             {
+                 if (IsResRefTokenArray(returnType))
+                 {
+@@ -158,7 +158,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+                 else
+                 {
+                     const auto arrayType = reinterpret_cast<Red::CRTTIArrayType*>(returnType);
+-                    const auto elementType = reinterpret_cast<Red::CBaseRTTIType*>(arrayType->innerType);
++                    const auto elementType = reinterpret_cast<Red::rtti::IType*>(arrayType->innerType);
+ 
+                     propInfo->type = returnType;
+                     propInfo->isArray = true;
+@@ -172,7 +172,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+                 }
+                 break;
+             }
+-            case Red::ERTTIType::Enum:
++            case Red::rtti::ERTTIType::Enum:
+             {
+                 // Some types have additional enum getters,
+                 // but they're not backed by any flat.
+@@ -188,7 +188,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+                 {
+                     // Getter for LocKey returns CName, so we have to get
+                     // the actual property type from the flat value.
+-                    if (returnType->GetType() == Red::ERTTIType::Name)
++                    if (returnType->GetType() == Red::rtti::ERTTIType::Name)
+                     {
+                         auto propId = sampleId + PropSeparator + propName;
+                         auto flat = m_tweakDb->GetFlatValue(propId);
+@@ -222,7 +222,7 @@ Core::SharedPtr<Red::TweakDBRecordInfo> Red::TweakDBReflection::CollectRecordInf
+                 propInfo->appendix = extraFlat.appendix;
+                 propInfo->type = m_rtti->GetType(extraFlat.typeName);
+ 
+-                if (propInfo->type->GetType() == Red::ERTTIType::Array)
++                if (propInfo->type->GetType() == Red::rtti::ERTTIType::Array)
+                 {
+                     const auto arrayType = reinterpret_cast<const Red::CRTTIArrayType*>(propInfo->type);
+                     propInfo->elementType = arrayType->innerType;
+@@ -320,9 +320,9 @@ int32_t Red::TweakDBReflection::ResolveDefaultValue(const Red::CClass* aType, co
+     return defaultFlat->ToTDBOffset();
+ }
+ 
+-const Red::CBaseRTTIType* Red::TweakDBReflection::GetFlatType(Red::CName aTypeName)
++const Red::rtti::IType* Red::TweakDBReflection::GetFlatType(Red::CName aTypeName)
+ {
+-    const Red::CBaseRTTIType* type = m_rtti->GetType(aTypeName);
++    const Red::rtti::IType* type = m_rtti->GetType(aTypeName);
+ 
+     if (!IsFlatType(type))
+         return nullptr;
+@@ -347,24 +347,24 @@ const Red::CClass* Red::TweakDBReflection::GetRecordType(const char* aTypeName)
+     return type;
+ }
+ 
+-Red::CBaseRTTIType* Red::TweakDBReflection::GetArrayType(Red::CName aTypeName)
++Red::rtti::IType* Red::TweakDBReflection::GetArrayType(Red::CName aTypeName)
+ {
+     return m_rtti->GetType(GetArrayTypeName(aTypeName));
+ }
+ 
+-Red::CBaseRTTIType* Red::TweakDBReflection::GetArrayType(const Red::CBaseRTTIType* aType)
++Red::rtti::IType* Red::TweakDBReflection::GetArrayType(const Red::rtti::IType* aType)
+ {
+     return m_rtti->GetType(GetArrayTypeName(aType));
+ }
+ 
+-Red::CBaseRTTIType* Red::TweakDBReflection::GetElementType(Red::CName aTypeName)
++Red::rtti::IType* Red::TweakDBReflection::GetElementType(Red::CName aTypeName)
+ {
+     return GetElementType(m_rtti->GetType(aTypeName));
+ }
+ 
+-Red::CBaseRTTIType* Red::TweakDBReflection::GetElementType(const Red::CBaseRTTIType* aType)
++Red::rtti::IType* Red::TweakDBReflection::GetElementType(const Red::rtti::IType* aType)
+ {
+-    if (!aType || aType->GetType() != Red::ERTTIType::Array)
++    if (!aType || aType->GetType() != Red::rtti::ERTTIType::Array)
+         return nullptr;
+ 
+     return reinterpret_cast<const Red::CRTTIBaseArrayType*>(aType)->innerType;
+@@ -406,7 +406,7 @@ bool Red::TweakDBReflection::IsFlatType(Red::CName aTypeName)
+     }
+ }
+ 
+-bool Red::TweakDBReflection::IsFlatType(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsFlatType(const Red::rtti::IType* aType)
+ {
+     return aType && IsFlatType(aType->GetName());
+ }
+@@ -418,7 +418,7 @@ bool Red::TweakDBReflection::IsRecordType(Red::CName aTypeName)
+ 
+ bool Red::TweakDBReflection::IsRecordType(const Red::CClass* aType)
+ {
+-    static Red::CBaseRTTIType* s_baseRecordType = Red::CRTTISystem::Get()->GetClass(BaseRecordTypeName);
++    static Red::rtti::IType* s_baseRecordType = Red::CRTTISystem::Get()->GetClass(BaseRecordTypeName);
+ 
+     return aType && aType != s_baseRecordType && aType->IsA(s_baseRecordType);
+ }
+@@ -446,7 +446,7 @@ bool Red::TweakDBReflection::IsArrayType(Red::CName aTypeName)
+     }
+ }
+ 
+-bool Red::TweakDBReflection::IsArrayType(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsArrayType(const Red::rtti::IType* aType)
+ {
+     return aType && IsArrayType(aType->GetName());
+ }
+@@ -456,7 +456,7 @@ bool Red::TweakDBReflection::IsForeignKey(Red::CName aTypeName)
+     return aTypeName == Red::ERTDBFlatType::TweakDBID;
+ }
+ 
+-bool Red::TweakDBReflection::IsForeignKey(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsForeignKey(const Red::rtti::IType* aType)
+ {
+     return aType && IsForeignKey(aType->GetName());
+ }
+@@ -466,7 +466,7 @@ bool Red::TweakDBReflection::IsForeignKeyArray(Red::CName aTypeName)
+     return aTypeName == Red::ERTDBFlatType::TweakDBIDArray;
+ }
+ 
+-bool Red::TweakDBReflection::IsForeignKeyArray(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsForeignKeyArray(const Red::rtti::IType* aType)
+ {
+     return aType && IsForeignKeyArray(aType->GetName());
+ }
+@@ -476,7 +476,7 @@ bool Red::TweakDBReflection::IsResRefToken(Red::CName aTypeName)
+     return aTypeName == ScriptResRefTypeName || aTypeName == ResRefTypeName;
+ }
+ 
+-bool Red::TweakDBReflection::IsResRefToken(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsResRefToken(const Red::rtti::IType* aType)
+ {
+     return aType && IsResRefToken(aType->GetName());
+ }
+@@ -486,7 +486,7 @@ bool Red::TweakDBReflection::IsResRefTokenArray(Red::CName aTypeName)
+     return aTypeName == ScriptResRefArrayTypeName || aTypeName == ResRefArrayTypeName;
+ }
+ 
+-bool Red::TweakDBReflection::IsResRefTokenArray(const Red::CBaseRTTIType* aType)
++bool Red::TweakDBReflection::IsResRefTokenArray(const Red::rtti::IType* aType)
+ {
+     return aType && IsResRefTokenArray(aType->GetName());
+ }
+@@ -513,7 +513,7 @@ Red::CName Red::TweakDBReflection::GetArrayTypeName(Red::CName aTypeName)
+     return {};
+ }
+ 
+-Red::CName Red::TweakDBReflection::GetArrayTypeName(const Red::CBaseRTTIType* aType)
++Red::CName Red::TweakDBReflection::GetArrayTypeName(const Red::rtti::IType* aType)
+ {
+     if (!aType)
+         return {};
+@@ -543,7 +543,7 @@ Red::CName Red::TweakDBReflection::GetElementTypeName(Red::CName aTypeName)
+     return {};
+ }
+ 
+-Red::CName Red::TweakDBReflection::GetElementTypeName(const Red::CBaseRTTIType* aType)
++Red::CName Red::TweakDBReflection::GetElementTypeName(const Red::rtti::IType* aType)
+ {
+     if (!aType)
+         return {};
+@@ -625,7 +625,7 @@ Red::InstancePtr<> Red::TweakDBReflection::Construct(Red::CName aTypeName)
+     return {};
+ }
+ 
+-Red::InstancePtr<> Red::TweakDBReflection::Construct(const Red::CBaseRTTIType* aType)
++Red::InstancePtr<> Red::TweakDBReflection::Construct(const Red::rtti::IType* aType)
+ {
+     if (!aType)
+         return {};
+diff --git a/src/Red/TweakDB/Reflection.hpp b/src/Red/TweakDB/Reflection.hpp
+index c23614e60106d22d055926b7f86e087322708fc6..c927591dcb218a162f8b58d06072f09ba8cd0588 100644
+--- a/src/Red/TweakDB/Reflection.hpp
++++ b/src/Red/TweakDB/Reflection.hpp
+@@ -40,8 +40,8 @@ enum : uint64_t
+ struct TweakDBPropertyInfo
+ {
+     Red::CName name;
+-    const Red::CBaseRTTIType* type;
+-    const Red::CBaseRTTIType* elementType;
++    const Red::rtti::IType* type;
++    const Red::rtti::IType* elementType;
+     const Red::CClass* foreignType;
+     bool isArray;
+     bool isForeignKey;
+@@ -76,42 +76,42 @@ public:
+     const Red::TweakDBRecordInfo* GetRecordInfo(Red::CName aTypeName);
+     const Red::TweakDBRecordInfo* GetRecordInfo(const Red::CClass* aType);
+ 
+-    const Red::CBaseRTTIType* GetFlatType(Red::CName aTypeName);
++    const Red::rtti::IType* GetFlatType(Red::CName aTypeName);
+     const Red::CClass* GetRecordType(Red::CName aTypeName);
+     const Red::CClass* GetRecordType(const char* aTypeName);
+ 
+-    Red::CBaseRTTIType* GetArrayType(Red::CName aTypeName);
+-    Red::CBaseRTTIType* GetArrayType(const Red::CBaseRTTIType* aType);
++    Red::rtti::IType* GetArrayType(Red::CName aTypeName);
++    Red::rtti::IType* GetArrayType(const Red::rtti::IType* aType);
+ 
+-    Red::CBaseRTTIType* GetElementType(Red::CName aTypeName);
+-    Red::CBaseRTTIType* GetElementType(const Red::CBaseRTTIType* aType);
++    Red::rtti::IType* GetElementType(Red::CName aTypeName);
++    Red::rtti::IType* GetElementType(const Red::rtti::IType* aType);
+ 
+     bool IsFlatType(Red::CName aTypeName);
+-    bool IsFlatType(const Red::CBaseRTTIType* aType);
++    bool IsFlatType(const Red::rtti::IType* aType);
+ 
+     bool IsRecordType(Red::CName aTypeName);
+     bool IsRecordType(const Red::CClass* aType);
+ 
+     bool IsArrayType(Red::CName aTypeName);
+-    bool IsArrayType(const Red::CBaseRTTIType* aType);
++    bool IsArrayType(const Red::rtti::IType* aType);
+ 
+     bool IsForeignKey(Red::CName aTypeName);
+-    bool IsForeignKey(const Red::CBaseRTTIType* aType);
++    bool IsForeignKey(const Red::rtti::IType* aType);
+ 
+     bool IsForeignKeyArray(Red::CName aTypeName);
+-    bool IsForeignKeyArray(const Red::CBaseRTTIType* aType);
++    bool IsForeignKeyArray(const Red::rtti::IType* aType);
+ 
+     bool IsResRefToken(Red::CName aTypeName);
+-    bool IsResRefToken(const Red::CBaseRTTIType* aType);
++    bool IsResRefToken(const Red::rtti::IType* aType);
+ 
+     bool IsResRefTokenArray(Red::CName aTypeName);
+-    bool IsResRefTokenArray(const Red::CBaseRTTIType* aType);
++    bool IsResRefTokenArray(const Red::rtti::IType* aType);
+ 
+     Red::CName GetArrayTypeName(Red::CName aTypeName);
+-    Red::CName GetArrayTypeName(const Red::CBaseRTTIType* aType);
++    Red::CName GetArrayTypeName(const Red::rtti::IType* aType);
+ 
+     Red::CName GetElementTypeName(Red::CName aTypeName);
+-    Red::CName GetElementTypeName(const Red::CBaseRTTIType* aType);
++    Red::CName GetElementTypeName(const Red::rtti::IType* aType);
+ 
+     Red::CName GetRecordFullName(Red::CName aName);
+     Red::CName GetRecordFullName(const char* aName);
+@@ -120,7 +120,7 @@ public:
+     std::string GetRecordShortName(const char* aName);
+ 
+     Red::InstancePtr<> Construct(Red::CName aTypeName);
+-    Red::InstancePtr<> Construct(const Red::CBaseRTTIType* aType);
++    Red::InstancePtr<> Construct(const Red::rtti::IType* aType);
+ 
+     bool IsOriginalRecord(Red::TweakDBID aRecordId);
+     bool IsOriginalBaseRecord(Red::TweakDBID aParentId);
+diff --git a/src/Red/TweakDB/Source/Errors.hpp b/src/Red/TweakDB/Source/Errors.hpp
+index bbfdc935e7f4c006834e8e36b684ca2f61128ca8..ddf971feb5651e92b88a146b838e7771b3c03041 100644
+--- a/src/Red/TweakDB/Source/Errors.hpp
++++ b/src/Red/TweakDB/Source/Errors.hpp
+@@ -2,7 +2,7 @@
+ 
+ #include "Red/TweakDB/Source/Grammar.hpp"
+ 
+-#define RED_TWEAK_ERROR(rule, msg) template<> static constexpr auto message<rule> = msg;
++#define RED_TWEAK_ERROR(rule, msg) template<> constexpr auto message<rule> = msg;
+ 
+ namespace Red
+ {
+diff --git a/src/Red/Value.hpp b/src/Red/Value.hpp
+index 83e2eb0e095f97757de2fcc3f7e6f7eed8a54f5f..76eb1eeba804fcb5b662e3a89ec9f73998142a1a 100644
+--- a/src/Red/Value.hpp
++++ b/src/Red/Value.hpp
+@@ -16,14 +16,14 @@ InstancePtr<T> MakeInstance(Args&&... args)
+ template<typename T = void>
+ struct Value
+ {
+-    Value(CBaseRTTIType* aType = nullptr, T* aInstance = nullptr)
++    Value(rtti::IType* aType = nullptr, T* aInstance = nullptr)
+         : type(aType)
+         , instance(aInstance)
+     {
+     }
+ 
+-    Value(const CBaseRTTIType* aType, T* aInstance = nullptr)
+-        : type(const_cast<CBaseRTTIType*>(aType))
++    Value(const rtti::IType* aType, T* aInstance = nullptr)
++        : type(const_cast<rtti::IType*>(aType))
+         , instance(aInstance)
+     {
+     }
+@@ -78,7 +78,7 @@ struct Value
+         return type == aRhs.type && (!type || instance == aRhs.instance || type->IsEqual(instance, aRhs.instance));
+     }
+ 
+-    CBaseRTTIType* type;
++    rtti::IType* type;
+     T* instance;
+ };
+ 
+@@ -92,7 +92,7 @@ struct ManagedValue : Value<T>
+     {
+     }
+ 
+-    ManagedValue(const CBaseRTTIType* aType, void* aInstance = nullptr)
++    ManagedValue(const rtti::IType* aType, void* aInstance = nullptr)
+         : Data(aType)
+     {
+         Data::instance = Data::type->GetAllocator()->AllocAligned(Data::type->GetSize(), Data::type->GetAlignment()).memory;
+@@ -108,7 +108,7 @@ struct ManagedValue : Value<T>
+ 
+     template<typename... Args>
+     requires (!std::is_void_v<T>)
+-    ManagedValue(CBaseRTTIType* aType, Args&&... aArgs)
++    ManagedValue(rtti::IType* aType, Args&&... aArgs)
+         : Data(aType)
+     {
+         Data::instance = Data::type->GetAllocator()->AllocAligned(Data::type->GetSize(), Data::type->GetAlignment()).memory;
+@@ -135,13 +135,13 @@ using ValuePtr = Core::SharedPtr<const ManagedValue<T>>;
+ 
+ template<typename T, typename... Args>
+ requires (!std::is_void_v<T>)
+-ValuePtr<T> MakeValue(const CBaseRTTIType* aType, Args&&... aArgs)
++ValuePtr<T> MakeValue(const rtti::IType* aType, Args&&... aArgs)
+ {
+     return Core::MakeShared<ManagedValue<T>>(aType, std::forward<Args>(aArgs)...);
+ }
+ 
+ template<typename T = void>
+-ValuePtr<T> MakeValue(const CBaseRTTIType* aType, void* aInstance = nullptr)
++ValuePtr<T> MakeValue(const rtti::IType* aType, void* aInstance = nullptr)
+ {
+     return Core::MakeShared<ManagedValue<T>>(aType, aInstance);
+ }
