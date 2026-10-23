@@ -1,15 +1,20 @@
 [submodule "sources/red4ext"]
 	path = sources/red4ext
+	ignore = dirty
 	url = https://github.com/wopss/RED4ext.git
 [submodule "sources/archive-xl"]
 	path = sources/archive-xl
+	ignore = dirty
 	url = https://github.com/psiberx/cp2077-archive-xl.git
 [submodule "sources/codeware"]
 	path = sources/codeware
+	ignore = dirty
 	url = https://github.com/psiberx/cp2077-codeware.git
 [submodule "sources/tweak-xl"]
 	path = sources/tweak-xl
+	ignore = dirty
 	url = https://github.com/psiberx/cp2077-tweak-xl.git
 [submodule "sources/red4ext-sdk"]
 	path = sources/red4ext-sdk
+	ignore = dirty
 	url = https://github.com/wopss/RED4ext.SDK.git

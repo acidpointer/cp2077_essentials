@@ -1,0 +1,10 @@
+{
+  "git.autoRepositoryDetection": false,
+  "git.detectSubmodules": false,
+  "git.repositoryScanIgnoredFolders": [
+    "node_modules",
+    "sources",
+    "build",
+    "dist"
+  ]
+}

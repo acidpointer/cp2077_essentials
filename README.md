@@ -130,6 +130,28 @@ an upstream revision update by accident. The initial root commit includes
 `.gitmodules`, Gitlinks and tooling. Later compatibility commits normally
 contain patches and metadata.
 
+### VS Code and submodule changes
+
+Open this repository's root folder in VS Code. The shared
+[editor settings](.vscode/settings.json) disable automatic discovery of
+submodule and nested build/backup repositories. Run **Developer: Reload Window**
+once if those repositories are already open in Source Control.
+
+Each entry in `.gitmodules` uses `ignore = dirty`: root status suppresses the
+expected patched file changes but still reports a changed upstream commit.
+`.gitignore` covers generated files; it cannot hide edits to tracked source.
+Other `.vscode/` files remain ignored as personal settings.
+
+Inspect source edits directly before exporting a patch:
+
+```bash
+git --no-optional-locks -C sources/codeware status --short
+git --no-optional-locks status --short --ignore-submodules=none
+```
+
+The patch exporter and build validation still inspect actual source contents.
+No source files or changes are removed by these display settings.
+
 Before deliberately changing an upstream pin, export edits, use
 `python3 scripts/patches.py unapply <project>` to remove only saved changes, then
 review the new upstream commit and its Gitlink. Patch conflicts against a new

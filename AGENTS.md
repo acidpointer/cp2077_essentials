@@ -202,6 +202,16 @@ and caches. Keep upstream housekeeping inside its official submodule; do not
 add ignore-only patches. `.gitattributes` preserves checksum-pinned patch bytes.
 Never normalize or trim patch whitespace by hand; use the exporter.
 
+Shared `.vscode/settings.json` keeps Source Control focused on the root;
+other editor settings remain ignored. `.gitmodules` uses `ignore = dirty`
+to hide expected patched working contents in parent status while preserving
+visibility of changed submodule HEADs. Never infer saved patch state from a
+clean parent status: inspect the submodule directly with
+`git --no-optional-locks -C sources/<project> status --short`, or use root
+`git --no-optional-locks status --short --ignore-submodules=none`.
+Do not alter upstream ignore files, reset source edits or use assume-unchanged
+or skip-worktree flags to hide this expected patch state.
+
 Only when explicitly asked to stage or create an initial commit, stage root
 files and the five `sources/*` Gitlinks. Check
 `git --no-optional-locks diff --cached --check` and inspect

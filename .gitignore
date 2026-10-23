@@ -28,7 +28,9 @@ __pycache__/
 /.env.*
 !/.env.example
 /.idea/
-/.vscode/
+# Share repository behavior; keep personal editor files local.
+/.vscode/*
+!/.vscode/settings.json
 *.swp
 *.swo
 *~

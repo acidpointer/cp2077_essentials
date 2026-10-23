@@ -12,7 +12,7 @@ UPSTREAMS = {
     'tweak-xl': 'https://github.com/psiberx/cp2077-tweak-xl.git',
     'red4ext-sdk': 'https://github.com/wopss/RED4ext.SDK.git',
 }
-ROOT_FILES = {'.gitattributes', '.gitignore', '.gitmodules', 'AGENTS.md',
+ROOT_FILES = {'.gitattributes', '.gitignore', '.gitmodules', '.vscode/settings.json', 'AGENTS.md',
               'CMakeLists.txt', 'README.md', 'build-linux.sh', 'sources.lock.json'}
 ROOT_DIRECTORIES = {'.github', 'cmake', 'docs', 'licenses', 'patches', 'scripts', 'tests'}
 
