@@ -182,7 +182,7 @@ class ReleaseAssets(unittest.TestCase):
         self.source = self.root / 'dist/release'
         self.source.mkdir(parents=True)
         self.manifest = {'schema': 2, 'config': 'Release', 'projects': {}}
-        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5', 'input-loader': '0.2.3', 'cyber-engine-tweaks': '1.38.0'}
+        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5', 'input-loader': '0.2.3', 'cyber-engine-tweaks': '1.38.0', 'mod-settings': '0.2.21'}
         for project, version in versions.items():
             record = {'project': c.NAMES[project], 'version': version, 'files': {}}
             for kind in ['runtime', 'symbols'] + (['standard'] if project in c.ROOT_LAYOUT else []):
@@ -205,11 +205,11 @@ class ReleaseAssets(unittest.TestCase):
         destination = release.prepare('v1.0.0')
         self.verify.assert_called_once_with(self.source)
         assets = (destination / 'assets.txt').read_text().splitlines()
-        self.assertEqual(len(assets), 30)  # Fourteen ZIPs, fourteen sidecars, manifest and SHA256SUMS.
+        self.assertEqual(len(assets), 34)  # Sixteen ZIPs, sixteen sidecars, manifest and SHA256SUMS.
         self.assertTrue(all((self.root / name).is_file() for name in assets))
         manifest = json.loads((destination / 'manifest.json').read_text())
         self.assertEqual(manifest['essentials_release'], 'v1.0.0')
-        self.assertEqual(len(list(destination.glob('*.zip'))), 14)
+        self.assertEqual(len(list(destination.glob('*.zip'))), 16)
         for record in manifest['projects'].values():
             for item in record['files'].values():
                 self.assertNotIn('/', item['file'])
@@ -220,12 +220,26 @@ class ReleaseAssets(unittest.TestCase):
     def test_missing_project_or_symbols_refuses_release(self):
         self.manifest['projects'].pop('codeware')
         self.save()
-        with self.assertRaisesRegex(ValueError, 'all six'):
+        with self.assertRaisesRegex(ValueError, 'all runtime'):
             release.prepare('v1.0.0')
         self.manifest['projects']['codeware'] = {'files': {}}
         self.save()
         with self.assertRaisesRegex(ValueError, 'incomplete'):
             release.prepare('v1.0.0')
+
+    def test_mod_settings_is_required_with_runtime_and_symbols(self):
+        record = self.manifest['projects'].pop('mod-settings')
+        self.save()
+        with self.assertRaisesRegex(ValueError, 'all runtime'):
+            release.prepare('v1.0.0')
+        self.manifest['projects']['mod-settings'] = record
+        for missing in ['runtime', 'symbols']:
+            with self.subTest(missing=missing):
+                item = record['files'].pop(missing)
+                self.save()
+                with self.assertRaisesRegex(ValueError, 'incomplete'):
+                    release.prepare('v1.0.0')
+                record['files'][missing] = item
 
     def test_corrupt_archive_preserves_prepared_release(self):
         destination = release.prepare('v1.0.0')

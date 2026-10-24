@@ -1,0 +1,1410 @@
+diff --git a/src/red4ext/AbiChecks.cpp b/src/red4ext/AbiChecks.cpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..a9c18dc094ff2cc69af7ce260ae4d766ae4ee78b
+--- /dev/null
++++ b/src/red4ext/AbiChecks.cpp
+@@ -0,0 +1,41 @@
++#include "stdafx.hpp"
++#include "Hooks/ApplyOverrides.hpp"
++#include "ModConfigVar.hpp"
++#include "NativeSettings.hpp"
++#include "ScriptData.hpp"
++#include "ScriptDefinitions/ScriptProperty.hpp"
++
++// The SDK's offset macro is disabled under Clang. These retail boundaries must
++// still be checked by the compiler for every Mod Settings build.
++#if defined(__clang__)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Winvalid-offsetof"
++#endif
++static_assert(sizeof(RED4ext::Callback<void(*)()>) == 0x48);
++static_assert(offsetof(ModSettings::ScriptData, classes) == 0xD8);
++static_assert(offsetof(ModSettings::ScriptClass, properties) == 0x50);
++static_assert(offsetof(ModSettings::ScriptClass, functions) == 0x90);
++static_assert(offsetof(ModSettings::ScriptProperty, parent) == 0x48);
++static_assert(offsetof(ModSettings::ScriptProperty, defaultValues) == 0x68);
++static_assert(offsetof(ModSettings::ScriptProperty, runtimeProperties) == 0x88);
++static_assert(offsetof(ModSettings::ScriptProperty, type) == 0xB8);
++static_assert(offsetof(ModConfigVar<bool>, runtimeVar) == 0x40);
++static_assert(offsetof(ModConfigVarRange<float>, runtimeVar) == 0x40);
++static_assert(offsetof(ModConfigVarEnum, runtimeVar) == 0x40);
++static_assert(offsetof(ModSettings::Native::RuntimeSettingsVar, displayName) == 0x18);
++static_assert(offsetof(ModSettings::Native::RuntimeSettingsVar, description) == 0x30);
++static_assert(offsetof(ModSettings::Native::RuntimeSettingsVar, type) == 0x40);
++static_assert(offsetof(ModSettings::Native::RuntimeSettingsVar, bitfield) == 0x44);
++static_assert(offsetof(ModSettings::Native::RuntimeSettingsVar, order) == 0x48);
++static_assert(offsetof(Manager, contextManager) == 0x10);
++static_assert(offsetof(ContextManager, userMapping) == 0x08);
++static_assert(offsetof(ContextManager, actions) == 0x28);
++static_assert(offsetof(ContextManager::ActionData, mapNames) == 0x08);
++static_assert(offsetof(UserMapping, rawMappings) == 0xA0);
++static_assert(offsetof(UserMapping::Mapping, key16) == 0x02);
++static_assert(offsetof(UserMapping::Mapping, overridableUI) == 0x34);
++static_assert(sizeof(UserMapping::Mapping) == 0x40);
++static_assert(offsetof(UserMapping::RawMappingCollection, needs_update) == 0x10);
++#if defined(__clang__)
++#pragma clang diagnostic pop
++#endif
+diff --git a/src/red4ext/ActionNameEx.hpp b/src/red4ext/ActionNameEx.hpp
+index 96ae45152a2fb1ddc243c13584e3beb2f2cd27f1..28a4e431dba200628748eab35c970d25b8826873 100644
+--- a/src/red4ext/ActionNameEx.hpp
++++ b/src/red4ext/ActionNameEx.hpp
+@@ -9,7 +9,9 @@ struct ActionNameEx : Red::ink::ActionName
+ {
+     Red::CName ToName()
+     {
+-        return this->name;
++        // The native action name is the CName at +0x40; the shared SDK
++        // keeps this private field opaque.
++        return *reinterpret_cast<const RED4ext::CName*>(reinterpret_cast<const uint8_t*>(this) + 0x40);
+     }
+ };
+ 
+diff --git a/src/red4ext/Addresses.hpp b/src/red4ext/Addresses.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..9f8bd465b937d72dc426cded73f387449cd1359d
+--- /dev/null
++++ b/src/red4ext/Addresses.hpp
+@@ -0,0 +1,11 @@
++#pragma once
++#include <cstdint>
++
++namespace ModSettings::Addresses {
++constexpr uint32_t GetMappingCollection = 3702071356;
++constexpr uint32_t ClearRawMappingState = 4196866905;
++constexpr uint32_t ApplyOverrides = 1773342692;
++constexpr uint32_t SkipKey = 3298233196;
++constexpr uint32_t ReleaseScriptData = 3993832650;
++constexpr uint32_t CalcInputHash = 2583235069;
++}
+diff --git a/src/red4ext/Hooks/ApplyOverrides.cpp b/src/red4ext/Hooks/ApplyOverrides.cpp
+index 0767596a6c38eb21ab21abcde3ebb738a2c58734..44c63150b78fc89c5350c93e88c2cdb32a0c696f 100644
+--- a/src/red4ext/Hooks/ApplyOverrides.cpp
++++ b/src/red4ext/Hooks/ApplyOverrides.cpp
+@@ -1,26 +1,27 @@
++#include "Addresses.hpp"
+ #include <Hooks/ApplyOverrides.hpp>
+ #include <Registrar.hpp>
+ #include <RED4ext/HashMap.hpp>
+ #include <ModSettings.hpp>
+ 
+ UserMapping::RawMappingCollection * UserMapping::GetMappingCollection(CName mapName) {
+-  static UniRelocFunc<decltype(&UserMapping::GetMappingCollection)> call(3702071356);
++  static UniversalRelocFunc<RawMappingCollection* (*)(UserMapping*, CName)> call(ModSettings::Addresses::GetMappingCollection);
+   return call(this, mapName);
+ }
+ 
+ void UserMapping::ClearRuntimeDataOnRawMappings() {
+-  static UniRelocFunc<decltype(&UserMapping::ClearRuntimeDataOnRawMappings)> call(4196866905);
++  static UniversalRelocFunc<void (*)(UserMapping*)> call(ModSettings::Addresses::ClearRawMappingState);
+   return call(this);
+ }
+ 
+ // bool Manager::CheckOverrideConflicts(CName contextName, unsigned short key, DynArray<OverridableMapping> & conflicts) const {
+-//   static UniRelocFunc<decltype(&Manager::CheckOverrideConflicts)> call(1600530764);
++//   static UniversalRelocFunc<decltype(&Manager::CheckOverrideConflicts)> call(1600530764);
+ //   return call(this, contextName, key, conflicts);
+ // }
+ 
+ Manager::OverrideStatus Manager::Override(
+-    // CName contextName, 
+-    Overridable overridableUI, 
++    // CName contextName,
++    Overridable overridableUI,
+     uint16_t inputKey,
+     uint32_t callNumber
+ ) {
+@@ -40,12 +41,6 @@ Manager::OverrideStatus Manager::Override(
+           if (mapping.key16 != inputKey) {
+             mapping.key16 = inputKey;
+             status |= Replaced;
+-            if (callNumber > 1) {
+-              // game::input::Manager::HandleVarChange
+-              if (this->lastOverrideStaus <= 1)
+-                this->lastOverrideStaus = 1;
+-              this->overrideSet = 1;
+-            }
+           } else {
+             status |= NotReplaced;
+           }
+@@ -57,7 +52,7 @@ Manager::OverrideStatus Manager::Override(
+ }
+ 
+ decltype(&ApplyOverrides) ApplyOverrides_Original;
+-ModModuleHookHash s_ApplyOverrides_Hook("ApplyOverrides", 1773342692, reinterpret_cast<void*>(&ApplyOverrides), reinterpret_cast<void**>(&ApplyOverrides_Original)); 
++ModModuleHookHash s_ApplyOverrides_Hook("ApplyOverrides", ModSettings::Addresses::ApplyOverrides, reinterpret_cast<void*>(&ApplyOverrides), reinterpret_cast<void**>(&ApplyOverrides_Original));
+ 
+ void ApplyOverrides(Manager * manager) {
+   ModSettings::ModSettings::AddOverrides(manager);
+@@ -68,7 +63,7 @@ void ApplyOverrides(Manager * manager) {
+ //   return Override_Original(cm, name, ui, key);
+ // }
+ 
+-REGISTER_HOOK_HASH(bool, 3298233196, SkipKey, uint32_t key) {
++REGISTER_HOOK_HASH(bool, ModSettings::Addresses::SkipKey, SkipKey, uint32_t key) {
+   return SkipKey_Original(key) && !((key - (uint32_t)EInputKey::IK_Pad_First) <= 0x13);
+ }
+ 
+@@ -84,12 +79,12 @@ REGISTER_HOOK_HASH(bool, 3298233196, SkipKey, uint32_t key) {
+ //   return;
+ // }
+ 
+-// REGISTER_HOOK_HASH(uint64_t, 3729004759, ListenForInputCallback, 
+-//   WeakHandle<ink::SettingsSelectorControllerKeyBinding> self, 
++// REGISTER_HOOK_HASH(uint64_t, 3729004759, ListenForInputCallback,
++//   WeakHandle<ink::SettingsSelectorControllerKeyBinding> self,
+ //   EInputKey key, // EInputKey
+ //   uint64_t type, // type
+ //   float duration
+ // ) {
+ //   auto og = ListenForInputCallback_Original(self, key, type, duration);
+ //   return og;
+-// }
+\ No newline at end of file
++// }
+diff --git a/src/red4ext/Hooks/ApplyOverrides.hpp b/src/red4ext/Hooks/ApplyOverrides.hpp
+index 5363ab74a943872789d53abe20b5532c3e0607ad..c7a573dbe557bbacf25f4f06d65cda75149e7363 100644
+--- a/src/red4ext/Hooks/ApplyOverrides.hpp
++++ b/src/red4ext/Hooks/ApplyOverrides.hpp
+@@ -1,3 +1,4 @@
++#include "Addresses.hpp"
+ #pragma once
+ 
+ #include <RED4ext/RED4ext.hpp>
+@@ -7,7 +8,10 @@
+ 
+ using namespace RED4ext;
+ 
+-const static UniversalRelocFunc<uint32_t (*)(const CString &)> CalcHash(2583235069);
++inline uint32_t CalcHash(const CString& value) {
++  static UniversalRelocFunc<uint32_t (*)(const CString&)> call(ModSettings::Addresses::CalcInputHash);
++  return call(value);
++}
+ 
+ struct Overridable {
+   Overridable(const char* str) : m_hash(CalcHash(str)) { }
+@@ -66,16 +70,11 @@ struct UserMapping {
+     uint8_t unk01;
+     uint16_t key16;
+     EInputKey key32;
+-    CName name;
+-    CName presetName;
+-    float val;
+-    float thresholdPress;
+-    float thresholdRelease;
+-    Overridable overridableUI;
+-    uint32_t unk28;
+-    uint32_t unk2C;
++    uint8_t unk08[0x34 - 0x08]; // retail raw mapping grew to 0x40
++    Overridable overridableUI;   // 34 (2.5)
++    uint8_t unk38[8];
+   };
+-  RED4EXT_ASSERT_SIZE(Mapping, 0x30);
++  static_assert(sizeof(Mapping) == 0x40);
+ 
+   struct MappingCollection {
+     DynArray<Mapping> actions;
+@@ -105,6 +104,7 @@ struct UserMapping {
+   void * buttonGroups; // 58
+   UserMappingAxis * axes; // 60
+   void * relativeAxes; // 68
++  void* unk70; // 2.5: additional mapping state before key map
+   Map<uint16_t, MappingCollection> keyMap; // 70
+   Map<CName, RawMappingCollection> rawMappings; // 98
+   HashMap<CString, EInputKey> stringToKey; // C0
+diff --git a/src/red4ext/Hooks/ReleaseScriptData.cpp b/src/red4ext/Hooks/ReleaseScriptData.cpp
+index c1507a65607d55020ff77ba7e303eb30c9433e49..5eea3aa7a49e8da98704c512d36e7664e76d69c1 100644
+--- a/src/red4ext/Hooks/ReleaseScriptData.cpp
++++ b/src/red4ext/Hooks/ReleaseScriptData.cpp
+@@ -1,13 +1,14 @@
++#include "Addresses.hpp"
+ // #include "Addresses.hpp"
+ #include "ScriptData.hpp"
+ #include "ModSettings.hpp"
+ #include <Registrar.hpp>
+ 
+-// @hash 3993832650
++// @hash ModSettings::Addresses::ReleaseScriptData
+ // void *__fastcall ReleaseScriptData(ModSettings::ScriptData *scriptData);
+-// RED4ext::UniversalRelocFunc<void (*)(ModSettings::ScriptData *)> ReleaseScriptData(3993832650);
++// RED4ext::UniversalRelocFunc<void (*)(ModSettings::ScriptData *)> ReleaseScriptData(ModSettings::Addresses::ReleaseScriptData);
+ 
+-REGISTER_HOOK_HASH(void *, 3993832650, ReleaseScriptData, ModSettings::ScriptData *scriptData) {
++REGISTER_HOOK_HASH(void *, ModSettings::Addresses::ReleaseScriptData, ReleaseScriptData, ModSettings::ScriptData *scriptData) {
+   ModSettings::ModSettings::ProcessScriptData(scriptData);
+   auto og = ReleaseScriptData_Original(scriptData);
+   return og;
+diff --git a/src/red4ext/IRuntimeVariable.cpp b/src/red4ext/IRuntimeVariable.cpp
+index 6cf04ba8613cba1523a8093cc149632568877544..155026944f68757911ab855612eed6ba2847d5d0 100644
+--- a/src/red4ext/IRuntimeVariable.cpp
++++ b/src/red4ext/IRuntimeVariable.cpp
+@@ -13,33 +13,29 @@ IRuntimeVariable::IRuntimeVariable() {
+ }
+ 
+ IRuntimeVariable::IRuntimeVariable(ScriptProperty* prop) : IRuntimeVariable() {
+-  this->updatePolicy = user::EConfigVarUpdatePolicy::ConfirmationRequired;
++  this->updatePolicy = ::ModSettings::Native::EConfigVarUpdatePolicy::ConfirmationRequired;
+   this->name = prop->name;
+ 
+-  // prop->ReadProperty("ModSettings.updatePolicy", &updatePolicy, user::EConfigVarUpdatePolicy::ConfirmationRequired);
++  // prop->ReadProperty("ModSettings.updatePolicy", &updatePolicy, ::ModSettings::Native::EConfigVarUpdatePolicy::ConfirmationRequired);
+   prop->ReadProperty("ModSettings.mod", &this->modName);
+   prop->ReadProperty("ModSettings.displayName", &this->displayName, this->name);
+   prop->ReadProperty("ModSettings.description", &this->description);
+   prop->ReadProperty<uint32_t>("ModSettings.order", &this->order, (uint32_t)-1);
+   this->className = prop->parent->name;
+   
+-  char str[0x200];
+-  // std::sprintf(str, "/mods/%s/%s", prop->parent->name.ToString(), this->name.ToString());
+-  std::sprintf(str, "/mods/%s/%s", this->modName.ToString(), prop->parent->name.ToString());
+-  this->groupPath = CNamePool::Add(str);
++  const auto path = std::string("/mods/") + this->modName.ToString() + "/" + prop->parent->name.ToString();
++  this->groupPath = CNamePool::Add(path.c_str());
+ 
+ }
+ 
+ IRuntimeVariable::IRuntimeVariable(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order) : IRuntimeVariable() {
+   this->modName = modName;
+   this->className = className;
+-  this->updatePolicy = user::EConfigVarUpdatePolicy::ConfirmationRequired;
++  this->updatePolicy = ::ModSettings::Native::EConfigVarUpdatePolicy::ConfirmationRequired;
+   this->name = propertyName;
+   this->displayName = displayName;
+-  char str[0x200];
+-  std::sprintf(str, "/mods/%s/%s", modName.ToString(), className.ToString());
+-  // std::sprintf(str, "/mods/%s/%s", className.ToString(), propertyName.ToString());
+-  this->groupPath = CNamePool::Add(str);
++  const auto path = std::string("/mods/") + modName.ToString() + "/" + className.ToString();
++  this->groupPath = CNamePool::Add(path.c_str());
+   this->description = description;
+   this->order = order;
+ }
+diff --git a/src/red4ext/IRuntimeVariable.hpp b/src/red4ext/IRuntimeVariable.hpp
+index b9e5229c4e05b3ae462822367a67e31f8e1c9b19..d1a134a0856025b5d638f19410438c3869086a06 100644
+--- a/src/red4ext/IRuntimeVariable.hpp
++++ b/src/red4ext/IRuntimeVariable.hpp
+@@ -1,13 +1,13 @@
+ #pragma once
+ #include "RED4ext/CName.hpp"
+ #include <RED4ext/Common.hpp>
+-#include <RED4ext/Scripting/Natives/userRuntimeSettingsVar.hpp>
++#include "NativeSettings.hpp"
+ 
+ namespace ModSettings {
+ 
+ struct ScriptProperty;
+ 
+-class IRuntimeVariable : public RED4ext::user::RuntimeSettingsVar {
++class IRuntimeVariable : public ::ModSettings::Native::RuntimeSettingsVar {
+ public:
+   IRuntimeVariable();
+   IRuntimeVariable(ScriptProperty* prop);
+@@ -15,8 +15,8 @@ public:
+ 
+   // custom virtuals
+   virtual void __fastcall GetValueToWrite(char *value) = 0;
+-  virtual RED4ext::ScriptInstance *__fastcall GetRequestedValue() = 0;
+-  virtual RED4ext::ScriptInstance *__fastcall GetAcceptedValue() = 0;
++  virtual void*__fastcall GetRequestedValue() = 0;
++  virtual void*__fastcall GetAcceptedValue() = 0;
+   virtual void __fastcall SetDefaultValue(void *value) = 0;
+ 
+   RED4ext::CName modName;
+diff --git a/src/red4ext/Main.cpp b/src/red4ext/Main.cpp
+index 0d064ca168ba8d6db4f3bf7a2642074ec3e231b9..4d6f312b9db712a58946a21ce7c6e99a3f3ebb66 100644
+--- a/src/red4ext/Main.cpp
++++ b/src/red4ext/Main.cpp
+@@ -10,27 +10,19 @@
+ 
+ #include <RedLib.hpp>
+ #include <ArchiveXL.hpp>
+-#include <CyberpunkMod.hpp>
+-#include <CNames.hpp>
++#include "Registrar.hpp"
++
++
+ 
+ namespace ModSettings {
+-const RED4ext::Sdk *sdk;
+-RED4ext::PluginHandle pluginHandle;
++const RED4ext::v1::Sdk *sdk;
++RED4ext::v1::PluginHandle pluginHandle;
+ } // namespace ModSettings
+ 
+-BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
+-  switch (fdwReason) {
+-  case DLL_PROCESS_ATTACH:
+-    ModSettings::ModSettings::GetInstance();
+-    break;
+-  }
+-  return true;
+-}
+-
+-RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::EMainReason aReason,
+-                                        const RED4ext::Sdk *aSdk) {
++RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle, RED4ext::v1::EMainReason aReason,
++                                        const RED4ext::v1::Sdk *aSdk) {
+   switch (aReason) {
+-  case RED4ext::EMainReason::Load: {
++  case RED4ext::v1::EMainReason::Load: {
+     ModSettings::sdk = aSdk;
+     ModSettings::pluginHandle = aHandle;
+ 
+@@ -38,38 +30,19 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::
+     auto ptr = GetModuleHandle(nullptr);
+     aSdk->logger->InfoF(aHandle, "Base address: %p", ptr);
+ 
+-    auto scriptsFolder = Utils::GetRootDir() / "r6" / "scripts" / "mod_settings";
+-    if (std::filesystem::exists(scriptsFolder)) {
+-      aSdk->logger->Info(aHandle, "Deleting old scripts folder");
+-      std::filesystem::remove_all(scriptsFolder);
+-    }
+-    auto archive = Utils::GetRootDir() / "archive" / "pc" / "mod" / "ModSettings.archive";
+-    if (std::filesystem::exists(archive)) {
+-      aSdk->logger->Info(aHandle, "Deleting old archive");
+-      std::filesystem::remove_all(archive);
+-    }
+-    auto archiveXL = Utils::GetRootDir() / "archive" / "pc" / "mod" / "ModSettings.archive.xl";
+-    if (std::filesystem::exists(archiveXL)) {
+-      aSdk->logger->Info(aHandle, "Deleting old archive.xl");
+-      std::filesystem::remove_all(archiveXL);
++    if (!ModModuleFactory::GetInstance().Load(aSdk, aHandle)) return false;
++    if (!aSdk->scripts->Add(aHandle, L"packed.reds") ||
++        !aSdk->scripts->Add(aHandle, L"module.reds")) {
++      ModModuleFactory::GetInstance().Unload(aSdk, aHandle);
++      return false;
+     }
+-    auto XL = Utils::GetRootDir() / "archive" / "pc" / "mod" / "ModSettings.xl";
+-    if (std::filesystem::exists(XL)) {
+-      aSdk->logger->Info(aHandle, "Deleting old xl");
+-      std::filesystem::remove_all(XL);
+-    }
+-
+     Red::TypeInfoRegistrar::RegisterDiscovered();
+-
+-    aSdk->scripts->Add(aHandle, L"packed.reds");
+-    aSdk->scripts->Add(aHandle, L"module.reds");
+     ArchiveXL::RegisterArchive(aHandle, "ModSettings.archive");
+-    ModModuleFactory::GetInstance().Load(aSdk, aHandle);
+     // Engine::RTTIRegistrar::RegisterPending();
+ 
+     break;
+   }
+-  case RED4ext::EMainReason::Unload: {
++  case RED4ext::v1::EMainReason::Unload: {
+     aSdk->logger->Info(aHandle, "Shutting down");
+     ModModuleFactory::GetInstance().Unload(aSdk, aHandle);
+     break;
+@@ -79,13 +52,13 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::PluginHandle aHandle, RED4ext::
+   return true;
+ }
+ 
+-RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::PluginInfo *aInfo) {
++RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo *aInfo) {
+   aInfo->name = L"Mod Settings";
+   aInfo->author = L"Jack Humbert";
+-  aInfo->version = RED4EXT_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
++  aInfo->version = RED4EXT_V1_SEMVER(MOD_VERSION_MAJOR, MOD_VERSION_MINOR, MOD_VERSION_PATCH);
+   // aInfo->runtime = RED4EXT_RUNTIME_LATEST;
+-  aInfo->runtime = RED4EXT_RUNTIME_INDEPENDENT;
+-  aInfo->sdk = RED4EXT_SDK_LATEST;
++  aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_2_50;
++  aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
+ }
+ 
+-RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() { return RED4EXT_API_VERSION_LATEST; }
++RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() { return RED4EXT_API_VERSION_1; }
+diff --git a/src/red4ext/ModConfigVar.hpp b/src/red4ext/ModConfigVar.hpp
+index 0a74bd955198eac94a5c4a55b1d429fdfdd9b50a..74a5f0d7d3f64ae1602171506c9720e237238f42 100644
+--- a/src/red4ext/ModConfigVar.hpp
++++ b/src/red4ext/ModConfigVar.hpp
+@@ -1,5 +1,5 @@
+ #pragma once
+-#include "RED4ext/Scripting/Natives/userSettingsVar.hpp"
++#include <RED4ext/Scripting/Natives/Generated/user/SettingsVar.hpp>
+ #include "RuntimeVariable.hpp"
+ #include "ScriptDefinitions/ScriptDefinitions.hpp"
+ #include "Scripting/RTTIClass.hpp"
+@@ -92,7 +92,7 @@ RTTI_DEFINE_CLASS(ModConfigVarRange<int32_t>, "ModConfigVarInt32", {
+ struct ModConfigVarEnum : IModConfigVar {
+   int32_t GetValueFor(int32_t index) {
+     auto varEnum = reinterpret_cast<ModSettings::RuntimeVariableEnum *>(this->runtimeVar);
+-    if (varEnum->values.size > index) {
++    if (index >= 0 && static_cast<uint32_t>(index) < varEnum->values.size()) {
+       return varEnum->values[index];
+     } else {
+       return 0;
+@@ -118,7 +118,7 @@ struct ModConfigVarEnum : IModConfigVar {
+     auto varEnum = reinterpret_cast<ModSettings::RuntimeVariableEnum *>(this->runtimeVar);
+     auto values = RED4ext::DynArray<int32_t>(new RED4ext::Memory::DefaultAllocator());
+     int32_t index = -1;
+-    for (int i = 0; i < varEnum->values.size; i++) {
++    for (int i = 0; i < varEnum->values.size(); i++) {
+       if (varEnum->values[i] == value) {
+         index = i;
+       }
+@@ -134,7 +134,7 @@ struct ModConfigVarEnum : IModConfigVar {
+ 
+   RED4ext::CName GetDisplayValue(int32_t index) {
+     auto varEnum = reinterpret_cast<ModSettings::RuntimeVariableEnum *>(this->runtimeVar);
+-    if (varEnum->displayValues.size > index && index > -1) {
++    if (varEnum->displayValues.size() > index && index > -1) {
+       return varEnum->displayValues[index];
+     } else {
+       return "None";
+diff --git a/src/red4ext/ModSettings.cpp b/src/red4ext/ModSettings.cpp
+index f517d90f01acd063be543b0a6eca632c340e7ae9..cb5d04f13272c2c0b71ad8d12bfee27a64c44b54 100644
+--- a/src/red4ext/ModSettings.cpp
++++ b/src/red4ext/ModSettings.cpp
+@@ -104,7 +104,7 @@ void __fastcall ModSettings::ProcessScriptData(const ScriptData *scriptData) {
+               .name = prop->name,
+               .type = CRTTISystem::Get()->GetType(prop->type->name),
+               .configVarType = CRTTISystem::Get()->GetClass(ToConfigVar(prop->type->name)),
+-              .dependency = *prop->ReadDependency(scriptClass->name),
++              .dependency = prop->ReadDependency(scriptClass->name),
+               .category = category,
+               .implicitOrder = (uint32_t)category->variables.size()
+             };
+@@ -129,9 +129,8 @@ void __fastcall ModSettings::ProcessScriptData(const ScriptData *scriptData) {
+       auto mod = self->mods[var->modName];
+ 
+       auto modClassName = CNamePool::Add(var->className);
+-      std::shared_lock _(*mod->classes_lock);
++      std::unique_lock _(*mod->classes_lock);
+       if (!mod->classes.contains(modClassName)) {
+-        std::unique_lock _(*mod->classes_lock);
+         mod->classes[modClassName] = new ModClass {
+           .name = modClassName,
+           .mod = mod
+@@ -169,7 +168,7 @@ void __fastcall ModSettings::ProcessScriptData(const ScriptData *scriptData) {
+     }
+     // resolve dependencies
+     for (auto &[_, mod] : self->mods) {
+-      std::shared_lock _(*mod->classes_lock);
++      std::shared_lock classesGuard(*mod->classes_lock);
+       for (auto &[_, modClass] : mod->classes) {
+         for (auto &[_, category] : modClass->categories) {
+           for (auto &[_, variable] : category->variables) {
+@@ -294,7 +293,7 @@ DynArray<Handle<IScriptable>> ModSettings::GetVars(CName modName, CName category
+     for (auto const variable : variables) {
+       auto configVar = variable->ToConfigVar();
+       if (configVar) {
+-        array.EmplaceBack(Handle(configVar));
++        array.EmplaceBack(Handle<IScriptable>(configVar));
+       }
+     }
+   }
+@@ -444,7 +443,7 @@ bool ModSettings::GetSettingString(CName className, CName propertyName, CString
+   }
+ }
+ 
+-void ModSettings::ReadValueFromFile(ScriptProperty *prop, ScriptInstance pointer) {
++void ModSettings::ReadValueFromFile(ScriptProperty *prop, void* pointer) {
+   CString settingFromFile;
+   if (ModSettings::GetSettingString(prop->parent->name, prop->name, &settingFromFile)) {
+     prop->FromString(pointer, settingFromFile);
+@@ -556,7 +555,8 @@ void ModSettings::NotifyListenersRequested(CName aGroupPath, CName aVarName) {
+         // RED4ext::CName varName = aVarName;
+         // args.emplace_back(RED4ext::CRTTISystem::Get()->GetType("CName"), &groupPath);
+         // args.emplace_back(RED4ext::CRTTISystem::Get()->GetType("CName"), &varName);
+-        RED4ext::ExecuteFunction(instance, func, nullptr, aGroupPath, aVarName);
++        RED4ext::StackArgs_t args{{nullptr, &aGroupPath}, {nullptr, &aVarName}};
++        RED4ext::ExecuteFunction(instance.instance, func, nullptr, args);
+       }
+     } else {
+       // remove?
+@@ -579,7 +579,8 @@ void ModSettings::NotifyListenersAccepted(CName aGroupPath, CName aVarName) {
+         // RED4ext::CName varName = aVarName;
+         // args.emplace_back(RED4ext::CRTTISystem::Get()->GetType("CName"), &groupPath);
+         // args.emplace_back(RED4ext::CRTTISystem::Get()->GetType("CName"), &varName);
+-        RED4ext::ExecuteFunction(instance, func, nullptr, aGroupPath, aVarName);
++        RED4ext::StackArgs_t args{{nullptr, &aGroupPath}, {nullptr, &aVarName}};
++        RED4ext::ExecuteFunction(instance.instance, func, nullptr, args);
+       }
+     } else {
+       // remove?
+diff --git a/src/red4ext/ModSettings.hpp b/src/red4ext/ModSettings.hpp
+index 01561f82483affe61c7ada48006729ffc364b6e2..8f585b8c07222e5c2e7ecf69c9f83546bed5df6b 100644
+--- a/src/red4ext/ModSettings.hpp
++++ b/src/red4ext/ModSettings.hpp
+@@ -8,8 +8,8 @@ struct Manager;
+ 
+ namespace ModSettings {
+ 
+-extern const Sdk *sdk;
+-extern PluginHandle pluginHandle;
++extern const RED4ext::v1::Sdk *sdk;
++extern RED4ext::v1::PluginHandle pluginHandle;
+ 
+ struct ScriptData;
+ 
+@@ -27,7 +27,7 @@ public:
+ 
+   static void ProcessScriptData(const ScriptData *scriptData);
+   static bool GetSettingString(CName, CName, CString *);
+-  static void ReadValueFromFile(ScriptProperty *prop, ScriptInstance pointer);
++  static void ReadValueFromFile(ScriptProperty *prop, void* pointer);
+ 
+   template <typename T>
+   static void ReadValueFromFile(CName className, CName propertyName,
+diff --git a/src/red4ext/NativeSettings.hpp b/src/red4ext/NativeSettings.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..8faab229fdf9529e1a55f0ea0be01d03e6d72e7f
+--- /dev/null
++++ b/src/red4ext/NativeSettings.hpp
+@@ -0,0 +1,65 @@
++#pragma once
++
++#include <RED4ext/RED4ext.hpp>
++
++// Mod Settings' native configuration interface, adapted from Jack Humbert's
++// MIT-licensed RED4ext.SDK fork b5ea5919 userRuntimeSettingsVar.hpp.
++// This is plugin-owned; do not add private declarations to the shared SDK.
++namespace ModSettings::Native {
++struct ConfigVarFlags {
++  uint32_t isInPreGame : 1;
++  uint32_t isInGame : 1;
++  uint32_t isVisible : 1;
++  uint32_t isPlatformSpecific : 1;
++  uint32_t isDynamic : 1;
++  uint32_t unk20 : 1;
++  uint32_t isInitialized : 1;
++  uint32_t listHasDisplayValues : 1;
++  uint32_t canBeRestoredToDefault : 1;
++  uint32_t isInput : 1;
++  uint32_t unk400 : 1; // additional retail flag
++  uint32_t isDisabled : 1; // 0x800 in 2.5
++};
++enum class EConfigVarType : uint8_t { Bool, Int, Float, Name, IntList, FloatList, StringList, NameList };
++enum class EConfigVarUpdatePolicy : uint8_t { Disabled, Immediately, ConfirmationRequired, RestartRequired, LoadLastCheckpointRequired };
++enum class EConfigVarImportPolicy : uint8_t { ReadValue, Ignore };
++
++// Retail accessors consume this prefix through userSettingsVar::runtimeVar
++// (+0x40). Derived Mod Settings values use their own methods and layout.
++#pragma pack(push, 1)
++struct RuntimeSettingsVar {
++  virtual RED4ext::Memory::IAllocator* GetAllocator(RuntimeSettingsVar*) {
++    return RED4ext::Memory::DefaultAllocator::Get();
++  }
++  virtual RuntimeSettingsVar* Deinitialize(bool) { displayNameKeys.Clear(); return this; }
++  virtual bool WasModifiedSinceLastSave() = 0;
++  virtual bool HasChange() = 0;
++  virtual bool IsDefault() = 0;
++  virtual bool RestoreDefault(uint8_t) = 0;
++  virtual void SetRequestedValue(void*) = 0;
++  virtual void AcceptChange() = 0;
++  virtual void RejectChange() = 0;
++  virtual void MarkAsSaved() = 0;
++  virtual void LoadValue(void*) = 0;
++
++  RED4ext::CName name{};                 // 08
++  RED4ext::CName groupPath{};            // 10
++  RED4ext::CName displayName{};          // 18
++  RED4ext::DynArray<RED4ext::CName> displayNameKeys; // 20
++  RED4ext::CName description{};          // 30
++  RED4ext::CName warning{};              // 38 (2.3+)
++  EConfigVarType type{};                // 40
++  EConfigVarUpdatePolicy updatePolicy = EConfigVarUpdatePolicy::Immediately;
++  EConfigVarImportPolicy importPolicy = EConfigVarImportPolicy::ReadValue;
++  uint8_t unk43{};
++  ConfigVarFlags bitfield{};            // 44
++  uint32_t order{};                     // 48
++  uint8_t unk44 = 0xFF;                 // 4C
++  uint8_t unk45 = 0xFF;                 // 4D
++  uint8_t unk46{};
++  uint8_t unk47{};
++  uint32_t unk50_new{};
++};
++#pragma pack(pop)
++static_assert(sizeof(RuntimeSettingsVar) == 0x54);
++}
+diff --git a/src/red4ext/Registrar.hpp b/src/red4ext/Registrar.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..1e56d17eb830d75c6fa40bf15d3beb3ce85a6229
+--- /dev/null
++++ b/src/red4ext/Registrar.hpp
+@@ -0,0 +1,57 @@
++#pragma once
++
++#include <RED4ext/RED4ext.hpp>
++#include <vector>
++
++// Resolve only during Main(Load), after RED4ext initializes the address resolver.
++// Fail a missing/failed hook once, rolling back every earlier attachment.
++class ModModuleHookHash;
++class ModModuleFactory {
++public:
++  static ModModuleFactory& GetInstance() { static ModModuleFactory value; return value; }
++  void registerHook(ModModuleHookHash* hook) { hooks.push_back(hook); }
++  bool Load(const RED4ext::v1::Sdk*, RED4ext::v1::PluginHandle);
++  void Unload(const RED4ext::v1::Sdk*, RED4ext::v1::PluginHandle);
++private:
++  std::vector<ModModuleHookHash*> hooks;
++};
++
++class ModModuleHookHash {
++public:
++  ModModuleHookHash(const char* name, uint32_t hash, void* detour, void** original)
++      : name(name), hash(hash), detour(detour), original(original) {
++    ModModuleFactory::GetInstance().registerHook(this);
++  }
++  const char* name;
++  uint32_t hash;
++  void* detour;
++  void** original;
++  void* target = nullptr;
++  bool attached = false;
++};
++
++inline void ModModuleFactory::Unload(const RED4ext::v1::Sdk* sdk, RED4ext::v1::PluginHandle handle) {
++  for (auto it = hooks.rbegin(); it != hooks.rend(); ++it) {
++    auto hook = *it;
++    if (hook->attached && sdk->hooking->Detach(handle, hook->target)) hook->attached = false;
++  }
++}
++
++inline bool ModModuleFactory::Load(const RED4ext::v1::Sdk* sdk, RED4ext::v1::PluginHandle handle) {
++  for (auto hook : hooks) {
++    hook->target = reinterpret_cast<void*>(RED4ext::UniversalRelocBase::Resolve(hook->hash));
++    if (!hook->target || !sdk->hooking->Attach(handle, hook->target, hook->detour, hook->original)) {
++      sdk->logger->ErrorF(handle, "Failed to attach %s (hash %u)", hook->name, hook->hash);
++      Unload(sdk, handle);
++      return false;
++    }
++    hook->attached = true;
++  }
++  return true;
++}
++
++#define REGISTER_HOOK_HASH(retType, hash, func, ...) \
++  retType func(__VA_ARGS__); \
++  inline decltype(&func) func##_Original; \
++  ModModuleHookHash s_##func##_Hook(#func, hash, reinterpret_cast<void*>(&func), reinterpret_cast<void**>(&func##_Original)); \
++  retType func(__VA_ARGS__)
+diff --git a/src/red4ext/RuntimeVariable.cpp b/src/red4ext/RuntimeVariable.cpp
+index f75539829396f5aede6548242920ca881becf745..ec02f7505f9e20df8ec1d5a5e2d6fe330085b412 100644
+--- a/src/red4ext/RuntimeVariable.cpp
++++ b/src/red4ext/RuntimeVariable.cpp
+@@ -1,2 +1 @@
+ ﻿#include "RuntimeVariable.hpp"
+-
+diff --git a/src/red4ext/RuntimeVariable.hpp b/src/red4ext/RuntimeVariable.hpp
+index 7ee7debaecfdd0abead864f1a6cb602a857e50b3..33ed199741278560598eab213d85afffde7dc173 100644
+--- a/src/red4ext/RuntimeVariable.hpp
++++ b/src/red4ext/RuntimeVariable.hpp
+@@ -4,13 +4,13 @@
+ #include "ModSettings.hpp"
+ #include <RED4ext/Common.hpp>
+ #include <RED4ext/RED4ext.hpp>
+-#include <RED4ext/Scripting/Natives/userRuntimeSettingsVar.hpp>
++#include "NativeSettings.hpp"
+ 
+ namespace ModSettings {
+ 
+ template <typename T> struct RuntimeVariable : public IRuntimeVariable {
+   RuntimeVariable(ScriptProperty *prop) : IRuntimeVariable(prop) {
+-    T _value, _defaultValue;
++    T _value{}, _defaultValue{};
+     prop->ReadDefaultValue(&_defaultValue);
+     SetDefaultValue(&_defaultValue);
+     _value = _defaultValue;
+@@ -30,7 +30,7 @@ template <typename T> struct RuntimeVariable : public IRuntimeVariable {
+   // overrides
+ 
+   virtual inline bool __fastcall WasModifiedSinceLastSave() override {
+-    return importPolicy != RED4ext::user::EConfigVarImportPolicy::Ignore && savedValue != acceptedValue;
++    return importPolicy != ::ModSettings::Native::EConfigVarImportPolicy::Ignore && savedValue != acceptedValue;
+   }
+ 
+   virtual inline bool __fastcall HasChange() override { return requestedValue != acceptedValue; }
+@@ -66,21 +66,21 @@ template <typename T> struct RuntimeVariable : public IRuntimeVariable {
+       return !wasDefault;
+     }
+     switch (updatePolicy) {
+-    case RED4ext::user::EConfigVarUpdatePolicy::Disabled:
++    case ::ModSettings::Native::EConfigVarUpdatePolicy::Disabled:
+       return !wasDefault;
+-    case RED4ext::user::EConfigVarUpdatePolicy::Immediately:
++    case ::ModSettings::Native::EConfigVarUpdatePolicy::Immediately:
+       goto UpdateImmediately;
+-    case RED4ext::user::EConfigVarUpdatePolicy::ConfirmationRequired:
++    case ::ModSettings::Native::EConfigVarUpdatePolicy::ConfirmationRequired:
+       SetRequestedValue(&defaultValue);
+       // v8 = GetUserSettings();
+       // SettingsConfirmChange_0(v8, a1);
+       break;
+-    case RED4ext::user::EConfigVarUpdatePolicy::RestartRequired:
++    case ::ModSettings::Native::EConfigVarUpdatePolicy::RestartRequired:
+       SetRequestedValue(&defaultValue);
+       // v7 = GetUserSettings();
+       // SettingsRestartRequired_0(v7, a1);
+       break;
+-    case RED4ext::user::EConfigVarUpdatePolicy::LoadLastCheckpointRequired:
++    case ::ModSettings::Native::EConfigVarUpdatePolicy::LoadLastCheckpointRequired:
+       SetRequestedValue(&defaultValue);
+       // v6 = GetUserSettings();
+       // SettingsLoadLastCheckpoint_0(v6, a1);
+@@ -127,12 +127,12 @@ template <typename T> struct RuntimeVariable : public IRuntimeVariable {
+ 
+   virtual void __fastcall GetValueToWrite(char *value) override;
+ 
+-  virtual inline RED4ext::ScriptInstance *__fastcall GetRequestedValue() override {
+-    return (RED4ext::ScriptInstance *)&requestedValue;
++  virtual inline void*__fastcall GetRequestedValue() override {
++    return (void*)&requestedValue;
+   }
+ 
+-  virtual inline RED4ext::ScriptInstance *__fastcall GetAcceptedValue() override {
+-    return (RED4ext::ScriptInstance *)&acceptedValue;
++  virtual inline void*__fastcall GetAcceptedValue() override {
++    return (void*)&acceptedValue;
+   }
+ 
+   virtual inline void __fastcall SetDefaultValue(void *value) override { 
+@@ -147,7 +147,7 @@ template <typename T> struct RuntimeVariable : public IRuntimeVariable {
+ 
+ template <typename T> struct RuntimeVariableRange : RuntimeVariable<T> {
+   inline RuntimeVariableRange(ScriptProperty *prop) : RuntimeVariable<T>(prop) {
+-    this->type = RED4ext::user::EConfigVarType::Int;
++    this->type = ::ModSettings::Native::EConfigVarType::Int;
+     prop->ReadProperty("ModSettings.step", &this->stepValue, (T)1);
+     prop->ReadProperty("ModSettings.min", &this->minValue, (T)0);
+     prop->ReadProperty("ModSettings.max", &this->maxValue, (T)10);
+@@ -156,7 +156,7 @@ template <typename T> struct RuntimeVariableRange : RuntimeVariable<T> {
+   inline RuntimeVariableRange(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order,
+                              T defaultValue, T stepValue, T minValue, T maxValue)
+       : RuntimeVariable<T>(modName, className, propertyName, displayName, description, order, defaultValue) {
+-    this->type = RED4ext::user::EConfigVarType::Int;
++    this->type = ::ModSettings::Native::EConfigVarType::Int;
+     this->stepValue = stepValue;
+     this->minValue = minValue;
+     this->maxValue = maxValue;
+@@ -180,34 +180,34 @@ template <typename T> struct RuntimeVariableList : public RuntimeVariable<uint32
+ 
+ struct RuntimeVariableBool : RuntimeVariable<bool> {
+   inline RuntimeVariableBool(ScriptProperty *prop) : RuntimeVariable<bool>(prop) {
+-    this->type = RED4ext::user::EConfigVarType::Bool;
++    this->type = ::ModSettings::Native::EConfigVarType::Bool;
+   }
+   inline RuntimeVariableBool(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order,
+                              bool defaultValue)
+       : RuntimeVariable<bool>(modName, className, propertyName, displayName, description, order, defaultValue) {
+-    this->type = RED4ext::user::EConfigVarType::Bool;
++    this->type = ::ModSettings::Native::EConfigVarType::Bool;
+   }
+ };
+ 
+ struct RuntimeVariableKeyBinding : RuntimeVariable<EInputKey> {
+   inline RuntimeVariableKeyBinding(ScriptProperty *prop) : RuntimeVariable<EInputKey>(prop) {
+-    this->type = RED4ext::user::EConfigVarType::Name;
++    this->type = ::ModSettings::Native::EConfigVarType::Name;
+   }
+   inline RuntimeVariableKeyBinding(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order,
+                              EInputKey defaultValue)
+       : RuntimeVariable<EInputKey>(modName, className, propertyName, displayName, description, order, defaultValue) {
+-    this->type = RED4ext::user::EConfigVarType::Name;
++    this->type = ::ModSettings::Native::EConfigVarType::Name;
+   }
+ };
+ 
+ struct RuntimeVariableName : RuntimeVariable<CName> {
+   inline RuntimeVariableName(ScriptProperty *prop) : RuntimeVariable<CName>(prop) {
+-    this->type = RED4ext::user::EConfigVarType::Name;
++    this->type = ::ModSettings::Native::EConfigVarType::Name;
+   }
+   inline RuntimeVariableName(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order,
+                              CName defaultValue)
+       : RuntimeVariable<CName>(modName, className, propertyName, displayName, description, order, defaultValue) {
+-    this->type = RED4ext::user::EConfigVarType::Name;
++    this->type = ::ModSettings::Native::EConfigVarType::Name;
+   }
+ };
+ 
+@@ -220,7 +220,7 @@ struct RuntimeVariableName : RuntimeVariable<CName> {
+ // char (*__kaboom)[offsetof(RuntimeVariableBool, acceptedValue)] = 1;
+ 
+ template <> inline RuntimeVariableRange<float>::RuntimeVariableRange(ScriptProperty *prop) : RuntimeVariable(prop) {
+-  this->type = RED4ext::user::EConfigVarType::Float;
++  this->type = ::ModSettings::Native::EConfigVarType::Float;
+   prop->ReadProperty("ModSettings.step", &this->stepValue, 0.05f);
+   prop->ReadProperty("ModSettings.min", &this->minValue, 0.0f);
+   prop->ReadProperty("ModSettings.max", &this->maxValue, 1.0f);
+@@ -229,7 +229,7 @@ template <> inline RuntimeVariableRange<float>::RuntimeVariableRange(ScriptPrope
+ template <> inline RuntimeVariableRange<float>::RuntimeVariableRange(CName modName, CName className, CName propertyName, CName displayName, CName description, uint32_t order,
+                              float defaultValue, float stepValue, float minValue, float maxValue)
+       : RuntimeVariable<float>(modName, className, propertyName, displayName, description, order, defaultValue) {
+-    this->type = RED4ext::user::EConfigVarType::Float;
++    this->type = ::ModSettings::Native::EConfigVarType::Float;
+     this->stepValue = stepValue;
+     this->minValue = minValue;
+     this->maxValue = maxValue;
+@@ -262,7 +262,7 @@ template <> inline void __fastcall RuntimeVariable<CName>::GetValueToWrite(char
+ 
+ struct RuntimeVariableEnum : public RuntimeVariableList<int32_t> {
+   RuntimeVariableEnum(ScriptProperty *prop) : RuntimeVariableList<int32_t>(prop) {
+-    this->type = RED4ext::user::EConfigVarType::IntList;
++    this->type = ::ModSettings::Native::EConfigVarType::IntList;
+ 
+     values = RED4ext::DynArray<int32_t>(new RED4ext::Memory::DefaultAllocator());
+     displayValues = RED4ext::DynArray<RED4ext::CName>(new RED4ext::Memory::DefaultAllocator());
+diff --git a/src/red4ext/ScriptData.hpp b/src/red4ext/ScriptData.hpp
+index 63df5c86b63e52740ff772dc0d1fa224ad06d0df..da40b9e963a94dc5170930fd71e653167a3e6432 100644
+--- a/src/red4ext/ScriptData.hpp
++++ b/src/red4ext/ScriptData.hpp
+@@ -4,6 +4,7 @@
+ namespace ModSettings {
+ 
+ struct ScriptData {
++  void* unk00_2_5; // 2.5: prefix before definition maps
+   RED4ext::HashMap<uint64_t, uint64_t> unk00;
+   RED4ext::HashMap<uint64_t, uint64_t> unk30;
+   RED4ext::HashMap<uint64_t, uint64_t> unk60;
+@@ -14,9 +15,8 @@ struct ScriptData {
+   RED4ext::DynArray<ScriptClass *> classes;
+   RED4ext::DynArray<void *> types;
+   RED4ext::DynArray<RED4ext::CString> strings;
+-  RED4ext::HashMap<uint64_t, uint64_t> unk100;
+-  uint8_t unk60MUTX;
+-  void *unk138;
+ };
+ 
+-}
+\ No newline at end of file
++static_assert(offsetof(ScriptData, classes) == 0xD8);
++
++}
+diff --git a/src/red4ext/ScriptDefinitions/ScriptDefinitions.hpp b/src/red4ext/ScriptDefinitions/ScriptDefinitions.hpp
+index 9a1fe7b1b91ae74c6d48ebd007b246bba812192f..fa1212edbdb0a0dc76aa6032410707d023b9f7a2 100644
+--- a/src/red4ext/ScriptDefinitions/ScriptDefinitions.hpp
++++ b/src/red4ext/ScriptDefinitions/ScriptDefinitions.hpp
+@@ -48,10 +48,11 @@ struct ScriptDefinition {
+ 
+   RED4ext::CName name;
+   uint64_t unk10;
++  uint8_t unk18[0x28]; // 2.5: grown script-definition base
+ };
+ 
+ struct ScriptType : ScriptDefinition {
+-  RED4ext::CBaseRTTIType *rttiType;
++  RED4ext::rtti::IType *rttiType;
+   ScriptClass *innerType;
+   uint32_t unk28;
+   EScriptType type;
+@@ -76,15 +77,15 @@ struct ScriptClass : ScriptDefinition {
+   ScriptClass *parent;
+   RED4ext::DynArray<ScriptProperty *> properties;
+   RED4ext::DynArray<void *> overrides;
++  uint8_t unk70[0x20]; // 2.5: extra class state before functions
+   RED4ext::DynArray<void *> functions;
+-  __unaligned __declspec(align(1)) RED4ext::HashMap<RED4ext::CName, RED4ext::CString> unk58;
++  RED4ext::HashMap<RED4ext::CName, RED4ext::CString> unk58;
+   uint8_t visibility;
+-  uint8_t unk89;
+-  uint8_t unk8A;
+-  uint8_t unk8B;
+-  ScriptClassFlags flags;
++  uint8_t flags; // 2.5 class flags are a byte at +0xD1
+ };
+-RED4EXT_ASSERT_SIZE(ScriptClass, 0x90);
++static_assert(sizeof(ScriptDefinition) == 0x40);
++static_assert(sizeof(ScriptType) == 0x58);
++static_assert(sizeof(ScriptClass) == 0xD8);
+ // char (*__kaboom)[offsetof(ScriptClass, rttiType)] = 1;
+ 
+ }
+\ No newline at end of file
+diff --git a/src/red4ext/ScriptDefinitions/ScriptProperty.hpp b/src/red4ext/ScriptDefinitions/ScriptProperty.hpp
+index 305826e9038853edb92fe19591ed5b03fb6b0888..1ca98f899ce923d5a5c9f0bddd0d8fa08337167d 100644
+--- a/src/red4ext/ScriptDefinitions/ScriptProperty.hpp
++++ b/src/red4ext/ScriptDefinitions/ScriptProperty.hpp
+@@ -37,15 +37,12 @@ struct ScriptProperty : ScriptDefinition {
+     return this->runtimeProperties.Get("ModSettings.mod");
+   }
+ 
+-  RED4ext::CBaseRTTIType * GetType() const {
++  RED4ext::rtti::IType * GetType() const {
+     return RED4ext::CRTTISystem::Get()->GetType(this->type->name);
+   }
+ 
+-  void FromString(RED4ext::ScriptInstance pointer, const RED4ext::CString& str) const {
+-    RED4ext::RawBuffer buffer;
+-    buffer.data = (void*)str.c_str();
+-    buffer.size = str.Length();
+-    this->GetType()->FromString(pointer, buffer);
++  void FromString(void* pointer, const RED4ext::CString& str) const {
++    this->GetType()->FromString(pointer, str);
+   }
+ 
+   // ReadProperty(CName)
+@@ -71,11 +68,8 @@ struct ScriptProperty : ScriptDefinition {
+   template <> uint32_t ReadProperty(const RED4ext::CName &name) const {
+     auto str = this->runtimeProperties.Get(name);
+     if (str) {
+-      uint32_t value;
+-      RED4ext::RawBuffer buffer;
+-      buffer.data = (void*)str->c_str();
+-      buffer.size = str->length;
+-      RED4ext::CRTTISystem::Get()->GetType("Uint32")->FromString(&value, buffer);
++      uint32_t value{};
++      RED4ext::CRTTISystem::Get()->GetType("Uint32")->FromString(&value, *str);
+       return value;
+     } else {
+       return 0;
+@@ -85,19 +79,16 @@ struct ScriptProperty : ScriptDefinition {
+   template <> int32_t ReadProperty(const RED4ext::CName &name) const {
+     auto str = this->runtimeProperties.Get(name);
+     if (str) {
+-      int32_t value;
+-      RED4ext::RawBuffer buffer;
+-      buffer.data = (void*)str->c_str();
+-      buffer.size = str->length;
+-      RED4ext::CRTTISystem::Get()->GetType("Int32")->FromString(&value, buffer);
++      int32_t value{};
++      RED4ext::CRTTISystem::Get()->GetType("Int32")->FromString(&value, *str);
+       return value;
+     } else {
+       return 0;
+     }
+   }
+ 
+-  ModSettingDependency* ReadDependency(const RED4ext::CName scriptClass) {
+-    auto dependency = (ModSettingDependency *)calloc(sizeof(ModSettingDependency), sizeof(char*));
++  ModSettingDependency ReadDependency(const RED4ext::CName scriptClass) {
++    ModSettingDependency dependency{};
+     auto str = this->runtimeProperties.Get("ModSettings.dependency");
+     if (str) {
+       std::string depends(str->c_str());
+@@ -106,25 +97,25 @@ struct ScriptProperty : ScriptDefinition {
+         auto period = depends.find(".");
+         auto equals = depends.find("=");
+         if (equals != std::string::npos) {
+-          auto value = depends.substr(equals, depends.length());
++          auto value = depends.substr(equals + 1);
+           trim(value);
+           if (value.length()) {
+-            dependency->value = value;
++            dependency.value = value;
+           }
+         } else {
+           equals = depends.length();
+-          dependency->value = "true";
++          dependency.value = "true";
+         }
+         if (period != std::string::npos) {
+           auto className = depends.substr(0, period);
+-          auto propertyName = depends.substr(period+1, equals);
++          auto propertyName = depends.substr(period + 1, equals - period - 1);
+           trim(className);
+           trim(propertyName);
+-          dependency->propertyName = RED4ext::CNamePool::Add(propertyName.c_str());
+-          dependency->className = RED4ext::CNamePool::Add(className.c_str());
++          dependency.propertyName = RED4ext::CNamePool::Add(propertyName.c_str());
++          dependency.className = RED4ext::CNamePool::Add(className.c_str());
+         } else {
+-          dependency->className = scriptClass;
+-          dependency->propertyName = RED4ext::CNamePool::Add(depends.c_str());
++          dependency.className = scriptClass;
++          dependency.propertyName = RED4ext::CNamePool::Add(depends.c_str());
+         }
+       }
+     }
+@@ -143,20 +134,14 @@ struct ScriptProperty : ScriptDefinition {
+   template <> void ReadProperty<uint32_t>(const RED4ext::CName &name, uint32_t *pointer) const {
+     auto str = this->runtimeProperties.Get(name);
+     if (str && pointer) {
+-      RED4ext::RawBuffer buffer;
+-      buffer.data = (void*)str->c_str();
+-      buffer.size = str->length;
+-      RED4ext::CRTTISystem::Get()->GetType("Uint32")->FromString(pointer, buffer);
++      RED4ext::CRTTISystem::Get()->GetType("Uint32")->FromString(pointer, *str);
+     }
+   }
+ 
+   template <> void ReadProperty<int32_t>(const RED4ext::CName &name, int32_t *pointer) const {
+     auto str = this->runtimeProperties.Get(name);
+     if (str && pointer) {
+-      RED4ext::RawBuffer buffer;
+-      buffer.data = (void*)str->c_str();
+-      buffer.size = str->length;
+-      RED4ext::CRTTISystem::Get()->GetType("Int32")->FromString(pointer, buffer);
++      RED4ext::CRTTISystem::Get()->GetType("Int32")->FromString(pointer, *str);
+     }
+   }
+ 
+@@ -166,18 +151,15 @@ struct ScriptProperty : ScriptDefinition {
+   //   if (str && pointer) {
+   //     RED4ext::RawBuffer buffer;
+   //     buffer.data = (void*)str->c_str();
+-  //     buffer.size = str->length;
+-  //     RED4ext::CRTTISystem::Get()->GetType("EInputKey")->FromString(pointer, buffer);
++  //     buffer.size() = str->Length();
++  //     RED4ext::CRTTISystem::Get()->GetType("EInputKey")->FromString(pointer, *str);
+   //   }
+   // }
+ 
+   template <> void ReadProperty<float>(const RED4ext::CName &name, float *pointer) const {
+     auto str = this->runtimeProperties.Get(name);
+     if (str && pointer) {
+-      RED4ext::RawBuffer buffer;
+-      buffer.data = (void*)str->c_str();
+-      buffer.size = str->length;
+-      RED4ext::CRTTISystem::Get()->GetType("Float")->FromString(pointer, buffer);
++      RED4ext::CRTTISystem::Get()->GetType("Float")->FromString(pointer, *str);
+     }
+   }
+ 
+@@ -223,8 +205,8 @@ struct ScriptProperty : ScriptDefinition {
+     }
+   }
+ 
+-  void ReadDefaultValue(RED4ext::ScriptInstance pointer) const {
+-    if (this->defaultValues.size) {
++  void ReadDefaultValue(void* pointer) const {
++    if (this->defaultValues.size()) {
+       this->FromString(pointer, this->defaultValues[0]);
+     }
+   }
+@@ -241,7 +223,6 @@ struct ScriptProperty : ScriptDefinition {
+   RED4ext::HashMap<RED4ext::CName, RED4ext::CString> runtimeProperties;
+   ScriptType *type;
+ };
+-RED4EXT_ASSERT_SIZE(ScriptProperty, 0x98);
+-RED4EXT_ASSERT_OFFSET(ScriptProperty, runtimeProperties, 0x60);
++static_assert(sizeof(ScriptProperty) == 0xC0);
+ 
+ }
+\ No newline at end of file
+diff --git a/src/red4ext/Scripting/Common.hpp b/src/red4ext/Scripting/Common.hpp
+index 2c577cb5f81612869d9f92cc7ed6301725b77c04..4d9c2b1b97cb3f99da02d21f67b35d691892eef8 100644
+--- a/src/red4ext/Scripting/Common.hpp
++++ b/src/red4ext/Scripting/Common.hpp
+@@ -15,13 +15,13 @@ template<typename T>
+ class TypeDescriptor
+ {
+ public:
+-    inline static RED4ext::CBaseRTTIType* GetType()
++    inline static RED4ext::rtti::IType* GetType()
+     {
+         return s_type;
+     }
+ 
+ protected:
+-    inline static RED4ext::CBaseRTTIType* s_type;
++    inline static RED4ext::rtti::IType* s_type;
+ };
+ 
+ template<typename T, typename B>
+@@ -31,7 +31,7 @@ template<typename T>
+ concept IsScripable = IsCompatible<T, RED4ext::IScriptable>;
+ 
+ template<typename T>
+-concept IsTypeInfoOrVoid = IsCompatible<T, RED4ext::CBaseRTTIType> or std::is_same_v<void, T>;
++concept IsTypeInfoOrVoid = IsCompatible<T, RED4ext::rtti::IType> or std::is_same_v<void, T>;
+ 
+ template<typename T, typename U>
+ concept IsMemberCallCompatible = IsScripable<T> and IsCompatible<T, U> and sizeof(T) == sizeof(U);
+@@ -405,7 +405,7 @@ inline RED4ext::ScriptingFunction_t<void*> WrapScriptableFunction()
+     static const auto s_func = AFunc;
+ 
+     auto f = [](RED4ext::IScriptable* aContext, RED4ext::CStackFrame* aFrame,
+-                R* aRet, RED4ext::CBaseRTTIType* aRetType) -> void
++                R* aRet, RED4ext::rtti::IType* aRetType) -> void
+     {
+         Args args;
+         ExtractArgs(aFrame, args);
+diff --git a/src/red4ext/Scripting/RTTIRegistrar.cpp b/src/red4ext/Scripting/RTTIRegistrar.cpp
+index 681aef2c192602545a2be3751175ccc73a41ebc7..eee814dc16d4c9c56a8d5abe8ae4a95f98ce9af6 100644
+--- a/src/red4ext/Scripting/RTTIRegistrar.cpp
++++ b/src/red4ext/Scripting/RTTIRegistrar.cpp
+@@ -17,7 +17,8 @@ void Engine::RTTIRegistrar::Register()
+ {
+     if (!m_registered)
+     {
+-        RED4ext::RTTIRegistrator::Add(m_regFunc, m_buildFunc);
++        RED4ext::CRTTISystem::Get()->AddRegisterCallback(m_regFunc);
++        RED4ext::CRTTISystem::Get()->AddPostRegisterCallback(m_buildFunc);
+         m_registered = true;
+     }
+ }
+diff --git a/src/red4ext/Utils.hpp b/src/red4ext/Utils.hpp
+index 87e7b7ce4352547a5865bb57772535d43a9608a8..fabfdf2a9b63f3faf1cf22b38ba137c4b0afe7ed 100644
+--- a/src/red4ext/Utils.hpp
++++ b/src/red4ext/Utils.hpp
+@@ -1,106 +1,39 @@
+ #pragma once
+ #include <filesystem>
++#include <RED4ext/RED4ext.hpp>
++#include <RED4ext/Scripting/Natives/Generated/EInputKey.hpp>
+ 
+-namespace Utils
+-{
+-//void CreateLogger();
++namespace Utils {
+ std::filesystem::path GetRootDir();
+ std::wstring ToWString(const char* aText);
+ }
+ 
+-#include "RED4ext/CName.hpp"
+-#include <RED4ext/RED4ext.hpp>
+-
+ template<typename T>
+-static void RedTypeFromString(T * pointer, const RED4ext::CString& str) {
+-
+-}
+-
+-template<> void RedTypeFromString<bool>(bool * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3443526637)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<int8_t>(int8_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3415542724)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<int16_t>(int16_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3592162291)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<int32_t>(int32_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3590851569)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<int64_t>(int64_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3594652662)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<uint8_t>(uint8_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3648392249)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<uint16_t>(uint16_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3832679528)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<uint32_t>(uint32_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3831368806)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<uint64_t>(uint64_t * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3835169899)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<float>(float * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3665562711)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<double>(double * pointer, const RED4ext::CString& str) {
+-  RED4ext::RawBuffer buffer;
+-  buffer.data = (void*)str.c_str();
+-  buffer.size = str.length;
+-  RTTITYPE(3892120764)->FromString(pointer, buffer);
+-}
+-
+-template<> void RedTypeFromString<RED4ext::CName>(RED4ext::CName * pointer, const RED4ext::CString& str) {
+-  *pointer = RED4ext::CNamePool::Add(str.c_str());
+-}
+-
+-inline RED4ext::CBaseRTTIType* ToType(const RED4ext::CName name) {
++static void RedTypeFromString(T* pointer, const RED4ext::CString& str) {
++  const char* name = nullptr;
++  if constexpr (std::is_same_v<T, bool>) name = "Bool";
++  else if constexpr (std::is_same_v<T, int8_t>) name = "Int8";
++  else if constexpr (std::is_same_v<T, int16_t>) name = "Int16";
++  else if constexpr (std::is_same_v<T, int32_t>) name = "Int32";
++  else if constexpr (std::is_same_v<T, int64_t>) name = "Int64";
++  else if constexpr (std::is_same_v<T, uint8_t>) name = "Uint8";
++  else if constexpr (std::is_same_v<T, uint16_t>) name = "Uint16";
++  else if constexpr (std::is_same_v<T, uint32_t>) name = "Uint32";
++  else if constexpr (std::is_same_v<T, uint64_t>) name = "Uint64";
++  else if constexpr (std::is_same_v<T, float>) name = "Float";
++  else if constexpr (std::is_same_v<T, double>) name = "Double";
++  else if constexpr (std::is_same_v<T, RED4ext::CName>) {
++    *pointer = RED4ext::CNamePool::Add(str.c_str());
++    return;
++  } else if constexpr (std::is_same_v<T, RED4ext::EInputKey>) name = "EInputKey";
++  if (name) {
++    if (auto type = RED4ext::CRTTISystem::Get()->GetType(name)) type->FromString(pointer, str);
++  }
++}
++
++inline RED4ext::rtti::IType* ToType(RED4ext::CName name) {
+   return RED4ext::CRTTISystem::Get()->GetType(name);
+ }
+-
+-inline RED4ext::CClass* ToClass(const RED4ext::CName name) {
++inline RED4ext::CClass* ToClass(RED4ext::CName name) {
+   return RED4ext::CRTTISystem::Get()->GetClass(name);
+ }
+diff --git a/src/red4ext/Variable.cpp b/src/red4ext/Variable.cpp
+index 82529ba2b8bb808a7e9e1cd8def8543d1bd53f30..01e7386c6e05b2b263e548cd208dd5510f6419cd 100644
+--- a/src/red4ext/Variable.cpp
++++ b/src/red4ext/Variable.cpp
+@@ -112,7 +112,7 @@ bool ModVariable::SetRuntimeVariable(ScriptProperty * prop) {
+       this->runtimeVar = new RuntimeVariableRange<float>(prop);
+       return true;
+     default: 
+-      if(this->type->GetType() == RED4ext::ERTTIType::Enum) {
++      if(this->type->GetType() == RED4ext::rtti::ERTTIType::Enum) {
+         this->runtimeVar = new RuntimeVariableEnum(prop);
+         return true;
+       } else {
+@@ -131,7 +131,7 @@ bool ModVariable::CreateRuntimeVariable(const Variable &var) {
+       this->runtimeVar = new RuntimeVariableBool(var.modName, var.className, var.propertyName, CNamePool::Add(var.displayName), CNamePool::Add(var.description), var.order, var.defaultValue.b);
+       return true;
+     case CName("EInputKey"):
+-      // keyCls->ToString((ScriptInstance)var.defaultValue.u32, keyString);
++      // keyCls->ToString((void*)var.defaultValue.u32, keyString);
+       this->runtimeVar = new RuntimeVariableKeyBinding(var.modName, var.className, var.propertyName, CNamePool::Add(var.displayName), CNamePool::Add(var.description), var.order, (EInputKey)var.defaultValue.u32); //CNamePool::Add(keyString));
+       return true;
+     // not supported in the UI yet
+@@ -148,7 +148,7 @@ bool ModVariable::CreateRuntimeVariable(const Variable &var) {
+       this->runtimeVar = new RuntimeVariableRange<float>(var.modName, var.className, var.propertyName, CNamePool::Add(var.displayName), CNamePool::Add(var.description), var.order, var.defaultValue.f32, var.stepValue.f32, var.minValue.f32, var.maxValue.f32);
+       return true;
+     default: 
+-      // if(this->type->GetType() == RED4ext::ERTTIType::Enum) {
++      // if(this->type->GetType() == RED4ext::rtti::ERTTIType::Enum) {
+       //   this->runtimeVar = new RuntimeVariableEnum(var.modName, var.className, var.propertyName, var.displayName, var.description, var.order, *var.defaultValue);
+       //   return true;
+       // } else {
+@@ -160,7 +160,7 @@ bool ModVariable::CreateRuntimeVariable(const Variable &var) {
+ 
+ IModConfigVar * ModVariable::ToConfigVar() const {
+   if (this->runtimeVar) {
+-    auto configVar = this->configVarType->CreateInstance<IModConfigVar*>();
++    auto configVar = static_cast<IModConfigVar*>(this->configVarType->CreateInstance());
+     configVar->SetRuntime(this->runtimeVar);
+     return configVar;
+   } else {
+@@ -199,7 +199,9 @@ void ModClass::UnregisterListener(const Handle<IScriptable> &listener) {
+   std::unique_lock _(*this->listeners_lock);
+ 
+   if (listener && listener->ref && !listener->ref.Expired()) {
+-    auto position = std::find(this->listeners.begin(), this->listeners.end(), WeakHandle<IScriptable>(listener));
++    auto position = std::find_if(this->listeners.begin(), this->listeners.end(), [&](const auto& weak) {
++      return weak.instance == listener.instance && weak.refCount == listener.refCount;
++    });
+     if (position != this->listeners.end())
+       this->listeners.erase(position);
+   }
+@@ -212,9 +214,9 @@ void ModClass::RegisterCallback(std::shared_ptr<runtime_class_callback_t> &callb
+   }
+ }
+ 
+-void ModClass::SetDefaultValue(CName propertyName, ScriptInstance* value) const {
++void ModClass::SetDefaultValue(CName propertyName, void* value) const {
+   if (this->type) {
+-      for (auto i = 0; i < this->type->defaults.keys.size; i++) {
++      for (auto i = 0; i < this->type->defaults.keys.size(); i++) {
+         if (this->type->defaults.keys[i] == propertyName) {
+           // sdk->logger->InfoF(pluginHandle, "Loaded %s.%s", this->name.ToString(), propertyName.ToString());
+           auto propType = this->type->defaults.values[i]->GetType();
+@@ -376,7 +378,7 @@ void ModSettingsVariable::SetRequestedValues() {
+   auto classType = RED4ext::CRTTISystem::Get()->GetClass(className);
+   if (classType) {
+     auto valuePtr = runtimeVar->GetAcceptedValue();
+-    for (auto i = 0; i < classType->defaults.keys.size; i++) {
++    for (auto i = 0; i < classType->defaults.keys.size(); i++) {
+       if (classType->defaults.keys[i] == runtimeVar->name) {
+         sdk->logger->InfoF(pluginHandle, "Loaded %s.%s", className.ToString(), runtimeVar->name.ToString());
+         auto propType = classType->defaults.values[i]->GetType();
+@@ -458,7 +460,7 @@ bool ModVariable::SetRuntimeVariable(ScriptProperty * prop) {
+       this->runtimeVar = new RuntimeVariableRange<float>(prop);
+       return true;
+     default: 
+-      if(this->type->GetType() == RED4ext::ERTTIType::Enum) {
++      if(this->type->GetType() == RED4ext::rtti::ERTTIType::Enum) {
+         this->runtimeVar = new RuntimeVariableEnum(prop);
+         return true;
+       } else {
+diff --git a/src/red4ext/Variable.hpp b/src/red4ext/Variable.hpp
+index 9852209dc4147a0c83e66e8b12bc07add7300dd8..a6455b4ec011aa19c7c329204affb34b12b6f074 100644
+--- a/src/red4ext/Variable.hpp
++++ b/src/red4ext/Variable.hpp
+@@ -4,8 +4,8 @@
+ #include "IRuntimeVariable.hpp"
+ #include "RED4ext/RTTITypes.hpp"
+ #include <RED4ext/Common.hpp>
+-#include <RED4ext/Scripting/Natives/userRuntimeSettingsVar.hpp>
+-#include <RED4ext/Scripting/Natives/userSettingsVar.hpp>
++#include "NativeSettings.hpp"
++#include <RED4ext/Scripting/Natives/Generated/user/SettingsVar.hpp>
+ #include <map>
+ #include <functional>
+ 
+@@ -48,7 +48,7 @@ struct ModVariable {
+   IModConfigVar * ToConfigVar() const;
+   
+   CName name = 0LLU;
+-  CBaseRTTIType *type = nullptr;
++  rtti::IType *type = nullptr;
+   CClass *configVarType = nullptr;
+   IRuntimeVariable *runtimeVar = nullptr;
+   ModSettingDependency dependency;
+@@ -85,7 +85,7 @@ struct ModClass {
+   void RegisterListener(const Handle<IScriptable> &listener);
+   void UnregisterListener(const Handle<IScriptable> &listener);
+   void RegisterCallback(std::shared_ptr<runtime_class_callback_t> &callback);
+-  void SetDefaultValue(CName propertyName, ScriptInstance* value) const;
++  void SetDefaultValue(CName propertyName, void* value) const;
+   void NotifyListeners() const;
+ 
+   constexpr operator CName() const noexcept {
+@@ -150,7 +150,7 @@ private:
+   CName className = CName();
+   CName category = CName();
+ 
+-  CBaseRTTIType *type;
++  rtti::IType *type;
+   CClass *configVarType;
+   IRuntimeVariable *runtimeVar = nullptr;
+   DynArray<WeakHandle<IScriptable>> listeners;
+diff --git a/src/red4ext/stdafx.hpp b/src/red4ext/stdafx.hpp
+index 8085ec86a94a269d1e9d5807a034a521c1cd2a9d..76477acab82d031a3093e2757a3036cbe6aa29fc 100644
+--- a/src/red4ext/stdafx.hpp
++++ b/src/red4ext/stdafx.hpp
+@@ -7,8 +7,15 @@
+ #include <vector>
+ 
+ #include <Windows.h>
+-#include <TlHelp32.h>
++#include <tlhelp32.h>
+ //#include <detours.h>
+ 
+ #include <RED4ext/RED4ext.hpp>
+ //#include <spdlog/spdlog.h>
++
++#include <algorithm>
++#include <functional>
++#include <map>
++#include <set>
++#include <shared_mutex>
++#include <variant>

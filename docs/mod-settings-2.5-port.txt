@@ -1,0 +1,228 @@
+Mod Settings source port for Cyberpunk 2077 2.5
+=============================================
+
+Target: executable 3.0.88.46235, RED4ext 1.31.0 and the saved shared SDK.
+Date: 2026-10-25. This is a source/build/ABI audit and isolated regression
+record. No game startup, gameplay, save/load or settings-persistence test was
+performed with this build. No game or MO2 files were changed.
+
+Source and attribution
+----------------------
+Official upstream: https://github.com/jackhumbert/mod_settings
+Pinned main: e90481592208a5929cfb9d19ece06dd4e2b0582a
+  https://github.com/jackhumbert/mod_settings/commit/e90481592208a5929cfb9d19ece06dd4e2b0582a
+Latest numeric release: v0.2.21, release commit
+  42318192d4eac203f3010e76672098010802496e
+  https://github.com/jackhumbert/mod_settings/releases/tag/v0.2.21
+
+The release notes describe a 2.3 update, float-slider adjustment and potential
+hang fix, with RED4ext, ArchiveXL and redscript requirements. The main source
+retains 0.2.21 and adds preservation of unregistered INI settings, backup/read
+failure handling, corrected RejectChanges and UI category fixes. Those changes
+are upstream work and are preserved by the pin, rather than reimplemented in
+our compatibility patch. Jack Humbert's MIT notice is retained in the package
+and licenses/mod-settings.txt.
+
+The official source is registered at sources/mod-settings, with ignore=dirty
+like the other patched submodules. Its HEAD stays at the root Gitlink. The
+source port is exported to patches/mod-settings/001-essentials.patch; its
+checksum and provenance are in sources.lock.json. No child commit is used.
+
+Local evidence consulted first
+------------------------------
+.research/mod-settings/startup-analysis.txt and the v0.2.21 source beside it
+record the installed-binary investigation. The matching observed RED4ext log
+stops while loading mod_settings.dll, after the plugin logged its starting
+version and base address. No matching exception context was recorded.
+
+Installed old DLL SHA256:
+  6be425177778a3857a392251bbbcd1aab450dda600c1a56b0f4dd4eac9c3a9cc
+Audited retail Cyberpunk2077.exe SHA256:
+  d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4
+
+The old plugin registers callbacks at RTTI vtable slots +0xC0 and +0xC8 with a
+0x28-byte callback whose handler is at +0x20. Retail copies/destructs callbacks
+through +0x40, with 0x48-byte entries. That mismatch is a demonstrated ABI
+defect and a concrete explanation of the startup symptom, but the precise
+observed faulting instruction is not known. Changing Query's version alone
+cannot repair it; the old DLL already declared runtime independence.
+
+The source port uses the current shared SDK callback at both registration
+slots, including ArchiveXL's API helper. Query now declares exactly game 2.5
+and the current v1 SDK/API. It does not advertise independence from layouts.
+
+Private layout and call audit
+----------------------------
+All addresses here are executable RVAs, independent of ASLR. The disassembly
+used llvm-objdump; nearby exported audio-library labels were not treated as
+names of internal game functions. The existing Codeware ScriptBundle audit
+was cross-checked with retail code and used for the common script structures.
+
+Script metadata:
+  * ScriptData begins with an additional eight bytes. Its classes array is
+    +0xD8, rather than +0xD0. The destructor at 0xA7B3A4/0xA7B49C frees maps at
+    +0x08/+0x38/+0x68 and arrays from +0x98 onward; the definition collector at
+    0xB2C408 walks the class array at +0xD8.
+  * ScriptDefinition grew from 0x18 to 0x40. ScriptClass properties are +0x50,
+    with functions +0x90 after an additional 0x20 bytes. ScriptProperty's
+    parent/default values/runtime attributes/type are +0x48/+0x68/+0x88/+0xB8.
+    ValidateProperty at 0x6BF654 and the class/definition walkers substantiate
+    the moved fields. The local source includes real offsetof assertions;
+    the shared SDK's disabled Clang offset macro is not used as evidence.
+  * IType::FromString now takes const CString&, rather than the fork's raw
+    buffer. The port passes constructed strings and looks up built-in types
+    by name instead of dereferencing the fork's RTTITYPE macro addresses.
+
+Input mappings:
+  Hash        RVA        Observed use
+  3702071356  0x786F68   GetMappingCollection reads the map at UserMapping+0xA0
+  4196866905  0x787238   clears per-collection state at +0x10
+  1773342692  0x18C8510  ApplyOverrides reads manager+0x10, then context+0x08
+  3298233196  0x27A47A8  original key-filter hook target
+  3993832650  0xA7B3A4   script-bundle destructor/release hook target
+  2583235069  0xDCC4B0   overridable input identifier hash routine
+
+  All six hashes resolve uniquely in the installed 2.5 address database.
+  Resolution alone does not prove a function signature or structure layout.
+
+  The retail context override at 0x7860F4 independently reads the context's
+  action map at +0x28, each action's mapping-name array at +0x08, calls
+  GetMappingCollection and traverses 0x40-byte mapping elements. It compares
+  the overridable identifier at +0x34 and writes the 16-bit key at +0x02. The
+  runtime-map rebuild at 0x786AF4 also walks elements with a 0x40-byte stride.
+  Upstream's 0x30-byte element and +0x24 identifier were incompatible. The
+  source now uses these observed offsets and leaves unneeded fields opaque.
+  It delegates rebuilding to the original ApplyOverrides, without writing
+  the old, unaudited manager status fields.
+
+Native settings and script bindings:
+  The legacy fork has a custom RuntimeSettingsVar that the shared SDK does
+  not expose. NativeSettings.hpp keeps a plugin-owned prefix adapted from
+  its MIT-licensed b5ea5919 header; it does not replace an SDK header. The
+  legacy and shared SDK license texts are identical.
+
+  The userSettingsVar RTTI registration at 0x17D3BCB declares size 0x48.
+  Native accessors read its runtime pointer at +0x40, then the runtime name
+  at +0x08 (0x278D9A8), group path at +0x10 (0x278D6E8), display name at +0x18
+  (0x278D400), description at +0x30 (0x278D3EC), type at +0x40 (0x278D9E4),
+  update policy at +0x41 (0x278D9F8), flags at +0x44, and order at +0x48
+  (0x278D9BC). Their RTTI string registrations identify these accessors;
+  neighboring functions for other settings subtypes are not used as evidence.
+  IsVisible at 0x1919BEC checks flag 0x4; IsDisabled at 0x278DE64 checks
+  0x800, so the local flag declaration preserves the additional retail bit.
+  The RestoreDefault wrapper at 0x278DF10 calls vtable +0x28; HasChange at
+  0x278DE40 calls +0x18. The plugin's corresponding virtuals retain those slots.
+
+  Current API adaptations include explicit v1 loader types, DynArray accessors,
+  const-correct RedLib methods, native object creation and explicit script
+  argument arrays. The custom ConfigVar wrappers keep their runtime pointer
+  at +0x40. The legacy inkActionName CName extension reads its private +0x40
+  field within the unchanged 0x58-byte class; its menu use remains a game-test
+  item. Native build assertions cover the boundary layouts actually read.
+
+Startup and ownership changes
+-----------------------------
+The plugin-owned Registrar.hpp replaces the upstream cpcmake hook helper. It
+resolves addresses during Main(Load), tries each attachment once, rolls back
+earlier attachments on failure, and detaches in reverse order. It does not
+resolve game addresses from static hook constructors or spin forever on a
+failed attachment. The old DllMain singleton/handle call is removed.
+
+The port does not delete legacy scripts or archives from the game during
+startup. Disable old copies in the mod manager before testing. The loader
+registers both scripts; ArchiveXL registers the neighboring packed archive.
+
+The source also replaces zero-filled allocation of a nontrivial settings
+dependency with a constructed value, corrects its value/property substrings,
+removes a shared-to-exclusive lock upgrade in native AddVariable processing,
+initializes scalar defaults, checks negative enum indices, and builds group
+paths dynamically instead of overflowing a fixed buffer. These are source
+defects encountered while adapting this path, not proven causes of the
+original session failure.
+
+Dependency overlay and packaging
+--------------------------------
+Only upstream-pinned deps/red_lib is a build dependency. The private SDK,
+cpcmake, ArchiveXL, Detours and logging copies are unused. cpcmake was inspected
+locally for original packaging/compiler semantics, but is not initialized by
+the build. All native code uses clang-cl, lld-link and Microsoft's STL/CRT.
+
+RedLib pin: 2d9bb93b19cfb169c230882a4a5c27ec168c49bd
+  https://github.com/jackhumbert/cp2077-red-lib/tree/2d9bb93b19cfb169c230882a4a5c27ec168c49bd
+Its SDK adaptation is patches/mod-settings-redlib/001-sdk-api.patch.
+scripts/mod_settings.py checks the nested pin and clean source, reconstructs
+that checksum-pinned patch into build/generated/mod-settings-redlib, and
+preserves unexported overlay edits. export verifies reconstruction before
+replacing saved metadata; check independently compares every generated file.
+The dependency source itself stays untouched. Its identity includes the pin,
+patch checksum, generated tree fingerprint and ArchiveXL API header digest.
+
+Runtime archive: ModSettings-0.2.21-game2.5.zip
+All contents are below red4ext/plugins/mod_settings/:
+  mod_settings.dll, packed.reds, module.reds,
+  ModSettings.archive, ModSettings.archive.xl, readme.md, license.md,
+  licenses/{RedLib,nameof,RED4ext.SDK,ArchiveXL}.txt
+
+The composer preserves the global redscript sources and generates the separate
+ModSettingsModule version file. The archive is taken from the source Gitlink,
+not from an installed or prebuilt DLL bundle. Its SHA256 is
+  dc858b9e746e7b3df4d5fa0527e150fefa49cd4fb721ddd0faf5f4e21528d08c
+user.ini and prebuilt DLLs are excluded. A separate symbols ZIP contains only
+mod_settings.pdb. The default release set now has seven runtime ZIPs, seven
+symbol ZIPs and the two alternative RED4ext/CET layouts: sixteen ZIPs total.
+RED4ext, ArchiveXL and separately installed redscript are required; Input
+Loader supplies custom mapping XMLs used by keybinding settings.
+
+Validation performed
+--------------------
+1. ./build-linux.sh --only mod-settings --jobs 8
+   Release DLL/PDB and both packages created through the normal pipeline.
+   The collector verified all seven current packages and their shared SDK
+   identities before replacing dist/release. The unchanged six DLLs were not
+   needlessly rebuilt. This is not a clean-clone full seven-project build.
+2. python3 -m unittest discover -s tests -v
+   88 tests collected: 72 passed and 16 optional checks skipped. New tests cover complete
+   payloads, missing assets/notices, AddVariable exports, stale provenance,
+   dependency pin/checksum failures, preservation and overlay reconstruction.
+   The workflow command is exercised through the shared build orchestrator;
+   release preparation rejects missing Mod Settings runtime/symbol archives.
+3. python3 scripts/patches.py check all
+   Independent reconstruction passed for all eight root source projects.
+   python3 scripts/check-sources.py passed the official-source boundary audit.
+4. python3 scripts/verify-build.py --addresses PATH_TO_2_5_ADDRESSES
+   ABI/import/export/PDB/payload/provenance checks passed. Mod Settings 6/6,
+   CET 32/32, Codeware 107/107, TweakXL 11/11, ArchiveXL 132/134 unique hashes;
+   only ArchiveXL's two previously disabled features remain missing.
+   All sixteen files in dist/release/SHA256SUMS passed checksum verification.
+5. The Microsoft-ABI fixture in tests/native/mod-settings compiled and passed
+   under Wine in an isolated prefix. It exercises the production RedLib
+   registrar at retail vtable slots +0xC0/+0xC8, copies callbacks through the
+   handler at +0x40, and invokes them after the caller's temporary dies. It
+   also exercises the production hook registry's bounded failure, rollback,
+   successful installation and repeated unload against a fake loader.
+6. All 17 individual scripts, then the exact packaged packed.reds/module.reds,
+   compiled successfully against a copied vanilla 2.5 final.redscripts cache
+   using an isolated copy of the installed redscript compiler. Only the private
+   build tree received compiler output. The older redscript-cli 0.5.16 bundled
+   in cpcmake could not read this cache and was not used as validation.
+
+   Compiler/cache identities:
+   scc.exe:
+     f7bf0a5a0986aec61d360ae79a3e957b8e21c0781309193a2a056c7bde0e90bc
+   scc_lib.dll:
+     114851d192ec815119bbfa2272da572bf026fea8e5c0a910a4c8ad84b877dc09
+   vanilla final.redscripts:
+     b78043064ae90fb80861b0d885d1c8dbcd22070f1db71f20664d19f2d83c4aac
+
+Reproduce the optional isolated checks after building the package:
+  python3 scripts/test-mod-settings.py --runner wine \
+    --scc-dir /path/to/redscript/engine/tools \
+    --vanilla-cache /path/to/vanilla/final.redscripts
+
+Without the runner/compiler options the script builds only the native fixture.
+Wine and game data are never build or CI dependencies. All generated evidence
+stays below build/mod-settings-checks/. The checks do not exercise the game's
+actual callback registry, menu assets, input events, other installed scripts,
+user.ini writes/reloads, shutdown, or save compatibility. A startup test and
+focused bool/int/float/enum/keybinding, accept/cancel/defaults, notification and
+restart-persistence checks remain necessary in the real 2.5 game.

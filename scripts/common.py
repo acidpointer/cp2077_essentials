@@ -8,13 +8,14 @@ import tempfile
 
 ROOT = pathlib.Path(os.environ.get('CP2077_ROOT', pathlib.Path(__file__).resolve().parents[1])).resolve()
 ALIASES = {'archivexl': 'archive-xl', 'tweakxl': 'tweak-xl', 'inputloader': 'input-loader',
+           'modsettings': 'mod-settings', 'mod_settings': 'mod-settings',
            'cet': 'cyber-engine-tweaks', 'cyberenginetweaks': 'cyber-engine-tweaks'}
-NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK', 'input-loader': 'InputLoader', 'cyber-engine-tweaks': 'CyberEngineTweaks'}
+NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK', 'input-loader': 'InputLoader', 'cyber-engine-tweaks': 'CyberEngineTweaks', 'mod-settings': 'ModSettings'}
 ROOT_LAYOUT = {'red4ext', 'cyber-engine-tweaks'}
 
 
 def binary_name(project):
-    return 'input_loader' if project == 'input-loader' else NAMES[project]
+    return {'input-loader': 'input_loader', 'mod-settings': 'mod_settings'}.get(project, NAMES[project])
 
 
 def run(args, cwd=None, env=None, check=True):

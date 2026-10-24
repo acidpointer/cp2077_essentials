@@ -58,7 +58,12 @@ def main():
     for name in selected:
         before = patches.identity(name, require_saved=True)
         sdk = patches.identity('red4ext-sdk', require_saved=True)
-        dependencies = package.cet_dependencies() if name == 'cyber-engine-tweaks' else None
+        if name == 'mod-settings':
+            import mod_settings
+            mod_settings.prepare()
+        dependency_reader = (package.cet_dependencies if name == 'cyber-engine-tweaks' else
+                             package.mod_settings_dependencies if name == 'mod-settings' else None)
+        dependencies = dependency_reader() if dependency_reader else None
         print(f'Building {c.NAMES[name]} ({args.config})...', flush=True)
         build = c.ROOT / 'build' / ('red4ext' if name == 'red4ext' else 'plugins') / args.config.lower()
         with (logs / f'{name}-{args.config.lower()}.log').open('w') as log:
@@ -81,8 +86,8 @@ def main():
                         '--prefix', build / 'install'], log)
         if patches.identity(name, require_saved=True) != before or patches.identity('red4ext-sdk', require_saved=True) != sdk:
             raise ValueError('Sources changed during the build; packages were not created.')
-        if dependencies is not None and package.cet_dependencies() != dependencies:
-            raise ValueError('CET dependencies changed during the build; packages were not created.')
+        if dependency_reader and dependency_reader() != dependencies:
+            raise ValueError(f'{name}: dependencies changed during the build; packages were not created.')
         package.create(name, args.config)
     destination = distribution.collect(args.config, selected, args.dist_dir)
     print(f'Runtime packages are listed in {destination / "manifest.json"}')

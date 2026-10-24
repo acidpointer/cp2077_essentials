@@ -77,6 +77,17 @@ def dependencies():
         c.git(source, 'submodule', 'update', '--init', '--', nested_path)
     if c.git(nested, 'rev-parse', 'HEAD').stdout.decode().strip() != pin or c.git(nested, 'status', '--porcelain').stdout:
         raise ValueError(f'{nested}: local dependency changes exist; no checkout/reset was attempted.')
+    # Mod Settings consumes only RedLib headers. Its legacy SDK and CMake,
+    # hook, logging and ArchiveXL dependency copies are deliberately unused.
+    source = c.ROOT / lock['projects']['mod-settings']['path']
+    nested_path = 'deps/red_lib'
+    nested = source / nested_path
+    base = c.git(source, 'rev-parse', 'HEAD').stdout.decode().strip()
+    pin = patches.gitlinks(source, base)[nested_path]
+    if not (nested / '.git').exists():
+        c.git(source, 'submodule', 'update', '--init', '--', nested_path)
+    if c.git(nested, 'rev-parse', 'HEAD').stdout.decode().strip() != pin or c.git(nested, '--no-optional-locks', 'status', '--porcelain').stdout:
+        raise ValueError(f'{nested}: local dependency changes exist; no checkout/reset was attempted.')
     asset(lock['archivexl_assets'])
     asset(lock['cet_assets'])
     sqlite = lock['sqlite_asset']

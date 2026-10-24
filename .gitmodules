@@ -26,3 +26,7 @@
 	path = sources/cyber-engine-tweaks
 	url = https://github.com/maximegmd/CyberEngineTweaks.git
 	ignore = dirty
+[submodule "sources/mod-settings"]
+	path = sources/mod-settings
+	url = https://github.com/jackhumbert/mod_settings.git
+	ignore = dirty

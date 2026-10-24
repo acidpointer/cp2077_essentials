@@ -14,7 +14,7 @@ INPUT_LOADER_NEUTRAL_INI = (
 )
 
 def original_version(project, source, build):
-    if project in ['input-loader', 'cyber-engine-tweaks']:
+    if project in ['input-loader', 'cyber-engine-tweaks', 'mod-settings']:
         return c.config()['projects'][project]['version']
     if project == 'red4ext':
         text = (build / 'src/loader/Resource.rc').read_text()
@@ -65,6 +65,44 @@ def cet_dependencies():
     names += ['tiltedcore', 'mimalloc', 'minhook', 'hopscotch-map', 'spdlog']
     return {'sources': {name: lock['dependencies'][name] for name in names},
             'sqlite': lock['sqlite_asset'], 'assets': lock['cet_assets']}
+
+
+def mod_settings_dependencies():
+    import mod_settings
+    item = c.config()['mod_settings_redlib']
+    return {'redlib': item, 'redlib_overlay': mod_settings.check(), 'archivexl_api_sha256': c.sha(
+        c.ROOT / 'sources/archive-xl/support/red4ext/ArchiveXL.hpp')}
+
+
+def mod_settings_payload(source, build):
+    prefix = 'red4ext/plugins/mod_settings/'
+    runtime = {prefix + 'mod_settings.dll': (build / 'bin/mod_settings.dll').read_bytes()}
+    for name in ['readme.md', 'license.md']:
+        runtime[prefix + name] = (source / name).read_bytes()
+    runtime[prefix + 'ModSettings.archive'] = (
+        source / 'src/wolvenkit/packed/archive/pc/mod/ModSettings.archive').read_bytes()
+    runtime[prefix + 'ModSettings.archive.xl'] = (source / 'src/archiveXL/ModSettings.archive.xl').read_bytes()
+    # Match upstream's composer: all global script files, then a separate
+    # versioned module. Keep comments, annotations and per-file boundaries.
+    parts = []
+    for path in sorted((source / 'src/redscript').rglob('*.reds')):
+        parts += ['// ' + path.relative_to(source / 'src/redscript').as_posix(),
+                  path.read_text(encoding='utf-8-sig')]
+    if not parts:
+        raise ValueError('Mod Settings: missing redscript sources.')
+    runtime[prefix + 'packed.reds'] = ('\n\n'.join(parts) + '\n').encode()
+    module = (source / 'src/redscript/Module.reds.in').read_text()
+    version = c.config()['projects']['mod-settings']['version']
+    for name, value in zip(['MAJOR', 'MINOR', 'PATCH'], version.split('.')):
+        module = module.replace('@PROJECT_VERSION_' + name + '@', value)
+    runtime[prefix + 'module.reds'] = module.encode()
+    notices = {'RedLib.txt': source / 'deps/red_lib/LICENSE',
+               'nameof.txt': source / 'deps/red_lib/vendor/nameof/LICENSE',
+               'RED4ext.SDK.txt': c.ROOT / 'sources/red4ext-sdk/LICENSE.md',
+               'ArchiveXL.txt': c.ROOT / 'sources/archive-xl/LICENSE'}
+    for name, path in notices.items():
+        runtime[prefix + 'licenses/' + name] = path.read_bytes()
+    return runtime
 
 
 def cet_payload(source, build):
@@ -123,6 +161,10 @@ def create(project, config):
         runtime = cet_payload(source, build)
         symbols = {'red4ext/plugins/CyberEngineTweaks/CyberEngineTweaks.pdb':
                    (build / 'bin/CyberEngineTweaks.pdb').read_bytes()}
+    elif project == 'mod-settings':
+        runtime = mod_settings_payload(source, build)
+        symbols = {'red4ext/plugins/mod_settings/mod_settings.pdb':
+                   (build / 'bin/mod_settings.pdb').read_bytes()}
     else:
         prefix = f'red4ext/plugins/{name}/'
         runtime = {}
@@ -190,6 +232,8 @@ def create(project, config):
               'source': identity, 'sdk': sdk, 'files': {}}
     if project == 'cyber-engine-tweaks':
         record['dependencies'] = cet_dependencies()
+    elif project == 'mod-settings':
+        record['dependencies'] = mod_settings_dependencies()
     for kind, contents, root_prefix in groups:
         dest = out / archive_name(project, version, config, kind)
         with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as archive:

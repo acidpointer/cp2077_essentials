@@ -61,6 +61,7 @@ absent or has no matching material, continue with other available sources.
 | Root orchestration / per-project build flags | `build-linux.sh`, `scripts/build.py` |
 | Native LLVM / Microsoft SDK bootstrap | `scripts/toolchain.py`, `cmake/toolchains/clang-cl-linux.cmake` |
 | Plugin targets, generated headers and link libs | `cmake/Plugins.cmake`, `cmake/CyberEngineTweaks.cmake` |
+| Mod Settings source port / RedLib header overlay | `cmake/ModSettings.cmake`, `scripts/mod_settings.py`, `docs/mod-settings-2.5-port.txt`, `tests/test_mod_settings.py` |
 | CET LuaJIT Windows VM generation / package regressions | `scripts/luajit_codegen.py`, `tests/test_cet.py` |
 | Allocator/native dependencies | `cmake/Dependencies.cmake` |
 | Loader header-only dependency integration | `cmake/LoaderDependencies.cmake` |
@@ -78,7 +79,7 @@ absent or has no matching material, continue with other available sources.
 
 Source projects: `sources/red4ext`, `sources/archive-xl`, `sources/codeware`,
 `sources/tweak-xl`, `sources/input-loader`, `sources/cyber-engine-tweaks`,
-`sources/red4ext-sdk`. These are
+`sources/red4ext-sdk`, `sources/mod-settings`. These are
 official upstream submodules. Their patched working contents are expected to be modified;
 their HEADs must stay at the commits recorded by the root Gitlinks.
 
@@ -156,12 +157,13 @@ Never use `submodule update --remote` as a build step.
 ./build-linux.sh --only archivexl --jobs 8
 ./build-linux.sh --only input-loader --jobs 8
 ./build-linux.sh --only cet --jobs 8
+./build-linux.sh --only mod-settings --jobs 8
 ```
 
 `--only` accepts `tweakxl/archivexl/inputloader` and
-`tweak-xl/archive-xl/input-loader` and `cet/cyberenginetweaks/cyber-engine-tweaks`. Per-project wrappers are
-`scripts/build-<red4ext|codeware|tweakxl|archivexl|inputloader|cet>.sh`.
-Use Release for installation. Shared SDK changes require all six builds.
+`tweak-xl/archive-xl/input-loader`, `mod-settings/modsettings/mod_settings`, and `cet/cyberenginetweaks/cyber-engine-tweaks`. Per-project wrappers are
+`scripts/build-<red4ext|codeware|tweakxl|archivexl|inputloader|cet|modsettings>.sh`.
+Use Release for installation. Shared SDK changes require all seven builds.
 Do not repeat unchanged native builds after documentation-only edits.
 
 | Output | Path |
@@ -262,6 +264,21 @@ all runtime C/C++ uses clang-cl and the Microsoft CRT. Keep ImGui docking,
 CET dependency/resource pins are part of its package provenance. Overlay, Lua
 mods, hook timing and shutdown still need a real 2.5 game test.
 
+Mod Settings uses the shared SDK, its official source Gitlink and only its pinned
+RedLib headers. `scripts/mod_settings.py prepare` reconstructs the checksum-pinned
+RedLib SDK adaptation under `build/generated/`; `export` saves intentional edits
+to existing overlay headers and verifies reconstruction without touching the
+nested dependency. Keep legacy SDK/cpcmake/ArchiveXL/logging copies out of the
+build. Its package includes the source-pinned archive, localization descriptor,
+packed.reds, module.reds and license notices, with symbols separate and no user.ini.
+Keep real offsetof assertions for its script and input layouts. Six direct
+address hashes resolve on the audited retail executable. Hook attachment is
+bounded and rolls back prior hooks; startup preserves legacy game files.
+Callbacks have a focused Microsoft-ABI regression, but native startup, menu,
+keybinding and persistence behavior still require a 2.5 game test. Packaged
+scripts compile against a copied vanilla cache in the isolated check. See the port
+record before reporting broader runtime compatibility.
+
 ArchiveXL still lacks `JournalTree_ProcessJournalIndex` and
 `ResourceLoader_OnUpdate`: journal indexing and resource hot reload remain
 disabled. Cooked instanced-mesh/collision-node element edits remain limited.
@@ -285,7 +302,7 @@ Do not alter upstream ignore files, reset source edits or use assume-unchanged
 or skip-worktree flags to hide this expected patch state.
 
 Only when explicitly asked to stage or create an initial commit, stage root
-files and the seven `sources/*` Gitlinks. Check
+files and the eight `sources/*` Gitlinks. Check
 `git --no-optional-locks diff --cached --check` and inspect
 `git --no-optional-locks diff --cached --stat`.
 No upstream files, build caches or distribution ZIPs belong in that commit.
@@ -308,7 +325,7 @@ python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyb
 Expected unique hash matches: Codeware 107/107, TweakXL 11/11, ArchiveXL 132/134
 with only the two disabled-feature hashes missing.
 
-A release uses the six runtime ZIPs, SHA256SUMS and manifest.json. Standard
+A release uses the seven runtime ZIPs, SHA256SUMS and manifest.json. Standard
 RED4ext and CET layouts and symbols are separate optional extras. The collector verifies
 a candidate before replacing the old distribution and rejects mixed provenance.
 Release archive names contain original mod versions and meaningful layout
@@ -317,7 +334,7 @@ timestamp or `dirty` suffixes. Debug archives retain `-debug` for clarity.
 `SHA256SUMS` covers runtime, standard-layout and symbol archives.
 
 The tag workflow checks official source boundaries, tests and builds the full
-Release set in an Arch container, then publishes fourteen ZIPs and checksums using
+Release set in an Arch container, then publishes sixteen ZIPs and checksums using
 the repository token. Stable tags use `vX.Y.Z`; RC tags produce prereleases.
 Publication creates absent releases or uploads prepared filenames with
 `--clobber` to existing mutable releases. Preserve existing title/notes and

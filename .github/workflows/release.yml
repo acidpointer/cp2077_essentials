@@ -56,7 +56,7 @@ jobs:
       - name: Test patch and release tooling
         run: python3 -m unittest discover -s tests -v
 
-      - name: Build all six Release packages (including CET)
+      - name: Build all seven Release packages
         run: ./build-linux.sh --config Release --jobs 2
 
       - name: Test patched Input Loader XML behavior
@@ -71,7 +71,7 @@ jobs:
           python3 -m unittest discover -s tests -p test_cet_runtime.py -v
           python3 scripts/test-cet-runtime.py
 
-      - name: Prepare fourteen verified release archives
+      - name: Prepare sixteen verified release archives
         run: |
           python3 scripts/check-sources.py
           python3 scripts/release.py "$GITHUB_REF_NAME"

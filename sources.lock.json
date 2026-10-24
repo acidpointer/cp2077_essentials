@@ -155,6 +155,22 @@
         "version_tag": "v1.38.0",
         "notes": "Official 2.5 support; local RED4ext plugin integration and shared SDK/Clang adaptations. No in-game validation."
       }
+    },
+    "mod-settings": {
+      "path": "sources/mod-settings",
+      "version": "0.2.21",
+      "patches": [
+        {
+          "path": "patches/mod-settings/001-essentials.patch",
+          "sha256": "cd1ea4c9df3d26978e85c9dca4a1982a0c83eb38c5bd0702794aba6102c06604"
+        }
+      ],
+      "provenance": {
+        "upstream": "https://github.com/jackhumbert/mod_settings",
+        "version_tag": "v0.2.21",
+        "release_commit": "42318192d4eac203f3010e76672098010802496e",
+        "notes": "Pinned official main e9048159 retains version 0.2.21 and adds settings-preservation and reject-change fixes after the release. Local source port uses the shared 2.5 SDK; see docs/mod-settings-2.5-port.txt. No in-game validation."
+      }
     }
   },
   "dependencies": {
@@ -293,5 +309,15 @@
     "sha256": "67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071",
     "directory": "build/deps/cet-sqlite",
     "version": "3.46.1"
+  },
+  "mod_settings_redlib": {
+    "path": "sources/mod-settings/deps/red_lib",
+    "commit": "2d9bb93b19cfb169c230882a4a5c27ec168c49bd",
+    "patches": [
+      {
+        "path": "patches/mod-settings-redlib/001-sdk-api.patch",
+        "sha256": "3279ab4c191e3df213fe7ff68ca3c9f1143790c3e1cc09a17516fa5fc94830d0"
+      }
+    ]
   }
 }

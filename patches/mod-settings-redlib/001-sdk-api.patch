@@ -1,0 +1,343 @@
+--- a/include/Red/TypeInfo/Common.hpp
++++ b/include/Red/TypeInfo/Common.hpp
+@@ -56,7 +56,7 @@
+ concept IsScriptableSystem = std::is_base_of_v<ScriptableSystem, T>;
+ 
+ template<typename T>
+-concept IsType = std::is_base_of_v<CBaseRTTIType, T>;
++concept IsType = std::is_base_of_v<rtti::IType, T>;
+ 
+ template<typename T>
+ concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
+--- a/include/Red/TypeInfo/Definition.hpp
++++ b/include/Red/TypeInfo/Definition.hpp
+@@ -187,8 +187,8 @@
+ }
+ 
+ template<typename R>
+-inline void AssignReturnValue(R* aRetValue, CBaseRTTIType* aRetValueType,
+-                              FinalRetType<R>* aRetBuffer, CBaseRTTIType* aRetBufferType)
++inline void AssignReturnValue(R* aRetValue, rtti::IType* aRetValueType,
++                              FinalRetType<R>* aRetBuffer, rtti::IType* aRetBufferType)
+ {
+     if (aRetBuffer)
+     {
+@@ -212,7 +212,7 @@
+ 
+     static const auto s_retType = !std::is_void_v<R> ? ResolveType<FinalRetType<R>>() : nullptr;
+ 
+-    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](C* aContext, CStackFrame* aFrame, R* aRet, rtti::IType* aRetType) -> void
+     {
+         Args args;
+         ExtractArgs(aContext, aFrame, args);
+@@ -259,7 +259,7 @@
+ 
+     static const auto s_retType = ResolveType<Value>();
+ 
+-    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, CBaseRTTIType* aRetType) -> void
++    auto f = [](Context* aContext, CStackFrame* aFrame, Value* aRet, rtti::IType* aRetType) -> void
+     {
+         ++aFrame->code;
+         AssignReturnValue(&(aContext->*AProperty), s_retType, aRet, aRetType);
+@@ -335,26 +335,26 @@
+     && std::is_pointer_v<typename Detail::FunctionPtr<F>::template argument_type<3>>
+     && Detail::IsTypeOrVoid<std::remove_pointer_t<typename Detail::FunctionPtr<F>::template argument_type<3>>>;
+ 
+-inline std::string MakeScriptTypeName(CBaseRTTIType* aType)
++inline std::string MakeScriptTypeName(rtti::IType* aType)
+ {
+     switch (aType->GetType())
+     {
+-    case RED4ext::ERTTIType::Class:
++    case RED4ext::rtti::ERTTIType::Class:
+     {
+         return CRTTISystem::Get()->ConvertNativeToScriptName(aType->GetName()).ToString();
+     }
+-    case RED4ext::ERTTIType::Handle:
+-    case RED4ext::ERTTIType::WeakHandle:
++    case RED4ext::rtti::ERTTIType::Handle:
++    case RED4ext::rtti::ERTTIType::WeakHandle:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIHandleType*>(aType)->innerType;
+         return MakeScriptTypeName(pInnerType);
+     }
+-    case RED4ext::ERTTIType::Array:
++    case RED4ext::rtti::ERTTIType::Array:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIArrayType*>(aType)->innerType;
+         return "array<" + MakeScriptTypeName(pInnerType) + ">";
+     }
+-    case RED4ext::ERTTIType::ScriptReference:
++    case RED4ext::rtti::ERTTIType::ScriptReference:
+     {
+         auto pInnerType = reinterpret_cast<RED4ext::CRTTIScriptReferenceType*>(aType)->innerType;
+         return "script_ref<" + MakeScriptTypeName(pInnerType) + ">";
+@@ -388,7 +388,7 @@
+     constexpr uint32_t BaseCodeSize = OpSize + OffsetSize * 2 + PointerSize + FlagsSize + OpSize;
+     constexpr uint16_t BaseExitOffset = BaseCodeSize - OpSize - OffsetSize;
+ 
+-    const uint32_t extraCodeSize = aFunc->params.size * (OpSize + PointerSize) + (aFunc->returnType ? 1 : 0);
++    const uint32_t extraCodeSize = aFunc->params.size() * (OpSize + PointerSize) + (aFunc->returnType ? 1 : 0);
+     const uint32_t finalCodeSize = BaseCodeSize + extraCodeSize;
+     const uint16_t finalExitOffset = BaseExitOffset + extraCodeSize;
+ 
+@@ -641,7 +641,7 @@
+ template<typename TClass>
+ class ClassDescriptorDefaultImpl : public ClassDescriptor<TClass>
+ {
+-    const bool IsEqual(const ScriptInstance aLhs, const ScriptInstance aRhs, uint32_t a3) final // 48
++    const bool IsEqual(const void* aLhs, const void* aRhs, uint32_t a3) final // 48
+     {
+         if constexpr (Detail::IsConstructionForwarded<TClass>)
+         {
+@@ -653,13 +653,13 @@
+         }
+         else
+         {
+-            using func_t = bool (*)(CClass*, const ScriptInstance, const ScriptInstance, uint32_t);
++            using func_t = bool (*)(CClass*, const void*, const void*, uint32_t);
+             UniversalRelocFunc<func_t> func(Detail::AddressHashes::TTypedClass_IsEqual);
+             return func(this, aLhs, aRhs, a3);
+         }
+     }
+ 
+-    void Assign(ScriptInstance aLhs, const ScriptInstance aRhs) const final // 50
++    void Assign(void* aLhs, const void* aRhs) const final // 50
+     {
+         if constexpr (Detail::IsConstructionForwarded<TClass>)
+         {
+@@ -670,7 +670,7 @@
+         }
+         else if constexpr (std::is_copy_constructible_v<TClass>)
+         {
+-            new (aLhs) TClass(*static_cast<TClass*>(aRhs));
++            new (aLhs) TClass(*static_cast<const TClass*>(aRhs));
+         }
+     }
+ 
+@@ -690,7 +690,7 @@
+         }
+     }
+ 
+-    void ConstructCls(ScriptInstance aMemory) const final // D8
++    void ConstructCls(void* aMemory) const final // D8
+     {
+         if constexpr (Detail::IsConstructionForwarded<TClass>)
+         {
+@@ -705,7 +705,7 @@
+         }
+     }
+ 
+-    void DestructCls(ScriptInstance aMemory) const final // E0
++    void DestructCls(void* aMemory) const final // E0
+     {
+         if constexpr (Detail::IsConstructionForwarded<TClass>)
+         {
+@@ -754,9 +754,9 @@
+         if (aValue > Limits::max())
+             return;
+ 
+-        for (uint32_t i = 0; i != valueList.size; ++i)
+-        {
+-            if (aValue == valueList.entries[i])
++        for (uint32_t i = 0; i != valueList.size(); ++i)
++        {
++            if (aValue == valueList[i])
+                 return;
+         }
+ 
+--- a/include/Red/TypeInfo/Invocation.hpp
++++ b/include/Red/TypeInfo/Invocation.hpp
+@@ -64,7 +64,7 @@
+     if (!aFunc)
+         return false;
+ 
+-    const auto combinedArgCount = aFunc->params.size + (aFunc->returnType ? 1 : 0);
++    const auto combinedArgCount = aFunc->params.size() + (aFunc->returnType ? 1 : 0);
+ 
+     if (combinedArgCount != sizeof...(Args))
+         return false;
+@@ -93,7 +93,7 @@
+                 return false;
+             }
+ 
+-            if (aFunc->params.size)
++            if (aFunc->params.size())
+             {
+                 stack.args = args.data() + 1;
+             }
+@@ -103,11 +103,11 @@
+             stack.args = args.data();
+         }
+ 
+-        if (aFunc->params.size)
++        if (aFunc->params.size())
+         {
+-            stack.argsCount = aFunc->params.size;
++            stack.argsCount = aFunc->params.size();
+ 
+-            for (uint32_t i = 0; i < aFunc->params.size; ++i)
++            for (uint32_t i = 0; i < aFunc->params.size(); ++i)
+             {
+                 if (!Red::IsCompatible(aFunc->params[i]->type, stack.args[i].type, stack.args[i].value))
+                 {
+--- a/include/Red/TypeInfo/Parameters.hpp
++++ b/include/Red/TypeInfo/Parameters.hpp
+@@ -172,7 +172,7 @@
+ 
+     void* unk00;         // 00 - VFT
+     void* unk08;         // 08
+-    CBaseRTTIType* type; // 10
++    rtti::IType* type; // 10
+     T* ref;              // 18
+     CName name;          // 20
+ };
+--- a/include/Red/TypeInfo/Resolving.hpp
++++ b/include/Red/TypeInfo/Resolving.hpp
+@@ -221,7 +221,7 @@
+ class TypeLocator
+ {
+ public:
+-    static inline CBaseRTTIType* Get()
++    static inline rtti::IType* Get()
+     {
+         if (!s_resolved)
+         {
+@@ -238,7 +238,7 @@
+             Resolve();
+         }
+ 
+-        if (!s_type || s_type->GetType() != ERTTIType::Class)
++        if (!s_type || s_type->GetType() != rtti::ERTTIType::Class)
+         {
+             return nullptr;
+         }
+@@ -253,7 +253,7 @@
+             Resolve();
+         }
+ 
+-        if (!s_type || s_type->GetType() != ERTTIType::Handle)
++        if (!s_type || s_type->GetType() != rtti::ERTTIType::Handle)
+         {
+             return nullptr;
+         }
+@@ -268,7 +268,7 @@
+             Resolve();
+         }
+ 
+-        if (!s_type || s_type->GetType() != ERTTIType::WeakHandle)
++        if (!s_type || s_type->GetType() != rtti::ERTTIType::WeakHandle)
+         {
+             return nullptr;
+         }
+@@ -283,7 +283,7 @@
+             Resolve();
+         }
+ 
+-        if (!s_type || s_type->GetType() != ERTTIType::Array)
++        if (!s_type || s_type->GetType() != rtti::ERTTIType::Array)
+         {
+             return nullptr;
+         }
+@@ -301,7 +301,7 @@
+         return s_type;
+     }
+ 
+-    operator CBaseRTTIType*() const
++    operator rtti::IType*() const
+     {
+         return Get();
+     }
+@@ -326,7 +326,7 @@
+         return GetArray();
+     }
+ 
+-    [[nodiscard]] inline CBaseRTTIType* operator->() const
++    [[nodiscard]] inline rtti::IType* operator->() const
+     {
+         return Get();
+     }
+@@ -343,7 +343,7 @@
+         s_resolved = true;
+     }
+ 
+-    static inline CBaseRTTIType* s_type;
++    static inline rtti::IType* s_type;
+     static inline bool s_resolved;
+ };
+ 
+@@ -353,20 +353,20 @@
+ };
+ 
+ template<CName AType>
+-inline CBaseRTTIType* GetType()
++inline rtti::IType* GetType()
+ {
+     return TypeLocator<AType>::Get();
+ }
+ 
+ template<typename TType>
+-inline CBaseRTTIType* GetType()
++inline rtti::IType* GetType()
+ {
+     constexpr auto name = GetTypeName<TType>();
+ 
+     return TypeLocator<name>::Get();
+ }
+ 
+-inline CBaseRTTIType* GetType(CName aTypeName)
++inline rtti::IType* GetType(CName aTypeName)
+ {
+     return CRTTISystem::Get()->GetType(aTypeName);
+ }
+@@ -389,7 +389,7 @@
+ {
+     auto type = CRTTISystem::Get()->GetType(aTypeName);
+ 
+-    if (!type || type->GetType() != ERTTIType::Class)
++    if (!type || type->GetType() != rtti::ERTTIType::Class)
+     {
+         return nullptr;
+     }
+@@ -406,7 +406,7 @@
+ }
+ 
+ template<typename T>
+-inline CBaseRTTIType* ResolveType()
++inline rtti::IType* ResolveType()
+ {
+     static const auto s_name = ResolveTypeName<T>();
+     return CRTTISystem::Get()->GetType(s_name);
+@@ -419,13 +419,13 @@
+     return CRTTISystem::Get()->GetClass(s_name);
+ }
+ 
+-inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType)
++inline bool IsCompatible(rtti::IType* aLhsType, rtti::IType* aRhsType)
+ {
+     if (aLhsType != aRhsType)
+     {
+         auto metaType = aLhsType->GetType();
+ 
+-        if (metaType == aRhsType->GetType() && (metaType == ERTTIType::Handle || metaType == ERTTIType::WeakHandle))
++        if (metaType == aRhsType->GetType() && (metaType == rtti::ERTTIType::Handle || metaType == rtti::ERTTIType::WeakHandle))
+         {
+             auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
+             auto rhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aRhsType)->innerType);
+@@ -437,13 +437,13 @@
+     return true;
+ }
+ 
+-inline bool IsCompatible(CBaseRTTIType* aLhsType, CBaseRTTIType* aRhsType, void* aRhsValue)
++inline bool IsCompatible(rtti::IType* aLhsType, rtti::IType* aRhsType, void* aRhsValue)
+ {
+     if (aLhsType != aRhsType)
+     {
+         auto metaType = aLhsType->GetType();
+ 
+-        if (metaType == aRhsType->GetType() && (metaType == ERTTIType::Handle || metaType == ERTTIType::WeakHandle))
++        if (metaType == aRhsType->GetType() && (metaType == rtti::ERTTIType::Handle || metaType == rtti::ERTTIType::WeakHandle))
+         {
+             auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
+             auto rhsInstance = aRhsValue ? reinterpret_cast<Handle<ISerializable>*>(aRhsValue)->instance : nullptr;

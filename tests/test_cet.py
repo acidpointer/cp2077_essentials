@@ -124,9 +124,10 @@ class CetAddressHashes(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             root = pathlib.Path(folder)
             projects = {}
-            for name in ['codeware', 'tweak-xl', 'archive-xl', 'cyber-engine-tweaks']:
+            for name in ['codeware', 'tweak-xl', 'archive-xl', 'cyber-engine-tweaks', 'mod-settings']:
                 projects[name] = {'path': 'sources/' + name}
-                library = 'src/reverse/Addresses.h' if name == 'cyber-engine-tweaks' else 'src/Red/Addresses/Library.hpp'
+                library = ('src/reverse/Addresses.h' if name == 'cyber-engine-tweaks' else
+                           'src/red4ext/Addresses.hpp' if name == 'mod-settings' else 'src/Red/Addresses/Library.hpp')
                 path = root / projects[name]['path'] / library
                 path.parent.mkdir(parents=True)
                 if name == 'cyber-engine-tweaks':

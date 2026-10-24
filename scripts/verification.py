@@ -43,6 +43,8 @@ def distribution(folder):
             raise ValueError(f'{project}: stale artifact provenance; rebuild it.')
         if project == 'cyber-engine-tweaks' and record.get('dependencies') != package.cet_dependencies():
             raise ValueError('Cyber Engine Tweaks: stale dependency/resource provenance; rebuild it.')
+        if project == 'mod-settings' and record.get('dependencies') != package.mod_settings_dependencies():
+            raise ValueError('Mod Settings: stale dependency provenance; rebuild it.')
         config = manifest['config'].lower()
         build = c.ROOT / 'build' / ('red4ext' if project == 'red4ext' else 'plugins') / config
         source = c.ROOT / c.config()['projects'][project]['path']
@@ -89,13 +91,14 @@ def distribution(folder):
                     for name, data in expected.items():
                         if archive.read(name) != data:
                             raise ValueError(f'{path}: CET payload differs: {name}')
-                elif project == 'input-loader':
-                    expected = package.input_loader_payload(source, build)
+                elif project in ['input-loader', 'mod-settings']:
+                    payload = package.input_loader_payload if project == 'input-loader' else package.mod_settings_payload
+                    expected = payload(source, build)
                     if set(names) != set(expected):
-                        raise ValueError(f'{path}: wrong Input Loader runtime payload')
+                        raise ValueError(f'{path}: wrong {c.NAMES[project]} runtime payload')
                     for name, data in expected.items():
                         if archive.read(name) != data:
-                            raise ValueError(f'{path}: Input Loader payload differs: {name}')
+                            raise ValueError(f'{path}: {c.NAMES[project]} payload differs: {name}')
                 else:
                     prefix = f'red4ext/plugins/{c.NAMES[project]}/'
                     dll_path = prefix + c.NAMES[project] + '.dll'
@@ -127,15 +130,18 @@ def distribution(folder):
                 raise ValueError(f'{project}: plugin exports missing')
             if project == 'input-loader' and not {'Add', 'TryAdd', 'Remove'} <= exports(dll):
                 raise ValueError('Input Loader: public Add/TryAdd/Remove exports missing')
+            if project == 'mod-settings' and 'AddVariable' not in exports(dll):
+                raise ValueError('Mod Settings: public AddVariable export missing')
         binary(dll, dll.with_suffix('.pdb'))
         print(f'{c.NAMES[project]}: source/SDK provenance, AMD64 DLL, exports, symbols, ZIP payload and SHA256 passed')
 
 
 def addresses(path):
     counts = collections.Counter(int(value) for value in re.findall(rb'"hash":\s*"(\d+)"', pathlib.Path(path).read_bytes()))
-    for name in ['codeware', 'tweak-xl', 'archive-xl', 'cyber-engine-tweaks']:
+    for name in ['codeware', 'tweak-xl', 'archive-xl', 'cyber-engine-tweaks', 'mod-settings']:
         source = c.ROOT / c.config()['projects'][name]['path']
-        library = 'src/reverse/Addresses.h' if name == 'cyber-engine-tweaks' else 'src/Red/Addresses/Library.hpp'
+        library = ('src/reverse/Addresses.h' if name == 'cyber-engine-tweaks' else
+                   'src/red4ext/Addresses.hpp' if name == 'mod-settings' else 'src/Red/Addresses/Library.hpp')
         values = re.findall(r'constexpr uint32_t (\w+)\s*=\s*(\d+)(?:UL)?\s*;', (source / library).read_text())
         missing = {key for key, value in values if counts[int(value)] != 1}
         allowed = {'JournalTree_ProcessJournalIndex', 'ResourceLoader_OnUpdate'} if name == 'archive-xl' else set()
