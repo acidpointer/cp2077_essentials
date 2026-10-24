@@ -33,7 +33,7 @@ jobs:
         run: |
           pacman -Syu --noconfirm --needed \
             ca-certificates cmake clang lld llvm git python curl tar \
-            coreutils ninja github-cli
+            coreutils ninja github-cli compiler-rt
           clang-cl --version
           cmake --version
 
@@ -63,6 +63,13 @@ jobs:
         env:
           CP2077_REQUIRE_INPUT_TESTS: '1'
         run: python3 -m unittest discover -s tests -p test_input_loader.py -v
+
+      - name: Test CET runtime helpers
+        env:
+          CP2077_REQUIRE_CET_TESTS: '1'
+        run: |
+          python3 -m unittest discover -s tests -p test_cet_runtime.py -v
+          python3 scripts/test-cet-runtime.py
 
       - name: Prepare fourteen verified release archives
         run: |

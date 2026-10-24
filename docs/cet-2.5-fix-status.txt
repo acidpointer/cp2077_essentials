@@ -1,0 +1,268 @@
+CET 2.5 stability implementation and acceptance record
+Recorded: 2026-10-24
+Baseline findings: docs/cet-2.5-audit.txt, F01-F37
+Original work plan: docs/cet-2.5-fix-plan.txt, W0-W7
+
+Result and evidence boundary
+
+The confirmed lifetime, parsing, reentrancy, configuration and ownership defects
+have source fixes in 002-runtime-stability.patch. The original integration
+layer remains unchanged. This is a substantial implementation, with focused
+production-code regressions and a Release build; it is not a claim that all
+37 groups have completed their game-level acceptance tests. F17/F25/F35 retain
+the specific uncertainties listed below. No game was launched, no save was
+opened and no game/MO2 files were changed. No commit or publication was made.
+
+Patch boundary
+
+Official CET v1.38.0 Gitlink:
+  ed706fb8518712ffedf6b566e52873b257bc49fb
+Preserved layer:
+  patches/cyber-engine-tweaks/001-essentials.patch
+  6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4
+New layer:
+  patches/cyber-engine-tweaks/002-runtime-stability.patch
+  b64c62e4b3bc874de35a0256d2e050602290c8de26fe4f010086d435d2107931
+
+No dependency repository was patched or repinned for these fixes. CET-owned
+helpers replace the problematic lock/queue implementations. The root build
+adds ImGui's pinned std::string editor helper and CET-owned UTF-8 Windows
+file adapters to LuaJIT. SOL_EXCEPTIONS_SAFE_PROPAGATION is 0: the Windows
+harness caught lost exception messages with the previous value of 1. No
+MinGW C++ runtime or alternate SDK was introduced.
+
+Runtime contracts
+
+- Initialization creates disabled hooks, publishes a fully constructed CET,
+  then commits the owned hooks. Mandatory addresses are checked first.
+- Engine registrations, executable gateways and the CET module are retained
+  for the process lifetime. Shutdown stops admissions and callbacks, joins
+  workers, retires Lua callbacks and drains provably completed GPU work.
+  Unload/reload in the same game process is unsupported; restart the game.
+  This explicitly avoids pretending that MinHook disable unregisters RTTI.
+- Lua owns override/proxy/input callback references. Window messages transport
+  scalar events; stale Lua generations are rejected. Render locks follow Lua
+  ownership, and window input no longer directly mutates ImGui state.
+- GPU allocator/descriptors/resources follow completion fences. Waits have a
+  finite timeout. If completion cannot be proved, resources/events are retained
+  and the overlay stops until restart; they are not freed under in-flight work.
+- NewProxy supports IScriptable and abstract interfaces with no additional
+  native instance storage. Unsupported concrete/oversized bases produce a Lua
+  error instead of constructing an invalid native object.
+- Per-mod IO uses explicit resolved paths and separate input/output defaults.
+  Process CWD is unchanged. Checked UTF-8 Windows paths support LuaJIT loadfile
+  and file operations. Existing lexical sandbox restrictions are preserved.
+- Invalid configuration is preserved. Explicit successful repair saves retain
+  an invalid-file backup; normal replacement retains the last-good backup.
+  A failed save leaves the original file and unsaved UI state intact.
+
+Finding-by-finding disposition
+
+"Implemented" below means the source-level defect has an implementation and
+the affected DLL builds. A named native regression provides narrower execution
+evidence. Unnamed engine/UI/GPU paths remain source-reviewed, not executed.
+
+F01 Implemented: checked MinHook setup, delayed owned-hook commit, mandatory
+  address preflight, full-instance publication, callback admission/quiescence
+  and failure containment. Global game relocation objects became lazy local
+  statics. Runtime.cpp is exercised by cet-lifecycle with injected failures;
+  not every whole-CET constructor/window interleaving is simulated.
+F02 Implemented: removed the detached window poller; game ticks poll HWND.
+  Window publication/restoration is synchronized. Metadata has a cancellable,
+  joined worker and no captured owner surviving destruction.
+F03 Implemented: closed queue admission, generation cancellation and explicit
+  stop ordering; state retained while callbacks can still reach it. Actual
+  task-queue regressions cover reentrant drain, close and concurrent close.
+F04 Implemented process-lifetime ownership: pin module and retain registered
+  descriptors/gateways; retire Lua callbacks at stop. No engine unregister or
+  same-process reload is claimed. Descriptor ABI concerns remain under F17.
+F05 Implemented: editor Stop cancels/joins the cache future before its storage
+  retires, catches asynchronous errors and suppresses UI use during rebuild.
+  Removed unsequenced parallel operations on shared/editor state.
+F06 Implemented: log subscriptions use an owned shared tombstone rather than
+  retaining a callable that dereferences an already-destroyed widget.
+F07 Implemented: process-scoped named module claim, legacy ASI detection and
+  one-attempt policy before hooks/log/config construction. Pinned registrations
+  prevent safe in-process reloading after a failed attempt as well.
+F08 Implemented: removed raw Release calls on owned COM objects; texture/font
+  upload uses checked RAII ownership. The old WRL negative probe remains
+  historical evidence; no real-driver use-after-free test is claimed.
+F09 Implemented: every CET graphics submission records completion, frame and
+  backend allocator reuse wait for it, reset/font rebuild drains prior work.
+  Actual GPU and frame-generation correctness still require runtime tests.
+F10 Implemented: actual swapchain count (bounded to 16), one-based device
+  bounds, device/queue/swapchain identities, buffer/HRESULT checks and actual
+  render-target format. Resize/device/queue replacement still need game tests.
+F11 Implemented: generation-aware reusable descriptor slots; retained texture
+  allocations in cloned draw packets and submitted frames; released/stale IDs
+  rejected and failed loads return reservations. GPU stress remains pending.
+F12 Implemented: bounded waits, checked HRESULT/event/image sizes, retained
+  upload ownership before submission and deliberate retention on uncertain
+  completion. cet-graphics executes the actual fence-wait helper with a fake
+  ID3D12Fence; it does not emulate the entire renderer/upload failure matrix.
+F13 Implemented: synchronized ImGui operations, queued window input, fixed
+  lock order and frame recovery; unsafe ImGui preconditions always throw
+  before mutation. Real render-thread/Proton integration remains pending.
+F14 Implemented: next owns invocation/chain/arguments, captures by value and
+  rejects use after invocation retirement. cet-lua executes the actual method
+  with real sol2/LuaJIT and chained plus escaped continuations.
+F15 Implemented: removed manual Lua mutex manipulation and Lua format-string
+  error propagation. sol2 converts C++ exceptions at its Lua boundary. Native
+  override argument preparation now cleans up on exceptions and contains
+  failures at engine entry points. cet-lua checks format-token error text.
+F16 Implemented: Lua owns chain mutation/invocation, invocations hold snapshots,
+  active mutations defer, and pending errors do not poison every later update.
+  Clear/Refresh require quiescence; Retire keeps engine gateways valid.
+F17 Partial: checked code allocation/exhaustion, instruction-cache publication,
+  descriptor allocation sizes/nulls and retained ownership. Raw engine function
+  descriptor transfer and the two-stack argument-layout heuristic are still
+  upstream ABI interop assumptions. The shared SDK exposes no complete safe
+  clone/dispatch contract. A guessed replacement would not establish safety.
+  Validate native/scripted/static/member overrides on 2.5 before closure.
+F18 Implemented: checked conversion compatibility before Assign, per-call
+  bounded scratch arenas with allocator restoration, constructed native
+  snapshots/default arguments and exception-safe temporary/out storage.
+  values.cpp exercises actual allocator/NativeValue with fake RTTI, including
+  failed Assign and retained out values. Full engine return/out dispatch is
+  part of the outstanding F17/F35 game matrix.
+F19 Implemented: per-call converter visitors/type metadata, current bitfield
+  RTTI and wrapper compatibility checks. Reentrant engine conversion needs
+  game tests; the production DLL compiles these paths.
+F20 Implemented: registry of weak proxy control blocks, Lua owner validation
+  after acquiring Lua, generation invalidation, stable callback copies and
+  owner tombstones. Full engine-held callback/GC/reload dispatch is pending.
+F21 Implemented: explicit supported proxy-base contract; no arbitrary concrete
+  native instance is constructed with IScriptable storage. This intentionally
+  rejects formerly accepted unsafe bases and can affect such Lua mods.
+F22 Implemented: expired Lua refs return invalid without locking a null owner.
+  Locked move assignment releases its mutex before dropping the last owner.
+  The actual helper is covered by portable lifetime/reentry tests.
+F23 Implemented: 40-bit normalization, bounded/visited traversal, self/indirect
+  cycle rejection, saved roots on derived construction and replaced reverse
+  edges. Actual extracted production methods run with ASan/UBSan.
+F24 Implemented: task batches execute outside the container mutex, additions
+  take effect next tick, recursive drain is suppressed, close cancels and a
+  throwing task does not discard the rest of the batch. Actual helper tested.
+F25 Unconfirmed conditional engine/Lua job cycle remains open. Removing the
+  demonstrated chain-lock inversion and Lua work from window/render threads
+  reduces concrete lock hazards, but cannot prove arbitrary synchronous game
+  calls safe while Lua is owned. No specific 2.5 engine-waits-worker pair was
+  established. This work does not invent one or silently drop synchronous
+  overrides. A captured game thread trace is needed for a specific fix.
+F26 Implemented local pool ownership: serialized pool cache transactions;
+  pool-before-engine lock order; exclusive DBID offset writes; read-locked
+  owning flat snapshots and private values before engine move allocation.
+  Rescan caches when storage changes or shrinks. Other mods' writes and DB
+  replacement are not controlled by CET: concurrent whole-game stress with
+  all essentials remains an acceptance requirement.
+F27 Implemented: checked KARK header/magic/size, decoded/input limits, count
+  and varint bounds, metadata version checks, correct empty/LF/CRLF lines,
+  cancellation, local parse then short publication and caught worker errors.
+  Portable tests cover malformed reader primitives before Oodle, not the
+  proprietary decompressor. Both shipped metadata sizes fit the 256 MiB cap.
+F28 Implemented: schema dispatch by value shape, preserving dotted mod names
+  and legacy flat bindings. Production JSON helper regression passes.
+F29 Implemented: typed/ranged config reads, bounded input, invalid preservation,
+  atomic Windows replacement, last-good/permanent-invalid backups, explicit
+  save errors and UI rollback/unsaved state. First-time binding setup reports
+  a failed save and keeps setup active. Actual write helper tested on Windows.
+F30 Implemented: reset closes owned database refs even without require; stale
+  reopen closures reject old generations. SQLite cleanup tolerates closed
+  registry state, and close_v2 handles live statements/backup ownership.
+  cet-lua executes real lsqlite3/SQLite cleanup/backup paths.
+F31 Implemented: no mod operation changes CWD; explicit absolute package paths,
+  per-mod default IO streams, UTF-8 Windows LuaJIT adapters. cet-lua checks
+  relative resolution, isolated streams, Unicode files/loadfile and fixed CWD.
+F32 Implemented: registration closures own helpers and an initialization phase
+  token; calls after init reject before touching old ScriptContext storage.
+F33 Implemented: raw scalar input queue, owner-thread ID/generation resolution,
+  stale-event cancellation, reset/overflow handling and RAWINPUT size checks.
+  No sol function reference travels across the window-thread queue.
+F34 Implemented: checked expected retail bytes and owned reversible MinHook
+  detours for optional patches; options registry locking/retirement and an
+  atomic hook policy snapshot. A selected unsupported patch fails initialization
+  explicitly; successful option saves publish the policy. No blind byte write
+  or invalid VirtualProtect restoration remains.
+F35 Partial: per-hash GameCall identity, unconditional custom layout assertions,
+  unavailable-system/null checks and independently corroborated spawn/render
+  offsets. Full system registries, system+0xB8, custom proxy bytecode and all
+  constructor/virtual-call contracts still require exact retail dispatch
+  evidence and game testing. Matching hashes alone do not close this finding.
+F36 Partial runtime acceptance: portable and Windows harnesses now exercise
+  real LuaJIT/sol2/SQLite, JIT on/off, FFI, GC, exceptions, UTF-8 IO and selected
+  native helpers. They found/fixed the sol2 flag problem. They do not execute
+  actual game hooks, font rendering, GPU backends or saves.
+F37 Implemented: edit owned std::string values through pinned imgui_stdlib,
+  compare/commit through flat replacement and use defined unsigned character
+  conversion for sorting. No direct editing of shared engine CString buffers.
+  Actual editor interaction and Unicode collation behavior remain unplaytested.
+
+Validation and artifacts
+
+See docs/cet-audit-lab/fix-validation.json for exact saved identities/results.
+Completed checks:
+  - All seven saved source stacks reconstructed independently.
+  - Tooling suite: 76 tests, 61 passed and 15 optional checks skipped (ten
+    Windows Input Loader checks and five load-freeze native fixture checks).
+    The three CET ASan/UBSan tests passed again after the final raw-metadata
+    file-size limit. CI-required portable Input Loader checks ran successfully.
+  - All four Windows CET harnesses built and executed successfully in an
+    isolated Wine prefix. Expected injected config-write errors are test cases.
+  - All six Release projects built and packaged. The final CET-only rebuild
+    includes the last raw/REDmod metadata size bound; other packages are from
+    the unchanged source/SDK snapshot used for the full build.
+  - Source/SDK identity, AMD64 DLL exports, PDBs, exact payloads and checksums
+    passed for all six projects. Fourteen runtime/standard/symbol ZIPs passed
+    SHA256SUMS in both the distribution and flat local release preparation.
+  - Retail address checks: Codeware 107/107, TweakXL 11/11, ArchiveXL 132/134
+    with its two known disabled features, and CET 32/32. An additional 97 SDK
+    header-closure references resolve uniquely; no calling convention is
+    inferred solely from those matches.
+  - Validation release string v0.0.0-rc.1 prepared local assets only; no Git
+    tag, push or GitHub publication occurred.
+
+The full six-project build and package checks use a frozen copy under
+build/cet-fixes/validation/workspace, with copied Git metadata/dependencies and
+separate generated output. Copied Gitfiles were checked to resolve inside that
+workspace before running any mutating helper. The shared main dist/release is
+not replaced, and the other task's RED4ext revision/work is preserved.
+Prepared output:
+  build/cet-fixes/validation/workspace/dist/release/
+  build/cet-fixes/validation/workspace/build/github-release/
+Logs:
+  build/cet-fixes/validation/{full-release,cet-release-resume,cet-release-final}.log
+  build/cet-fixes/validation/{patch-check-final,tooling-tests,cet-portable-final}.log
+  build/cet-fixes/validation/{windows-runtime,verification,release-preparation}.log
+
+Regression commands and honest per-harness scope:
+  tests/native/cet/README.txt
+Read-only retail evidence:
+  docs/cet-audit-lab/evidence.json (historical 001 baseline)
+  build/cet-fixes/sdk-hashes.json (additional SDK closure references)
+
+Remaining game acceptance and how to close uncertainties
+
+1. Startup without Lua mods, first binding, overlay, menu exit, then actual
+   new/load/save/exit with the essentials and a disposable save. Do this on
+   Windows and Proton, with JIT on/off for diagnosis and frame generation
+   off/on. Capture CET/RED4ext logs and a symbolized thread/crash trace.
+2. Exercise native/scripted/static/member overrides, return/out parameters,
+   chained/reentrant callbacks and reload at safe phases; retain next and proxy
+   targets across GC/reload. Trace actual dispatch for F17/F35 before replacing
+   any engine descriptor/bytecode assumptions.
+3. For F25, capture all thread stacks during a hang; establish which engine
+   call owns the Lua lock and which worker callback it awaits. Add that exact
+   barrier regression, then defer value-only observers or constrain only the
+   identified call phase. Do not unlock Lua while sol references are live or
+   change all synchronous calls into lossy asynchronous notifications.
+4. Run D3D12 debug-layer stress: delayed GPU, repeated texture release/reload,
+   more than 199 descriptor cycles, buffer-count/format/queue changes, font
+   rebuild, resize, removal and frame generation. Check retention/recovery
+   diagnostics and the actual Windows/Proton exit path.
+5. Stress TweakDB editor/worker changes with TweakXL and other essentials,
+   flat-buffer growth, DB replacement and spawn/despawn/cancel during world
+   attach/detach. Reconcile custom registry/constructor fields against exact
+   retail call sites; add evidence before treating F35 as verified.
+
+Those tests require an explicit game/MO2 test or installation request. Native
+checks do not grant permission to alter the game and do not substitute for it.

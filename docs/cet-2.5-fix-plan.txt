@@ -1,0 +1,262 @@
+Cyber Engine Tweaks 2.5: implementation and validation plan
+Recorded: 2026-10-24
+Finding definitions/evidence: docs/cet-2.5-audit.txt (F01-F37)
+
+Implementation status: docs/cet-2.5-fix-status.txt. The text below preserves
+the original work plan and acceptance targets; those targets are not all
+completed runtime tests.
+
+Objective
+
+Make CET startup, Lua execution, reload, overlay rendering and shutdown robust
+on retail 3.0.88.46235, using the existing shared SDK/RED4ext build and patch
+flow. Preserve upstream attribution and public Lua behavior wherever it can
+be supported safely. This is a plan; no native fixes have been applied here.
+Address compatibility is promising; native behavior and game startup remain
+unvalidated. Existing tests and prior integration builds are not playtesting.
+
+Dependencies and patch boundaries
+
+Use the current official CET Gitlink and preserve 001-essentials.patch. Add
+reviewable subsequent layers rather than replacing upstream history. Suggested
+layers correspond to work packages below; names are provisional, not files
+already exported. Exporting layers/build helpers may mutate Git metadata;
+follow AGENTS.md authorization rules at implementation time. Do not commit in
+upstream submodules. Keep concurrent compat/ work outside these changes.
+
+Most changes belong in CET. A fix to TiltedCore Locked/TaskQueue requires an
+explicit reviewed dependency-patch mechanism or a CET-owned implementation;
+do not change ignored build/deps contents or repin a dependency as a shortcut.
+If any shared SDK changes are necessary, isolate them, export them separately
+and rebuild all six projects. Do not weaken ABI checks or change MS STL/CRT.
+
+W0: establish contracts and add failing native regressions
+  Covers F35/F36 and test infrastructure for all packages.
+  - Preserve the lab reproductions as baseline evidence. Convert each actual
+    fix into a regression against production code; small models establish a
+    language/library defect but cannot be the sole acceptance test of a fix.
+  - Keep retail 2.5 identity, 32 unique hash matches, custom struct sizes,
+    accessed offsets/alignments and inspected function prototypes explicit.
+    Add unconditional static_assert(offsetof(...)); disabled SDK offset macros
+    do not count. No test includes or uploads proprietary game data.
+  - Introduce test seams for hook operations, clocks, threads, filesystem and
+    GPU completion. Fault injection must verify rollback, not just happy paths.
+  - Record lock owners, allowed callback threads and lifecycle transitions in
+    code. Classify mandatory hooks versus optional features; a missing mandatory
+    hook fails initialization cleanly, an optional hook yields a disabled feature
+    with a concrete diagnostic. Never silently continue in a half-hooked state.
+  Acceptance: CPU sanitizer harnesses and Windows fake-object harnesses run
+  without a game installation; tests fail for the old behavior and pass after
+  each fix. Linux address inspection remains an optional read-only local check.
+
+W1: startup transaction, owned callbacks and deterministic shutdown [first]
+  Covers F01-F07, F20/F22 ownership infrastructure, part of F13/F33.
+  - State machine: Constructing -> Ready -> Stopping -> Stopped; Failed rolls
+    back. Public entry points check an acquired owner/generation token. Publish
+    complete state before enabling hooks or starting observable workers.
+  - Claim the process instance before changing logger/config/hooks. Detect an
+    existing CET module even when its loader route differs. Report coexistence
+    without altering another module's handles, hooks or files.
+  - Track every created hook and successful initialization step. Disable only
+    this instance's hooks; wait for its active callbacks without holding Lua,
+    ImGui, engine or queue locks. Account for shutdown called from a callback:
+    defer final reclamation rather than waiting for oneself.
+  - Own/join window and metadata workers. Window installation/removal must run
+    with valid owner-thread/WndProc semantics, checked SetWindowLongPtr results
+    and a fallback that forwards messages correctly during stopping.
+  - Add task/subscription tokens. Stop admissions and input, cancel pending
+    generation work, finish active work, remove log sinks, stop editor/metadata
+    workers before destroying their data. Use explicit Shutdown methods; member
+    destruction order is insufficient.
+  - Run onShutdown once while Lua/engine/override code are still valid. Restore
+    overrides and retire Lua references under the chosen owner protocol. Drain
+    submitted GPU work before destroying graphics state. Clear published globals
+    only once callbacks cannot use them; reset state for a supported retry.
+  - Decide process-lifetime RTTI/code ownership explicitly. Returning false from
+    Main(Unload) does not stop RED4ext unloading. If engine unregister is not
+    supported, retain registered storage/code/module for the process lifetime;
+    verify loader reference behavior. Do not pretend disabled MinHook hooks
+    alone remove engine RTTI pointers into the DLL.
+  Acceptance: controlled early/late callbacks, failure at every stage, missing
+  window, thread creation failure, init retry, active log/metadata/cache work
+  at stop, double stop and stop from callback. No dangling owner, leaked live
+  hook, deadlock or callback executed after its generation expires.
+
+W2: override continuations, errors and concurrency [first]
+  Covers F14-F17/F25 plus F04 registration restoration.
+  - First eliminate reference captures of local pointer parameters. An owned
+    invocation context retains function/chain snapshots and arguments; next is
+    valid only inside that invocation. Explicitly error on an escaped next.
+  - No chain mutex is held across arbitrary Lua/native execution. Writers build
+    replacement snapshots and publish atomically; release old Lua references on
+    their owner thread. Registration while Lua is owned stays deferred as needed;
+    preserve upstream #1063 rather than reintroducing a blocking writer lock.
+  - Clear/Refresh/descriptor restoration happen at a defined quiescent phase.
+    Remove manual lock manipulation from Lua error handlers. Keep error strings
+    as data and define before/override/after callback behavior when a mod fails.
+  - Check code allocation/exhaustion, allocation-size requests, descriptor
+    ownership and every registration rollback. Keep retired trampolines alive
+    until no invocation or registered descriptor can use them.
+  - Instrument thread IDs/engine phase/wait context to locate F25's conditional
+    Lua/job cycle. Queue value-only notifications where semantics allow; calls
+    requiring synchronous native returns need a reviewed phase restriction or
+    specific engine-aware solution. Do not release Lua while sol objects are in
+    use, and do not move all game calls to a worker as a generic workaround.
+  Acceptance: nested/multiple overrides, retained next, error with format tokens,
+  before/after error, concurrent worker Observe registration, Clear/Refresh/reload,
+  failed code allocation, arena exhaustion and callback-triggered reload. A
+  native barrier harness exercises the engine-waits-worker/Lua-lock cycle.
+
+W3: D3D12 and texture lifetime [first small ownership fix, then renderer]
+  Covers F08-F13.
+  - Land the small ComPtr ownership fix with a Windows lifetime regression;
+    remove the five raw releases. Check image/event cleanup on all exits.
+  - Give each render generation its device/queue/swapchain identity, exact buffer
+    count and owned fence timeline. Validate bounds and HRESULTs before use.
+    Pass the original game call through on unsupported/incomplete state.
+  - Record completion after each CET submission. Reuse allocators and release
+    heaps/buffers/textures only when completion permits it. Device removal,
+    signal failure and cancellation have finite exit paths and useful diagnostics.
+  - Use generation-aware descriptor allocations and deferred reclamation. Failed
+    loads return reservations; cloned draw data retains resource owners. Releasing
+    a Lua texture invalidates future Image calls while preserving prior submitted
+    draws until their fence. Define reupload or rejection across a reset.
+  - Keep ImGui context mutation on one owner thread; queue window input and
+    transfer immutable draw packets to rendering. Define font rebuild/reset
+    ownership and checked font/image size arithmetic. Contain one broken mod's
+    frame without corrupting all later frames.
+  Acceptance: fake COM/API failure matrix, 4-buffer chain, delayed GPU, >199
+  texture cycles, texture release during draw, reset/replacement/device removal,
+  WndProc versus reset, bad fonts and interrupted upload. Real D3D12 debug-layer
+  and Vulkan/Proton tests follow; fake objects cannot establish GPU correctness.
+
+W4: Lua/native values, proxies and registration lifetime
+  Covers F18-F22/F32 and F35 custom proxy dispatch.
+  - Return checked conversions; reject mismatched RTTI and failed Assign inputs.
+    Construct/destroy native values with explicit ownership and nil/out semantics.
+    Make converter type metadata local to a call, including across tostring.
+  - Use stable proxy control blocks with generation validity. Engine callback
+    lookup cannot dereference the Lua owner before acquiring a valid state token.
+    Handle expired weak state without dereferencing a null lock owner.
+  - Restrict supported proxy bases to a verified contract; validate allocation,
+    alignment, constructor/vtable and return/out dispatch. Add bytecode/RTTI
+    checks for exact 2.5 behavior. Arbitrary concrete-class inheritance needs
+    separate implementation evidence, not an optimistic larger allocation.
+  - Registration closures capture stable owned values, with an initialization
+    phase token. Saved register functions called later produce a normal Lua error.
+  Acceptance: invalid return/out/nil/variant/array values, unrelated classes,
+  reentrant bitfield tostring, engine-held proxy after GC/reload, expired state,
+  concrete large base rejection, and retained registration functions after moves.
+
+W5: TweakDB transactions, bounded metadata and editor ownership
+  Covers F05/F23/F26/F27/F35/F37.
+  - Make ID registration/traversal cycle-safe and bounded; preserve known roots
+    on identity derivation and remove stale reverse edges on replacement.
+  - Parse metadata off-lock into local owned structures using bounded readers;
+    validate magic/version/counts/varints and Oodle sizes/results, handle LF/CRLF
+    correctly, and publish one immutable snapshot. No partial cache on failure.
+  - Establish engine-lock/pool-lock order and mutation owner. Structural offset
+    changes require exclusive engine ownership; returned values are copies or
+    documented protected snapshots. Invalidate caches when the DB generation
+    changes. Include other essentials' TweakDB traffic in the design review.
+  - Editor rebuild produces an owned result, with explicit stop/join and caught
+    errors; editing uses an owned string committed through the same transaction.
+    Keep Unicode comparison defined. Never edit the underlying engine buffer.
+  - Verify remaining singleton/system offsets and spawn/callback conventions
+    against the exact executable; add null guards and unconditional assertions.
+    Fix GameCall cache identity. If a feature cannot be verified, expose a clear
+    unavailable-feature result; do not guess or silently disable core behavior.
+  Acceptance: cycle and malformed-file corpus, cancellation, allocation failures,
+  editor close mid-build, concurrent flat updates/clone/delete, DB replacement,
+  equal-length/canceled Unicode edits and verified spawn/despawn transitions.
+
+W6: input, reload, configuration and filesystem consistency
+  Covers F24/F28-F31/F33; coordinated with W1/W2/W4.
+  - Execute task batches outside container locks with defined next-tick behavior.
+    Queue binding IDs/events, not Lua objects, across threads; use immutable
+    binding snapshots, generation cancellation and an explicit held-key policy.
+  - Select bindings schema by value shape, preserving dotted names. Validate
+    config fields/ranges, preserve bad input and use atomic replace with last-good
+    recovery. Stop rewriting discarded user config as defaults on every startup.
+  - Tear down sandbox/DB state regardless of require usage. Account for active
+    statements/cursors, callbacks and close failures; close before losing handles.
+    Test SQLite busy/extension error behavior as mod compatibility, without
+    assigning an unrelated upstream report as the cause of a 2.5 game crash.
+  - Eliminate process current_path changes; sandbox I/O, scripts, images and
+    SQLite use resolved absolute paths. The other mods' I/O must be unaffected.
+  Acceptance: reentrant queue, rapid key input and reload, held-key transitions,
+  dotted/Unicode/mixed bindings, interrupted/full-disk writes, reload without
+  require, failed DB close and concurrent external relative I/O.
+
+W7: optional patches and final compatibility checks
+  Covers F34/F36 and remaining H classifications.
+  - Make optional raw patches checked, reversible and instruction-cache correct.
+    Specify options pointer lifetime and thread ownership; failure disables only
+    that optional feature with a diagnostic. Default settings stay neutral.
+  - Exercise actual Windows GC64 LuaJIT and sol2: JIT traces on/off, GC pressure,
+    recursive native callbacks, FFI, errors/unwinding, Unicode and SQLite.
+    Recheck ImGui 1.91.1/FreeType behavior with real fonts and overlays.
+  - Do not randomly upgrade dependencies or disable JIT based solely on an
+    older Special K report. Establish a symbolized failure before narrowing a
+    compatible configuration or declaring an external integration unsupported.
+  Acceptance: native smoke tests and the actual-game matrix below. Unresolved
+  hypotheses stay labeled, with test results and limits documented.
+
+Execution order
+
+W0 -> W1/W2/W3 -> W4/W5/W6 -> W7. This denotes dependencies, not authorization
+for parallel agents or unsynchronized edits. W3's small ownership fix can land
+early, but renderer testing depends on W1 shutdown contracts. W5 editor workers
+use W1 ownership; W6 input uses W4 stable callback ownership. Every F01-F37 is
+mapped above, including hypotheses whose fix is further verification/guarding.
+
+CI/build/package validation after implementation
+
+1. Portable fault-injection, sanitizer and native ownership regressions. Windows
+   harness where WRL/CRT/LuaJIT semantics matter. Keep optional Wine separate
+   from the build dependency chain and portable CI-required checks.
+2. python3 -m unittest discover -s tests -v and required native checks.
+3. Export CET's ordered patch layer(s), verify independent reconstruction, build
+   CET Release and run payload/provenance verification. These helpers require
+   Git-metadata authorization as described above. Shared SDK/dependency changes
+   require the full six-project build with the current saved patch identities.
+4. Verify both CET installation layouts, absence of the ASI/version.dll loader,
+   resource/dependency licenses and checksums, symbol matching and all release
+   archive identities. Add focused regression tests to the existing workflow;
+   keep runtime ZIPs free of harnesses/PDBs and source-specific debug artifacts.
+5. Preserve diagnostics for failing CI, including the first error and probe
+   outcomes. No publication, tagging, game install or MO2 changes are implied.
+
+Actual-game acceptance matrix (still outstanding)
+
+Obtain an explicit installation/test request before modifying game/MO2 files.
+Use disposable/copied saves and a test profile when that work is requested.
+
+- Baselines: prior working essentials without CET; rebuilt essentials without
+  CET; then identical rebuilt set plus CET and no third-party Lua mods. Confirm
+  exactly one CET module and one intended loader. Include a clean config profile
+  and migration from existing CET config; keep the original files recoverable.
+- Windows native D3D12 and the user's Proton build; record exact OS/Proton,
+  driver, GPU, game EXE hash, package/source identities and enabled Lua mods.
+- At least ten cold launch -> menu -> quit cycles per baseline, including quit
+  before loading a save and exit during metadata work. Record phase timings.
+- Overlay first-run binding, key capture, text/Unicode, alt-tab, minimize/restore,
+  window/borderless/fullscreen changes, resizing and font reload. Test FSR/DLSS
+  and available frame-generation modes on applicable hardware; mark unavailable
+  vendor/hardware combinations untested rather than inferring a pass.
+- Load/new game, save/reload, return to menu, repeated session transitions,
+  spawn/despawn callbacks and quit. Save compatibility is a separate result.
+- Fixture mods: override/observe registration from callbacks, nested errors,
+  TweakDB edits/cloning, proxy callbacks, images, SQLite and reload with/without
+  require. Run repeated reload/GC/input/resize cycles and inspect memory growth.
+- Add representative real Lua mods gradually. Test extra overlays/Special K
+  separately and record JIT on/off only as a diagnostic comparison.
+- For any hang, capture all thread stacks/wait owners before terminating. For
+  crashes, match the DLL/PDB and capture faulting thread plus relevant workers,
+  D3D12 device-removal data and last completed lifecycle phase. Compare symbols
+  and control flow, not offsets from an older upstream ASI.
+
+Completion requires the corresponding production regressions/build checks and
+actual runtime evidence for each claimed feature. Record which H findings were
+confirmed, mitigated or disproved. A finite audit and clean test matrix reduce
+known risks; they do not prove that no further game/mod interactions exist.

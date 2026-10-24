@@ -1,0 +1,285 @@
+{
+  "recorded": "2026-10-24",
+  "scope": "Source changes, isolated native regressions, Release builds/packages and read-only address inspection; no game startup or playtesting",
+  "cet_source": {
+    "upstream_commit": "ed706fb8518712ffedf6b566e52873b257bc49fb",
+    "patches": [
+      {
+        "path": "patches/cyber-engine-tweaks/001-essentials.patch",
+        "sha256": "6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4"
+      },
+      {
+        "path": "patches/cyber-engine-tweaks/002-runtime-stability.patch",
+        "sha256": "b64c62e4b3bc874de35a0256d2e050602290c8de26fe4f010086d435d2107931"
+      }
+    ],
+    "tree": "b1e4d3f5db6d21f35adf9000d7029bb0724dd516",
+    "fingerprint": "acb160c26c7a5f16fcf00f2d9543eb23023b7292a0e001c66ddc0a11ef276e35"
+  },
+  "sdk": {
+    "upstream_commit": "0f5eba42a4cf3a1161ad3de0b4ed6f1901ec169e",
+    "patches": [
+      {
+        "path": "patches/red4ext-sdk/001-essentials.patch",
+        "sha256": "ce529c091f79e4fd563aee4960758786a9d8f44f9fecbaa44aebeba11e844808"
+      },
+      {
+        "path": "patches/red4ext-sdk/002-dynarray-lifetime.patch",
+        "sha256": "bf7fbe6fe9817d71653ba99d9aaf4e34932b8ed966a2e0b8eb5ec78415a39685"
+      },
+      {
+        "path": "patches/red4ext-sdk/003-transaction-system-abi.patch",
+        "sha256": "2cc62d2c46f7c783cb86b800e799462bf1d2111a11465e6acfd6d21952f0c3bb"
+      }
+    ],
+    "tree": "5c3ad731260e8f0b651488da1e2eb51cc9175ab2",
+    "fingerprint": "8a79aa9e92a6801d6e1f9c5ee2dcd420862f788000e93ccd63e48da7235bc023"
+  },
+  "other_project_sources": {
+    "red4ext": {
+      "upstream_commit": "9f135ac339b00c55a68d06ce7106e960dd82962a",
+      "patches": [
+        {
+          "path": "patches/red4ext/001-essentials.patch",
+          "sha256": "e45bd42d06398c670dbc5b07113d02b265022d49ce3c21388e110fb72ef0236e"
+        }
+      ],
+      "tree": "69b0e44133b90baf5bb9309ecc14b9880ddd0ecd",
+      "fingerprint": "e74ff49e0ea7112b33127a1fc39ae5e8d51741de47e642610f8046e12282a696"
+    },
+    "archive-xl": {
+      "upstream_commit": "d56db6e0e63e9562be92a17e58ecbbf3d824cd56",
+      "patches": [
+        {
+          "path": "patches/archive-xl/001-essentials.patch",
+          "sha256": "d65744074adf66b671ddfc86e2615a11308d5e809a9606ff2952cefd613c82ab"
+        },
+        {
+          "path": "patches/archive-xl/002-sdk-api-cleanup.patch",
+          "sha256": "8aa219e84d51537fc3c5d2c1a64fba11b5ea76c207331ca2d6a7140e812e00de"
+        },
+        {
+          "path": "patches/archive-xl/003-attachment-lock-reentrancy.patch",
+          "sha256": "717218d3b33155ddf87357e9fa8a4c8d1d7c1491e9c2eddc2f82856539b41be1"
+        }
+      ],
+      "tree": "1d4e49067a2bb07cf029db1c587a35d20f7c4629",
+      "fingerprint": "79f11fc153516c152c532c83e474babc22d89169f6242a351517bbbad1dd20cf"
+    },
+    "codeware": {
+      "upstream_commit": "a652bbbcf6feb65988c67f15f428e9398a3d827c",
+      "patches": [
+        {
+          "path": "patches/codeware/001-essentials.patch",
+          "sha256": "cddac229d9d33b5c00338e6d860a31798aaf9eff7aabbcb41ceb5380c9409209"
+        },
+        {
+          "path": "patches/codeware/002-sdk-api-cleanup.patch",
+          "sha256": "f57655bc41d75a9e14475399af6779e9664319e12651685914379fde03e8df45"
+        }
+      ],
+      "tree": "e6ac77274afc33bf736ab1abf16849957ee5c5c1",
+      "fingerprint": "4a719bb466105d5c52d05fcf8a7b536ea5d8829819a3294aef490860d5c901a7"
+    },
+    "tweak-xl": {
+      "upstream_commit": "b527894603fccdac3da6a19ea4e2a5f536b3724c",
+      "patches": [
+        {
+          "path": "patches/tweak-xl/001-essentials.patch",
+          "sha256": "0a9547aeedebc1db1ab59f25b8c4f2a60f90a82bdc6d0031970e7287e01da6c1"
+        },
+        {
+          "path": "patches/tweak-xl/002-sdk-api-cleanup.patch",
+          "sha256": "4944b728e702204e0bbe1088c1ff819b306f8c386d7789bca0ec726baba68d8a"
+        }
+      ],
+      "tree": "e35a93b5f6d757e2cdfe64b45576c61b32879697",
+      "fingerprint": "0b0a58010db360d7f3652e80c6ea87b0e02334f89469955ee253143f76b820bf"
+    },
+    "input-loader": {
+      "upstream_commit": "f92f7dc97026eaa4208f530fa91c2c715ace7aff",
+      "patches": [
+        {
+          "path": "patches/input-loader/001-essentials.patch",
+          "sha256": "18be2e9926075cfd6d22b6fdcef04aad8aeaa10542b038779d234e5a11f40318"
+        },
+        {
+          "path": "patches/input-loader/002-re-input-hardening.patch",
+          "sha256": "0ff3033bb3c2944d87ee9835b1e28490e2f70b097f56a949c439d2f660621571"
+        },
+        {
+          "path": "patches/input-loader/003-durable-input-pipeline.patch",
+          "sha256": "9509371a97ed9487c97869412fd74875bd32e731008a8fe18c5b91ddfb3a91ca"
+        }
+      ],
+      "tree": "ad907e71b7f57a4702c009000ae66c16b602b8b1",
+      "fingerprint": "410195ed636d83341749d32b5a08c8146dad3deb5500546bf04d9a97eeaefbea"
+    }
+  },
+  "cet_archives": {
+    "runtime": {
+      "file": "CyberEngineTweaks-1.38.0-game2.5-mo2-rootbuilder.zip",
+      "sha256": "24de308dadf2aad8ef1e9a67fe556744c0e6c0640bb8e68e3c0da42ca201db21"
+    },
+    "symbols": {
+      "file": "symbols/CyberEngineTweaks-1.38.0-game2.5-symbols.zip",
+      "sha256": "11c89e0718c9cc8e69bb9935ac3893fbf6abe623032af8d2f71ede4269d6c5e3"
+    },
+    "standard": {
+      "file": "standard/CyberEngineTweaks-1.38.0-game2.5-game-root.zip",
+      "sha256": "3c885e01da4baf464f787563c94025baf571bf96959b7445f180334f78f2ea38"
+    }
+  },
+  "cet_dll_sha256": "49c1541521ee48cb988092b01a6eba13689d499b3b62ed6c907a78c72cfc5530",
+  "checks": {
+    "patch_reconstruction": {
+      "projects": [
+        "red4ext",
+        "archive-xl",
+        "codeware",
+        "tweak-xl",
+        "red4ext-sdk",
+        "input-loader",
+        "cyber-engine-tweaks"
+      ],
+      "log": {
+        "path": "build/cet-fixes/validation/patch-check-final.log",
+        "sha256": "f26708333627919170502497c531d2eb459af30305345fa49bf8f66582a3acca"
+      }
+    },
+    "tooling_suite": {
+      "run": 76,
+      "passed": 61,
+      "skipped": 15,
+      "skip_scope": "10 optional Windows Input Loader checks and 5 optional load-freeze native fixture checks",
+      "log": {
+        "path": "build/cet-fixes/validation/tooling-tests.log",
+        "sha256": "2e84a27510b850a80d2b77b1bbc5bd79824e3353402395d4fcbf88b1f47dd395"
+      },
+      "note": "Full suite preceded the final raw-metadata size limit; all three affected CET portable regressions and the CET build were rerun afterward."
+    },
+    "final_portable_cet": {
+      "run": 3,
+      "passed": 3,
+      "sanitizers": [
+        "ASan",
+        "UBSan"
+      ],
+      "leak_sanitizer": false,
+      "log": {
+        "path": "build/cet-fixes/validation/cet-portable-final.log",
+        "sha256": "fb856c2cbfa8fa0395c8b730397508e8643e3d78f44fb11ae5b44d07780625dd"
+      }
+    },
+    "windows_cet": {
+      "runner": "Wine, disposable prefix; no game",
+      "passed": 4,
+      "logs": {
+        "lua": {
+          "path": "build/cet-fixes/validation/workspace/build/cet-runtime/cet-lua-run.log",
+          "sha256": "8ca9fd7f69438853a6cfcad8d41aa41f7bb1896120c61a7b35a2bdbfeb0055ee"
+        },
+        "lifecycle": {
+          "path": "build/cet-fixes/validation/workspace/build/cet-runtime/cet-lifecycle-run.log",
+          "sha256": "ac49e4bece9e22ebbc04dff182042505848baa4f00238533c20825d5fec07860"
+        },
+        "graphics": {
+          "path": "build/cet-fixes/validation/workspace/build/cet-runtime/cet-graphics-run.log",
+          "sha256": "ead6e13a86cd094d0c19b26c820b091027a26bfe60231364d51651bef2a84c52"
+        },
+        "config": {
+          "path": "build/cet-fixes/validation/workspace/build/cet-runtime/cet-config-run.log",
+          "sha256": "30273d65e61e06163655b6adea9b6b1c66292dc73c4c40ebf76038082fdd3ef0"
+        }
+      },
+      "driver": {
+        "path": "build/cet-fixes/validation/windows-runtime.log",
+        "sha256": "28089ff401d065af2288691e5195cfd82448e4d9fc331197a9dd2042a9c25b29"
+      },
+      "scope": "Actual production helpers and extracted continuation, real sol2/LuaJIT/SQLite, fake engine/MinHook/fence; see tests/native/cet/README.txt"
+    },
+    "build": {
+      "configuration": "Release",
+      "projects": [
+        "cyber-engine-tweaks",
+        "red4ext",
+        "archive-xl",
+        "codeware",
+        "tweak-xl",
+        "input-loader"
+      ],
+      "initial_log": {
+        "path": "build/cet-fixes/validation/full-release.log",
+        "sha256": "bd135b74371078e0e4cac6891aa3291c9d6c38bd897ee01ccac4cf106e26a4ab"
+      },
+      "cet_resume_log": {
+        "path": "build/cet-fixes/validation/cet-release-resume.log",
+        "sha256": "f6b0050dcad6d58c2e0c154f778bbf94d43b565203d023d176ec237124b17c5a"
+      },
+      "cet_final_log": {
+        "path": "build/cet-fixes/validation/cet-release-final.log",
+        "sha256": "55e3fc82d60bfa00b0e77848e9dd7be821014c95e24d75a485870599f36c08e1"
+      }
+    },
+    "distribution": {
+      "archives": 14,
+      "directory": "build/cet-fixes/validation/workspace/dist/release",
+      "manifest_sha256": "61e1f5d7eff3b1859c2e29beeebb7baf3d998ef1b41ec9d7da320f72da4819f4",
+      "verification": {
+        "path": "build/cet-fixes/validation/verification.log",
+        "sha256": "49d4561f587d09de8388c3a56050b2271b6a055079f9ac35628ec25a9e847244"
+      },
+      "checksums": {
+        "path": "build/cet-fixes/validation/runtime-checksums.log",
+        "sha256": "7f7b04dfaac718dd31aabae46b1b5019dcca835c9cfbb24e2e8677c8044b3aae"
+      }
+    },
+    "release_preparation": {
+      "validation_tag_string": "v0.0.0-rc.1",
+      "tag_created": false,
+      "published": false,
+      "archives": 14,
+      "directory": "build/cet-fixes/validation/workspace/build/github-release",
+      "log": {
+        "path": "build/cet-fixes/validation/release-preparation.log",
+        "sha256": "58fc73846a61c184388b8a09df55587e71cf14ea14a9682f77eaa73d47cfb16a"
+      },
+      "checksums": {
+        "path": "build/cet-fixes/validation/release-checksums.log",
+        "sha256": "bb91ada5208de5598d45be4ee1f05e23a7ca531f95c5eaae8ab881d5bce9a431"
+      }
+    },
+    "historical_cpu_probes": {
+      "source": "001-only baseline, fingerprint-checked",
+      "count": 6,
+      "log": {
+        "path": "build/cet-fixes/baseline-probes.log",
+        "sha256": "d738761f6ebf52b2304e1c87049660375f0c8a9f0ea3748440bd1d7cfe464376"
+      },
+      "note": "Reproducing old defects is separate from validating their fixes."
+    }
+  },
+  "retail": {
+    "file_version": "3.0.88.46235",
+    "exe_sha256": "d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4",
+    "address_sha256": "eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4",
+    "cet_hashes_unique": 32,
+    "sdk_closure_hashes_unique": 97,
+    "sdk_scan_sha256": "55c0fc569f245509d347cb91793cc81c4b7d3c85ef1519efa4f0c47e18d64c8f",
+    "sdk_scan_scope": "SDK hash references in the CET included-header closure; includes unused inline methods, not a complete call graph",
+    "codeware": "107/107",
+    "tweakxl": "11/11",
+    "archivexl": "132/134; JournalTree_ProcessJournalIndex and ResourceLoader_OnUpdate remain disabled"
+  },
+  "game_started": false,
+  "game_or_mo2_modified": false,
+  "main_distribution_replaced": false,
+  "committed": false,
+  "remaining": [
+    "F17 raw engine descriptor transfer and stack-layout interop assumptions need retail dispatch validation",
+    "F25 conditional Lua/engine-worker wait cycle has no confirmed 2.5 repro; no universal scheduling workaround claimed",
+    "F35 custom system registries, constructors and proxy bytecode need further retail/game evidence",
+    "Actual startup, save/load, GPU/frame generation, Proton/Windows shutdown and whole-game mod compatibility remain untested"
+  ],
+  "details": "docs/cet-2.5-fix-status.txt"
+}

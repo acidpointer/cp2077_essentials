@@ -1,0 +1,727 @@
+{
+  "recorded": "2026-10-24",
+  "scope": "source review, read-only retail inspection, isolated native probes; no game startup or playtesting",
+  "cet_gitlink": "ed706fb8518712ffedf6b566e52873b257bc49fb",
+  "cet_patches": [
+    {
+      "path": "patches/cyber-engine-tweaks/001-essentials.patch",
+      "sha256": "6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4"
+    }
+  ],
+  "shared_sdk_patches": [
+    {
+      "path": "patches/red4ext-sdk/001-essentials.patch",
+      "sha256": "ce529c091f79e4fd563aee4960758786a9d8f44f9fecbaa44aebeba11e844808"
+    },
+    {
+      "path": "patches/red4ext-sdk/002-dynarray-lifetime.patch",
+      "sha256": "bf7fbe6fe9817d71653ba99d9aaf4e34932b8ed966a2e0b8eb5ec78415a39685"
+    },
+    {
+      "path": "patches/red4ext-sdk/003-transaction-system-abi.patch",
+      "sha256": "2cc62d2c46f7c783cb86b800e799462bf1d2111a11465e6acfd6d21952f0c3bb"
+    }
+  ],
+  "reference_sdk": {
+    "repository": "https://github.com/maximegmd/RED4ext.SDK",
+    "commit": "fd1867297719e26c6fbd54734c7ce82448d32c6f",
+    "archive_sha256": "4c2dcb08a545373c19c5f7ae792842e12d60ca7236843eac7e556fe09b40ebd8"
+  },
+  "retail": {
+    "exe_sha256": "d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4",
+    "file_version": "3.0.88.46235",
+    "address_sha256": "eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4",
+    "hashes": {
+      "CBaseInitializationState_OnTick": {
+        "hash": 4233370276,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "4233370276",
+            "secondary hash": "57064a183fbdd35bb28675e64afce6eb70648cbceccf40021ab69f1228951c5f",
+            "symbol": "red::GameAppBaseInitializationState::OnTick",
+            "offset": "0001:007b2180",
+            "rva": 8073600
+          }
+        ]
+      },
+      "CGame_Main": {
+        "hash": 1852772247,
+        "used_in_source": false,
+        "matches": [
+          {
+            "hash": "1852772247",
+            "secondary hash": "19064785e183be40b5da84fe53e3e6c9d39be2c4b8342bf419734479a90ae802",
+            "symbol": "CBaseEngine::ProcessBaseLoopFrame",
+            "offset": "0001:003d4d84",
+            "rva": 4021636
+          }
+        ]
+      },
+      "CInitializationState_OnTick": {
+        "hash": 2447710505,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2447710505",
+            "secondary hash": "fd8a964e98d4e83f5f6068348d81b2fb62706f515be3339f6e839533f48c2b60",
+            "symbol": "red::GameAppInitializationState::OnTick",
+            "offset": "0001:007b2278",
+            "rva": 8073848
+          }
+        ]
+      },
+      "CPatches_BoundaryTeleport": {
+        "hash": 887623293,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "887623293",
+            "secondary hash": "8b1613a6e1e8bb0399b55ad666b85317b646824c4dffc5030d8b2e59d775d315",
+            "symbol": "game::WorldBoundarySystem::Tick",
+            "offset": "0001:00d2f6b4",
+            "rva": 13829812
+          }
+        ]
+      },
+      "CPatches_IntroMovie": {
+        "hash": 4056423627,
+        "used_in_source": false,
+        "matches": [
+          {
+            "hash": "4056423627",
+            "secondary hash": "30e645fe69fa1a93d1af52c3414f90ff72a32bfa1aaee5d0814c26b634a2615c",
+            "offset": "0001:003c95bc",
+            "rva": 3974588
+          }
+        ]
+      },
+      "CPatches_OptionsInit": {
+        "hash": 4089777341,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "4089777341",
+            "secondary hash": "570ba6315475bb11a4ce72c3a762c22c1c574abc0d7fdf8a4cc84988cd597e33",
+            "symbol": "Config::IConfigVar::Register",
+            "offset": "0001:00756544",
+            "rva": 7697732
+          }
+        ]
+      },
+      "CPatches_Vignette": {
+        "hash": 1592528795,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "1592528795",
+            "secondary hash": "a9606c4c549bd8dce84563e8b907e1f0d8500e217d3e9468ee68d23047481c87",
+            "symbol": "effect::TrackItemVignette::IsValid",
+            "offset": "0001:02976398",
+            "rva": 43479960
+          }
+        ]
+      },
+      "CPhotoMode_SetRecordID": {
+        "hash": 4052428712,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "4052428712",
+            "secondary hash": "8fc8de67aa57f99fe630595c4a0143d7329011547a8aac2e32ec9c5d95e96b3a",
+            "offset": "0001:007e0434",
+            "rva": 8262708
+          }
+        ]
+      },
+      "CRenderGlobal_InstanceOffset": {
+        "hash": 1239944840,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "1239944840",
+            "secondary hash": "75c574d27c92c02ffda564753f064e7495157bc38e7298d31344d1c71a33cc3a",
+            "offset": "0003:002caca8",
+            "rva": 62708904
+          }
+        ]
+      },
+      "CRenderGlobal_Resize": {
+        "hash": 239671909,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "239671909",
+            "secondary hash": "6ef27771b06e07c9e5671b1af99596db38cad9c1dd4c05a1ee87ea27b46c6367",
+            "symbol": "GpuApi::ResizeBackbuffer",
+            "offset": "0001:0068713c",
+            "rva": 6848828
+          }
+        ]
+      },
+      "CRenderGlobal_Shutdown": {
+        "hash": 3192982283,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3192982283",
+            "secondary hash": "de1899713223a5c968ffcf406ac7aed2f03ebc145d6a151d847376ad4441a3ac",
+            "offset": "0001:0115be4c",
+            "rva": 18206284
+          }
+        ]
+      },
+      "CRenderNode_Present_DoInternal": {
+        "hash": 2468877568,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2468877568",
+            "secondary hash": "39fda6a78f3fa0f87b31656b9f6549f205be837722fec4e4e181ba944e437af1",
+            "symbol": "GpuApi::Present",
+            "offset": "0001:005d85b8",
+            "rva": 6133176
+          }
+        ]
+      },
+      "CRunningState_OnTick": {
+        "hash": 3592689218,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3592689218",
+            "secondary hash": "79b759cfaaaa398d1fe4cf5fb9a628f9798df94b336477958cb5094602e5f9ad",
+            "symbol": "red::GameAppRunningState::OnTick",
+            "offset": "0001:007b2214",
+            "rva": 8073748
+          }
+        ]
+      },
+      "CScript_AllocateFunction": {
+        "hash": 160045886,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "160045886",
+            "secondary hash": "41d27ec9cb399af7652e84c10f980c9a62ad57599ba8dfd826d6b6de09509fc9",
+            "offset": "0001:02607d38",
+            "rva": 39882040
+          }
+        ]
+      },
+      "CScript_Log": {
+        "hash": 3455393801,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3455393801",
+            "secondary hash": "0ab8edcea796be3ed8dad6996168f587014674afc9c47d9c8824d08b0bdda329",
+            "offset": "0001:00fa3f08",
+            "rva": 16404232
+          }
+        ]
+      },
+      "CScript_LogChannel": {
+        "hash": 1663049434,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "1663049434",
+            "secondary hash": "97cb006785bf49057103225befb778226810398d1ff0512dded5616236643475",
+            "offset": "0001:00dce85c",
+            "rva": 14481500
+          }
+        ]
+      },
+      "CScript_LogChannelWarning": {
+        "hash": 2841780134,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2841780134",
+            "secondary hash": "a8ef65ba608cb9f90a3362eb00488b3115482811a7c9bdcd137fd44706269c1c",
+            "offset": "0001:026149f8",
+            "rva": 39934456
+          }
+        ]
+      },
+      "CScript_LogError": {
+        "hash": 2135235617,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2135235617",
+            "secondary hash": "f66a10ce826292d075c23caa07b0a992df7d4d1eb0176003df2c30ea30cf4a93",
+            "offset": "0001:011a1790",
+            "rva": 18491280
+          }
+        ]
+      },
+      "CScript_LogWarning": {
+        "hash": 3222609133,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3222609133",
+            "secondary hash": "5477b203cc471057192961ec60b0cda322847a51f93bf5980bdb11ce65950820",
+            "offset": "0001:01250d08",
+            "rva": 19209480
+          }
+        ]
+      },
+      "CScript_RunPureScript": {
+        "hash": 3791200470,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3791200470",
+            "secondary hash": "57fb04a7885f92e3afd7954d8c63c226c4cb5fb01f07f99553bc16ecd48d224a",
+            "symbol": "rtti::Function::InternalCall",
+            "offset": "0001:00275e24",
+            "rva": 2584100
+          }
+        ]
+      },
+      "CScript_TDBIDConstructorDerive": {
+        "hash": 326438016,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "326438016",
+            "secondary hash": "793b6a08616eab8667730650223a38afff06d22c3b8f922e11732ea54f43caa9",
+            "offset": "0001:003eee08",
+            "rva": 4128264
+          }
+        ]
+      },
+      "CScript_ToStringDEBUG": {
+        "hash": 3515162577,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3515162577",
+            "secondary hash": "f5a35c82aa9926d9476618afd5aa1abe9d03863204c6e4db7d280c25dd4ec358",
+            "offset": "0001:00ed9634",
+            "rva": 15574580
+          }
+        ]
+      },
+      "CScript_TranslateBytecode": {
+        "hash": 3442875632,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3442875632",
+            "secondary hash": "573438685024e43047a8c6daf54627d5788548416efdd6b6b9d98b43dd663a7b",
+            "symbol": "CScriptDataBinder::LoadOpcodes",
+            "offset": "0001:006b8e48",
+            "rva": 7052872
+          }
+        ]
+      },
+      "CScript_TweakDBLoad": {
+        "hash": 63182599,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "63182599",
+            "secondary hash": "4b4450093f0e2c087abf2215eab0564c98ba48afa2479e7013d1e7dc195b202a",
+            "symbol": "game::data::TweakDB::LoadOptimized",
+            "offset": "0001:020f33d0",
+            "rva": 34554832
+          }
+        ]
+      },
+      "CShutdownState_OnTick": {
+        "hash": 4069332669,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "4069332669",
+            "secondary hash": "90ccbf0f690cad932aa6cc8c6dc926eea8aaedcb0e11ee3cd3d738e7ea40ca48",
+            "symbol": "red::GameAppShutdownState::OnTick",
+            "offset": "0001:007b1a7c",
+            "rva": 8071804
+          }
+        ]
+      },
+      "InputSystemWin32Base_ForceCursor": {
+        "hash": 2130646213,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2130646213",
+            "secondary hash": "490e3d0af5e7bc78a160a07794fdf769600a133e7805944a486c60b80a31f186",
+            "offset": "0001:02763514",
+            "rva": 41305364
+          }
+        ]
+      },
+      "PlayerSystem_OnPlayerSpawned": {
+        "hash": 2050111212,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2050111212",
+            "secondary hash": "98dac7c90b04329a564b0d828419c7f30d4b65f65173691fafcbe1eae5e4863f",
+            "symbol": "cp::PlayerSystem::OnPlayerMainObjectSpawned",
+            "offset": "0001:00af707c",
+            "rva": 11501692
+          }
+        ]
+      },
+      "gameIGameSystem_Despawn": {
+        "hash": 3168866665,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3168866665",
+            "secondary hash": "971436b05951facfe0494158b228f93ff485fba4e09855d48b23ddfd4164cd72",
+            "symbol": "spawn::Set::DespawnObject",
+            "offset": "0001:003875b4",
+            "rva": 3704244
+          }
+        ]
+      },
+      "gameIGameSystem_Initialize": {
+        "hash": 385618721,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "385618721",
+            "secondary hash": "7b40c8c87f24f67ca4065d44b4e231da7b439920982215d7057a4e8714bd9950",
+            "offset": "0001:0095ce28",
+            "rva": 9821736
+          }
+        ]
+      },
+      "gameIGameSystem_Spawn": {
+        "hash": 2509382878,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2509382878",
+            "secondary hash": "84923ff593f8c8a08289f52897bdc26ed66873a1bf287f397b53f650e9d73dbc",
+            "offset": "0001:007e0094",
+            "rva": 8261780
+          }
+        ]
+      },
+      "gameIGameSystem_SpawnCallback": {
+        "hash": 2840271332,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "2840271332",
+            "secondary hash": "9bcdf3c4a88f936bf39802d6ded480736366a9795008fb1e9ee312ef30e9b7b6",
+            "symbol": "world::RuntimeEntityRegistry::RegisterEntity",
+            "offset": "0001:00749d78",
+            "rva": 7646584
+          }
+        ]
+      },
+      "gameIGameSystem_UnInitialize": {
+        "hash": 3313306514,
+        "used_in_source": true,
+        "matches": [
+          {
+            "hash": "3313306514",
+            "secondary hash": "0ab81c50f440534356b2d338fcd749db19d5ee0c977d1a4a204cb1bb0d022638",
+            "symbol": "spawn::Set::Deinitialize",
+            "offset": "0001:0260c5fc",
+            "rva": 39900668
+          }
+        ]
+      }
+    }
+  },
+  "sdk_comparison": {
+    "closure_count": 162,
+    "missing_shared": [],
+    "missing_reference": []
+  },
+  "differing_sdk_headers": [
+    "Containers/DynArray.hpp",
+    "RTTI/IType-inl.hpp",
+    "RTTI/IType.hpp",
+    "RTTITypes.hpp",
+    "ResourceDepot.hpp",
+    "Scripting/Natives/Generated/services/GameServices.hpp",
+    "Scripting/Natives/Generated/services/GameServicesGalaxy.hpp"
+  ],
+  "instruction_observations": [
+    {
+      "rva": "0x20F43D0",
+      "observation": "TweakDB load uses this RCX, bool DL, path R8"
+    },
+    {
+      "rva": "0x68816D",
+      "observation": "Resize loads context and selects devices at +0xCEBF48 with (index-1)*0xB0"
+    },
+    {
+      "rva": "0x5D96FF",
+      "observation": "Present accesses direct queue at context+0x14104D0"
+    },
+    {
+      "rva": "0x4FA26C",
+      "observation": "Spawn settings move reads fields through +0xEE and callback at +0x30; its handler is +0x38 relative to callback"
+    },
+    {
+      "rva": "0x7E11E0",
+      "observation": "Pending entity constructor agrees with settings at +0x10 and entity ID/pointer at +0x110/+0x118"
+    }
+  ],
+  "probes": {
+    "override_capture": {
+      "scope": "capture-semantics model of WrapNextOverride pointer parameters",
+      "source_sha256": "16cd33c18929b0d0fca8e9b68326b36e9ca9a2f401ec1d3b1f9b9bbe0fed1e45",
+      "returncode": 1,
+      "reproduced": true,
+      "marker": "stack-use-after-return"
+    },
+    "queue_reentrant": {
+      "scope": "extracted RepeatedTaskQueue AddTask/Drain; std::vector storage matches TiltedCore",
+      "source_sha256": "b43640e61e80c172e9d76a1eb50ed8148b44de67b4df89bb8d16592aed4a9233",
+      "returncode": -6,
+      "reproduced": true,
+      "marker": "singular"
+    },
+    "short_kark": {
+      "scope": "metadata header read expression from InitializeTweakDBMetadata, before Oodle",
+      "source_sha256": "fe8062bdedb25b032c771b05d656ac0cdf877441a6ed8995e00c16d285b88471",
+      "returncode": 1,
+      "reproduced": true,
+      "marker": "heap-buffer-overflow"
+    },
+    "tdbid_cycle": {
+      "scope": "extracted lookup/registration methods; self-parent from empty derived suffix",
+      "source_sha256": "328b8aa83b2e70bdeef8bed86bf402c335a54793f28ce17cb0c2a4e752b035db",
+      "returncode": null,
+      "reproduced": true,
+      "marker": "TIMEOUT"
+    },
+    "binding_dot": {
+      "scope": "VKBindings Load schema-dispatch branch with actual pinned nlohmann/json",
+      "source_sha256": "2b37cc36cc4c15ce73e1c5bc8ae0d92db06bb52b5bbef8edaac0e8784ead94f7",
+      "returncode": 0,
+      "reproduced": true,
+      "marker": "type must be number"
+    },
+    "sandbox_reset": {
+      "scope": "extracted ResetState with fake storage, no Lua engine",
+      "source_sha256": "430bb7d655db2140f73812af66a40b07f47b8b1f82ca91665a95a3871c38f944",
+      "returncode": 0,
+      "reproduced": true,
+      "marker": "three sandboxes retained"
+    },
+    "comptr_release": {
+      "scope": "actual Microsoft WRL ComPtr with a fake COM object; no game/GPU",
+      "returncode": 0,
+      "stdout": "refs=-1 releases=2\n",
+      "reproduced": true
+    }
+  },
+  "official_issue_snapshots": {
+    "1061": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1061",
+      "sha256": "921d552da16dedbe48903a736d899ce71f2c9df637f75e75024cf6dc514c0f8d",
+      "title": "Crash in cyber_engine_tweaks.asi on session teardown (OnGameEnd) \u2014 reproducible, FFBWM1A6",
+      "state": "open",
+      "updated_at": "2026-09-18T14:18:14Z"
+    },
+    "1054": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1054",
+      "sha256": "d81dae94f58f20056da34dbeb2550b59f1e14bf3ab4f3897c6f23f92ca9141bf",
+      "title": "CET 1.37.1 EXCEPTION_ACCESS_VIOLATION (c0000005) on Linux - Zorin   18 / GE-Proton10-34",
+      "state": "open",
+      "updated_at": "2026-06-25T14:48:57Z"
+    },
+    "1069": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1069",
+      "sha256": "e6c139c78e558ea578eb81c4e92095924e901861c7fe25c9af455488cf58d565",
+      "title": "Lua sandbox: SQLite load_extension and ATTACH reach outside the mod folder",
+      "state": "open",
+      "updated_at": "2026-10-19T09:13:02Z"
+    },
+    "1047": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1047",
+      "sha256": "c272d06a9208e27d1a31c2c5e0690052f4785e345e8b84d4292897f95ae75c26",
+      "title": "[Compatibility Issue] Unhandled Exception (0xC0000005) on Game Exit When FSR 3.1 Frame Generation + CET 1.37.1 Are Enabled",
+      "state": "open",
+      "updated_at": "2026-09-08T18:05:06Z"
+    },
+    "1062": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1062",
+      "sha256": "4fbd2bcf226e3741233a7004f6999607a2aad0c455a3112ed18c78a06fd07bd8",
+      "title": "CET Crash Proton-CachyOS",
+      "state": "open",
+      "updated_at": "2026-09-28T01:06:43Z"
+    },
+    "1060": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1060",
+      "sha256": "74caf4c88595d673c2920e5fe242056a463df736067af2fdda5e42e1d8f31d89",
+      "title": "CET won't let me start the game",
+      "state": "open",
+      "updated_at": "2026-09-25T14:32:06Z"
+    },
+    "1010": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1010",
+      "sha256": "1471ea958f385914642269654a38cbf9d92dfe73fb441674b06ebe178eaec667",
+      "title": "Game crashes with CET with JIT enabled when using special k (mod).",
+      "state": "open",
+      "updated_at": "2026-09-26T02:22:29Z"
+    },
+    "975": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/975",
+      "sha256": "2984f2ed699d1e828501c8eb47bbe99729b4d9a5d57a4855c1ae8c11094ada7a",
+      "title": "CET with AMD and my camera tools doing viewport resizing causes crashes",
+      "state": "open",
+      "updated_at": "2026-04-01T20:37:13Z"
+    },
+    "946": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/946",
+      "sha256": "f60a91736f7b4a8ddefe03f278f7240c3c02fe22ddea9d34df489016693972a6",
+      "title": "CET crashes when a mod with a number/period in the name and uses the `registerHotkey` or `registerInput` is reloaded",
+      "state": "open",
+      "updated_at": "2024-07-31T16:21:11Z"
+    },
+    "1063": {
+      "source": "https://api.github.com/repos/maximegmd/CyberEngineTweaks/issues/1063",
+      "sha256": "4a7d26a89e5e8ba4a9413ef91415e150eb0721998172e5408c86e4515d6e7e92",
+      "title": "Fix deadlock when a hook is registered at runtime",
+      "state": "closed",
+      "updated_at": "2026-10-01T23:23:56Z"
+    },
+    "sdk": {
+      "source": "https://api.github.com/repos/maximegmd/RED4ext.SDK/tarball/fd1867297719e26c6fbd54734c7ce82448d32c6f",
+      "sha256": "4c2dcb08a545373c19c5f7ae792842e12d60ca7236843eac7e556fe09b40ebd8"
+    }
+  },
+  "cet_source_sha256": {
+    "sources/cyber-engine-tweaks/src/CET.cpp": "4137021ac5a81b3ebe151a1cd9408f2ab924e3e0ab3457bd946ec4b37a35b9a0",
+    "sources/cyber-engine-tweaks/src/CET.h": "6d2975176a677a7a051b397eb668492edf844c41b9c556197ffd06740b51b244",
+    "sources/cyber-engine-tweaks/src/Image.cpp": "c1e66dba4507ea945c8ca391551ae5a8e8e20f16999719cd2e9353151d51683b",
+    "sources/cyber-engine-tweaks/src/Image.h": "67bbc5b3860aabfbc4a0800da4c62c02be9a9f54c3071f1afc2d0a22b145e093",
+    "sources/cyber-engine-tweaks/src/Options.cpp": "873cdd14b760d608e3b047c8e3afac554329f402f2795aca9c42a17825cba1de",
+    "sources/cyber-engine-tweaks/src/Options.h": "192497235931cccc8e53f39abb6be2a817a3cd6117e449e64155f5deda264074",
+    "sources/cyber-engine-tweaks/src/Paths.cpp": "34f5c39a56942bc8d375ffdf78457d4cfc38a2c71788ac5dc8ca72ec78757eae",
+    "sources/cyber-engine-tweaks/src/Paths.h": "5fbb8322460567eabd5130ed20b4ea9a58130a18b5264236ae18333542a34f76",
+    "sources/cyber-engine-tweaks/src/PersistentState.cpp": "256559893b66642591a5f69ef969264f8c183f9d1bf6e267e4378d5858019567",
+    "sources/cyber-engine-tweaks/src/PersistentState.h": "4c100099278a9a3df51412e0797191c4a00306bfbf35cbdc0e23c1c879d9e055",
+    "sources/cyber-engine-tweaks/src/Utils.cpp": "ed954fd1aeec7a2f96ed8814c03f628d20f93c2c6fe3d0b9e75634f4e35e0669",
+    "sources/cyber-engine-tweaks/src/Utils.h": "0bac83f1fe3fbe900d13613b7cb85aa56ae7805c56e15df52972daab8abea74a",
+    "sources/cyber-engine-tweaks/src/VKBindings.cpp": "d681a4a48987499de9ee613518df6809cc8c0d3dae18d15a2ee0e5e2561dd362",
+    "sources/cyber-engine-tweaks/src/VKBindings.h": "daeb94b24436b38f3cae7df2b294e2b235fd9dfc84612df144863fc2d5ad718f",
+    "sources/cyber-engine-tweaks/src/common/D3D12Downlevel.h": "6a673267fe5713bbf84efdbfc29ab381a07bac49179df56d492ac5bf149f2b51",
+    "sources/cyber-engine-tweaks/src/common/FontMaterialDesignIcons.h": "8d1556078c88364da7b06b71acb7b26dced4228ef392349aae6df1f639ea0b24",
+    "sources/cyber-engine-tweaks/src/common/ImGuiNotify.h": "60c4ecbfe0d472df3f57007a4f365047401cf0439c035a8eb75778585813102e",
+    "sources/cyber-engine-tweaks/src/common/Logging.h": "7397ca526f009a5cbc4a9a85c94eaf40a0d3a2d2ff44e08df4d5b76c0e8bf001",
+    "sources/cyber-engine-tweaks/src/common/Meta.h": "a07529783ff550faf267878161f59fa79be2cf03fd617619d6d42a6aceb587a3",
+    "sources/cyber-engine-tweaks/src/common/ScopeGuard.h": "c85f52c2cd3ff0bd3c3fc133b7037d27f4edea0eeee1017afbd4d1545c383201",
+    "sources/cyber-engine-tweaks/src/d3d12/D3D12.cpp": "437ab3eac08d20d877217e797d6f2ae5fd3cd35ea4a92b80b997ca6657859a14",
+    "sources/cyber-engine-tweaks/src/d3d12/D3D12.h": "93c982ed68da1afe9e6d279ea81ef10a0852176125ef41769f69d1b203674dca",
+    "sources/cyber-engine-tweaks/src/d3d12/D3D12_Functions.cpp": "50148439770d66a8dfe03225055b9310ef98be5f0ee3dd008e92a0822a747221",
+    "sources/cyber-engine-tweaks/src/d3d12/D3D12_Hooks.cpp": "31160f874d067a207c7931052137477cbdf407a79057a40d1747bf663e01050b",
+    "sources/cyber-engine-tweaks/src/dllmain.cpp": "5d10c806c6e3534d4e629d1d81835450678b9551bea1a65d15b8239cf65aded4",
+    "sources/cyber-engine-tweaks/src/imgui_impl/dx12.cpp": "60b0d5184320375e449a3932302098e4ef26c7e3e779c9aec6951d63e9c1d251",
+    "sources/cyber-engine-tweaks/src/imgui_impl/dx12.h": "c59fae977b0fc89259da3cdf25b332002453581b2c140ec77a025cc28dbf2525",
+    "sources/cyber-engine-tweaks/src/imgui_impl/imgui_user_config.cpp": "b93818f5566011676d9604ccf291f46a64353ebe74fa9aa45d66339e95328cfd",
+    "sources/cyber-engine-tweaks/src/imgui_impl/imgui_user_config.h": "221faccc17e9ee57baaa7f75b12e3cfea4f67791c929d1523c3b8845adb6a27c",
+    "sources/cyber-engine-tweaks/src/imgui_impl/win32.cpp": "f43a8bd7e6dd644ec1c88d145ec5d4de15b9043fd4bba83bbcb062b3a5c4cd6e",
+    "sources/cyber-engine-tweaks/src/imgui_impl/win32.h": "4f3a83e86da8f3fb554462b698718077bbe750f237809f87f6090b121a10afae",
+    "sources/cyber-engine-tweaks/src/lsqlite3/lsqlite3.cpp": "86222376a020e83425d50f9007964a73aa62c2553880f4dd1d2e657b58db1c44",
+    "sources/cyber-engine-tweaks/src/lsqlite3/lsqlite3.h": "8b6aee983cf8dda1a6bb9ce9c85521e57e884d7479d8cfff99956f25109aab19",
+    "sources/cyber-engine-tweaks/src/overlay/Overlay.cpp": "b2295f7030baf8c4d3e030233b7773fb848ed38084f3275554d9eb304148ccc4",
+    "sources/cyber-engine-tweaks/src/overlay/Overlay.h": "cb336b5759a7fc6f74a3d089dc8ed4c69a7464f7ee1be67270a27d2529efc549",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Bindings.cpp": "2271f5b85d3656617f4aeb0029563e42be6254167f0ae907d731079d54f393fa",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Bindings.h": "4db5a572461577c37c721ba4040b317ed15a0d95373418f53e504457556d8608",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Console.cpp": "856690dedc4ceb80e4ba6b35d39be500d417794d61058dd55816d0bd31493f26",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Console.h": "85b48bd6f5570cc22f98460267b9310b20fc9306e90fe1c0440ec5786ab3704f",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/GameLog.cpp": "46e0d8c256b525864a74384688d23e98b759bcfd94cfba441ad5209e79ac8061",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/GameLog.h": "eee9b5fe5c623a5bec207d080e22223e5165bad338ee518887aa8c4232108f51",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/ImGuiDebug.cpp": "6a8680aebbf51089c55ce3ff7eebeaaf8dc53bda246908164e783208d1b47444",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/ImGuiDebug.h": "9f9885ebf54aef06a474be28211841f9f7968caa990278fe53565740826bf59e",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/LogWindow.cpp": "6df6b6347c97a5fbae8bcd482667a4fcd134cbf2caf132017aaf4c73daa2a024",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/LogWindow.h": "b35bcfcc71cf9b0c9dc17cd36e99e1ce63acca6e0b57060467af9df670d0d643",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Settings.cpp": "3b6b9a69d15e487f3f6d35aae43a9bf3e6514f24eb339fd89e802906bd268319",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Settings.h": "5211c7e6ec9d05621b57f3c4a38313ce1256ebda825e992a5a56d99a9089169f",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/TweakDBEditor.cpp": "0d9abb90037a00b09dd7209266e4e8c6c27c136c76bb41754794c80daf5990e2",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/TweakDBEditor.h": "8792ab0b87208a89b1fcb7430d9f8969586956ee6bc1ef47218316b545c9552b",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Widget.cpp": "1b2da593ce09e20faf8b6b2bdf70036a09cd61866592006b96851fe65a7c1262",
+    "sources/cyber-engine-tweaks/src/overlay/widgets/Widget.h": "57e5093204a95b32bc4b9f886a560f7327c28cd14e67ad7e8384c4ba91a423e6",
+    "sources/cyber-engine-tweaks/src/patches/DisableBoundaries.cpp": "60380dcdf15bce18fb94112781123a7340c2658e8c18320186ee96c434f4004b",
+    "sources/cyber-engine-tweaks/src/patches/DisableVignette.cpp": "fa2b935c3668fc67dea8c13a48347028ae5356a41134064185759013c4b1a1d3",
+    "sources/cyber-engine-tweaks/src/patches/OptionsPatch.cpp": "20caab663969ab79f90bcde5b4349373b88370a10558032dd3598c0401674474",
+    "sources/cyber-engine-tweaks/src/reverse/Addresses.h": "f540e35ac8ffec6031dd40baff51e6d21b0ef101cfba9af5385a577bfbf62079",
+    "sources/cyber-engine-tweaks/src/reverse/Array.h": "d3eaf6e3002fbeac328aa464fed3fd5b2bc783b6481e1c498d4d908b5a0d496f",
+    "sources/cyber-engine-tweaks/src/reverse/BasicTypes.cpp": "497e0682f8ac2c8606a6464a2b62e460cfbffc82ab12433c748c1d9e32889931",
+    "sources/cyber-engine-tweaks/src/reverse/BasicTypes.h": "f5b71945f282dfea5408b8aa105a44ffed56935e2a6182db9ea40aa4c0e263f1",
+    "sources/cyber-engine-tweaks/src/reverse/ClassReference.cpp": "5eb7d80e7d2741c07c7cb7c0d6ed1021ca2b9f2c82b096da3635596cb1b1ed41",
+    "sources/cyber-engine-tweaks/src/reverse/ClassReference.h": "3074a114d1bd446e242a00f02bce02ee55ccbfa5d8ddf1ff75f9095492cac228",
+    "sources/cyber-engine-tweaks/src/reverse/ClassStatic.cpp": "0ff6d08df37c92376c1f3ad4756d20ba4583fcd090c5dacb09a218a710f01c6f",
+    "sources/cyber-engine-tweaks/src/reverse/ClassStatic.h": "2d9d2ddc4ef05a0f19354a924ae673360473ebe076239ef5595c89e9753a10a5",
+    "sources/cyber-engine-tweaks/src/reverse/Converter.cpp": "72fca36b32cae88cf15fb4cea18c92b5ec1c413eafeb78714a4e72ab12e831bc",
+    "sources/cyber-engine-tweaks/src/reverse/Converter.h": "87024b1045d32219c814a6b8ce71fafd180b86eda4774bd6a34746d0f152dbde",
+    "sources/cyber-engine-tweaks/src/reverse/Enum.cpp": "a628a5df39179d8b1c37bb8e45867850137239828957bb95e516cfd7a94e3991",
+    "sources/cyber-engine-tweaks/src/reverse/Enum.h": "8d4d5456ac914bcfeeb1eca3115f19b07f42c2bb8179939825b98a6001751d40",
+    "sources/cyber-engine-tweaks/src/reverse/EnumStatic.cpp": "676de3cf1330b645f7a0cb47b9a38c386ec79e2f1298c747f05c29ca24b51dd7",
+    "sources/cyber-engine-tweaks/src/reverse/EnumStatic.h": "23d78190e97ed2652c38c01d661689d077c8d5f8e24344cc203302b79dd6b525",
+    "sources/cyber-engine-tweaks/src/reverse/LuaRED.h": "8fa97059f54d4b10c64f6a7b73ac995538442de4bf82a207b36b5090ec4ef24e",
+    "sources/cyber-engine-tweaks/src/reverse/NativeProxy.cpp": "e428faaaed9bb3053d4c37765c55530367019e6ce4f231dc6dae44c5c98a0466",
+    "sources/cyber-engine-tweaks/src/reverse/NativeProxy.h": "eb56f75192e4731765084247449b17ae441fe85e8ddad49ec2cb566d369ad4d9",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIExtender.cpp": "fb629708344362707c140ca9714c71ed38291e42c378122c6dffebf58be301d5",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIExtender.h": "e3966723ff23066acef33ed654f7db13e2fd7d05b97d241e0e4fa867afd8a93f",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIHelper.cpp": "c4dbbbc22512b0d8bf126fbed40fef59a09a454d118a07ec2e1e9bd07215165a",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIHelper.h": "10c23db70e2b1fc5e8b5efe1a5727bc876938ee71c26c02380584cca15d2d4bd",
+    "sources/cyber-engine-tweaks/src/reverse/RTTILocator.cpp": "8b79ec7acc4fdb6a2bfad628070e429d68158dd805318b42d9549e109eaefe70",
+    "sources/cyber-engine-tweaks/src/reverse/RTTILocator.h": "d50ad710afcfbec6a819fa75fc411cc68b95aa9724c2f1af4527eb8232231c1b",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIMapper.cpp": "84f46d0f9addda05823c7c61dc13646b4340a7f56afc1880d7252bd86a38b942",
+    "sources/cyber-engine-tweaks/src/reverse/RTTIMapper.h": "8905cb034dd9d49a0db68d16ebad4075ca2a636caefaf00e92db6a0bb2ef35be",
+    "sources/cyber-engine-tweaks/src/reverse/Relocation.h": "b231f0cb678dfe9fc501d9ba376f7251f05276d4345927dc69989074ca5a83af",
+    "sources/cyber-engine-tweaks/src/reverse/RenderContext.cpp": "f02934b731da6c5af218d1e010623c30957be6fe71085f39b3ae36773deafed0",
+    "sources/cyber-engine-tweaks/src/reverse/RenderContext.h": "458e71110db857462a4303faa25e4a0a2e025ac08e11bffd730f535e62ddfff8",
+    "sources/cyber-engine-tweaks/src/reverse/ResourceAsyncReference.cpp": "37cc6201cadef4c06ce56b5b11a35a48d648be3c91ec0b240c97fc89d39599f8",
+    "sources/cyber-engine-tweaks/src/reverse/ResourceAsyncReference.h": "134ccb11f3da6adaa73b9e21dce709c4c350921f071b7be53912396ab6d8766f",
+    "sources/cyber-engine-tweaks/src/reverse/SingletonReference.cpp": "1b41bf539ae4b4a6eb419b2bedd5159b1ab9ba3f35fab0e5069eb8adcc601459",
+    "sources/cyber-engine-tweaks/src/reverse/SingletonReference.h": "ed7a1bb66f141129872b0cb87384b7b11de40d2983dce492c6725410a87e57c5",
+    "sources/cyber-engine-tweaks/src/reverse/StrongReference.cpp": "f3061214c1cc898417b8a47a689f0e12c0994a9870717eb5a9268c415fe8b29f",
+    "sources/cyber-engine-tweaks/src/reverse/StrongReference.h": "49a3b001535d64db7030ec75007c0b06a3239a14742a13e15f4871a382e342e5",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/FlatPool.cpp": "125d7f254e522ac05ba11fe5e75ad19a5621011360eef87f713103915800cc8f",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/FlatPool.h": "f25f8ea5e20d84170e2df9c92a3f3087cc5acd16d5548677369591984c7f6a36",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/ResourcesList.cpp": "11f1ec4342b67e3dadcd01e72a6c5846133cad7f45a5a22d8b1131b7579712c6",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/ResourcesList.h": "cecbbc60dbf87d77f2da9dbaa21c0780bd30bdb985846bd6faa20260015bf461",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/TweakDB.cpp": "44e1bc9bd696b241ab7d5c63b920faff650ca2f73a215ff26cde328b4f4b3e9d",
+    "sources/cyber-engine-tweaks/src/reverse/TweakDB/TweakDB.h": "056e618a5da0357aa1150c94f3d238d3e8502f3d57918cb3a4e7d6427ddeb2d6",
+    "sources/cyber-engine-tweaks/src/reverse/Type.cpp": "f8707ed62ce9b9d0f814955a4d07de679c887e3f8d193457f966d4cc3f7a46d7",
+    "sources/cyber-engine-tweaks/src/reverse/Type.h": "1bfe3e64a94fc954f3b84bf9878e9408e3b888af2d271fbe542a81d8f26cfccf",
+    "sources/cyber-engine-tweaks/src/reverse/WeakReference.cpp": "a5e3423a639bd85e8a3ff45b36fe102469520082474be0fc25c1eab4c200ba23",
+    "sources/cyber-engine-tweaks/src/reverse/WeakReference.h": "751d465592fb4c2dae18c2eaba90e0c692ddb5315e7a4efd53c5ce626e83d118",
+    "sources/cyber-engine-tweaks/src/scripting/FunctionOverride.cpp": "5f651862d0ada2e88f02ae0cb90673e570588fd7a6261b4743370ba896a42bd9",
+    "sources/cyber-engine-tweaks/src/scripting/FunctionOverride.h": "d5bf8d6228a415ea304822612b7fd0f745304d16fdfcd67b9dcc2dd7c8cebaa9",
+    "sources/cyber-engine-tweaks/src/scripting/GameDump.cpp": "2f16c907abe5d50ddaa82225117828d3f1d3fe30c5a65a9e047eb3ccc3dcf707",
+    "sources/cyber-engine-tweaks/src/scripting/GameDump.h": "1f95975af18c82f8593e968d81aed87c1ee743463ad3c904538c32d747155043",
+    "sources/cyber-engine-tweaks/src/scripting/GameHooks.cpp": "d245690eb2e4a19d85bc98634b1898301c529fed889c82a73d3ff29828091d49",
+    "sources/cyber-engine-tweaks/src/scripting/GameHooks.h": "9dd801b814d4260e233a53dcb1e03ae517b10c112776adaba9ff59c5e497c1f6",
+    "sources/cyber-engine-tweaks/src/scripting/GameOptions.cpp": "71f03c736acda49863d6fb2698b385ab20fce9a5e4a9c3aa15693980e62b1115",
+    "sources/cyber-engine-tweaks/src/scripting/GameOptions.h": "ca4a96c2b76a48bd053c56ce6e8cf595b832431bc49d04f5accaa4df74582ad6",
+    "sources/cyber-engine-tweaks/src/scripting/LuaSandbox.cpp": "7a83db8de773915f844fe99f3317899815a36536cbe462c14bdac309da418ef0",
+    "sources/cyber-engine-tweaks/src/scripting/LuaSandbox.h": "cb511c0cb9c46c92bef0a996afd48f26beca639e5215ad41c9e074b222f4b468",
+    "sources/cyber-engine-tweaks/src/scripting/LuaVM.cpp": "b89ad23717e6544baec9db03849ad77835811c621d313e1e1e3dbdd03c499340",
+    "sources/cyber-engine-tweaks/src/scripting/LuaVM.h": "3a00cdf00dfe1846249c61d93740a7bdff0188c29d8536ed4d234bbee770a8c1",
+    "sources/cyber-engine-tweaks/src/scripting/LuaVM_Hooks.cpp": "a2b9197d218d960a2e13f82e15963120f68e8bb42d16ead83ec271d7008a3ab1",
+    "sources/cyber-engine-tweaks/src/scripting/Sandbox.cpp": "5ca67bcce2c33e90f8fe12f25c0d276526c94bfa2f9d49236a727638100308b2",
+    "sources/cyber-engine-tweaks/src/scripting/Sandbox.h": "868b104fc18080df647e9078c24dada9e7116d9c3ba0405f0f3a18fc88683135",
+    "sources/cyber-engine-tweaks/src/scripting/ScriptContext.cpp": "4341d9fbc4be6d3645b954ea10a0cdbf81bcf8747f0adc62a8e1094f5e3777aa",
+    "sources/cyber-engine-tweaks/src/scripting/ScriptContext.h": "b0cee4523f40f58463cb4dddac690646d0dc98a5f677e2109b97cf9e7865f1c9",
+    "sources/cyber-engine-tweaks/src/scripting/ScriptStore.cpp": "1716e40e0140a3d0e684b55bfc82f1dc736c7ced700fd1c91c00e6c42fb9eb61",
+    "sources/cyber-engine-tweaks/src/scripting/ScriptStore.h": "ab3a74768e39c3c4c617c0a822f2bcfa1686c4d2d38a478c5c844bfa477a23e6",
+    "sources/cyber-engine-tweaks/src/scripting/Scripting.cpp": "41ec0e834047c56df5d2529db4b0ae778b14270115fd740439855041b6e34263",
+    "sources/cyber-engine-tweaks/src/scripting/Scripting.h": "8c069d58d787cae15d5a8216e050a9041424c736b32cca5a3c8f982f4e7b37bf",
+    "sources/cyber-engine-tweaks/src/scripting/Texture.cpp": "3852c7e5ad4c793bfd1e46dbf2246f8576bbbb2b7a03368e558411e6b1f7a107",
+    "sources/cyber-engine-tweaks/src/scripting/Texture.h": "9b5b4f520ed3d6dacabba76fcc5420495a617964f6ec11b6fc79aa69c4083d0d",
+    "sources/cyber-engine-tweaks/src/sol_imgui/sol_imgui.h": "c7dafc8dcb847e183e7b741fa14dfe80b7dbd7d0920abaaf717fe571f7e9536b",
+    "sources/cyber-engine-tweaks/src/stdafx.h": "61f84c313d9020abbf4fb3d096d04fad6218c3d3dbce31fe068475b816a64bb9",
+    "sources/cyber-engine-tweaks/src/window/window.cpp": "da7afc1299f788ae84a9256106a8d07652785842a4b41ca48d26a30ce9bad667",
+    "sources/cyber-engine-tweaks/src/window/window.h": "0177947762f5020f1b012040f82501bfdbf6c90e7beb36c101363c4994ff8a48"
+  }
+}

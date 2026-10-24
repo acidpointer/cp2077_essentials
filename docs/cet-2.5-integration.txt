@@ -15,7 +15,11 @@ The saved 001-essentials.patch adapts CET to the existing RED4ext loader:
 - The default shared-SDK address resolver uses loaded RED4ext.dll.
 - Header casing and the version-resource copyright literal work on Linux.
 The upstream bundled version.dll resolver and ASI payload are excluded.
-CET's hook implementation, address hashes and Lua mod paths are retained.
+That initial layer retains CET's hook implementation, address hashes and Lua
+mod paths. The subsequent 002-runtime-stability.patch fixes hook/lifecycle,
+Lua/override, renderer, TweakDB/editor, reload/input, file/configuration and
+SQLite ownership defects. See docs/cet-2.5-fix-status.txt for every finding's
+disposition, supported runtime contracts and outstanding acceptance.
 
 Build
 
@@ -57,7 +61,7 @@ fourteen archives in total. The tag workflow builds this set and retains its
 existing checksum verification, retryable publication and failure artifacts.
 No live GitHub publication or tag creation was performed during validation.
 
-Validation scope
+Initial integration validation (before the stability layer)
 
 Another task was actively editing the shared SDK and other plugins during
 integration. Its work was preserved. Native/package validation uses the
@@ -88,9 +92,37 @@ Logs: build/cet-validation/full-release.log, final-validation.log,
 patch-check.log and input-tests.log. Reconfiguring CMake leaves an unchanged
 CET version header intact, avoiding needless recompilation of Lua bindings.
 
-Runtime limits
+Stability-layer validation and runtime limits
 
-No game or MO2 files were changed. CET startup, overlay/key binding, Lua/FFI
-and SQLite behavior, game-hook timing, shutdown and save compatibility have
-not been tested in the actual game. Native builds and static package checks
-do not establish these behaviors. Existing ArchiveXL limits still apply.
+The historical stability review is docs/cet-2.5-audit.txt. Its plan is
+docs/cet-2.5-fix-plan.txt; implementation is docs/cet-2.5-fix-status.txt.
+The read-only address checks find 32/32 CET declarations and 97/97 additional
+SDK-closure references unique in retail 3.0.88.46235. The closure also includes
+unused inline methods; this is address evidence, not a verified call graph.
+
+Three production-helper sanitizer checks and four isolated Windows harnesses
+cover ownership/queues/readers/config, native value storage, ID cycles,
+LuaJIT/sol2 continuations/errors/JIT/GC/FFI, SQLite cleanup, Unicode IO, callback
+quiescence and bounded fence waits. They are required build/portable checks
+in the release workflow; running the Windows executables with Wine is optional.
+See tests/native/cet/README.txt for exactly which components are real or fake.
+These tests exposed and fixed the sol2 exception-propagation flag mismatch.
+
+The stability validation uses build/cet-fixes/validation/workspace with copied
+source Git metadata/dependencies and separate output. It includes the shared
+SDK transaction-system ABI layer and the concurrent task's official RED4ext
+v1.31.0 pin. Main dist/release and the concurrent task's work are preserved.
+Exact patch/source identities and completed checks are recorded in
+docs/cet-audit-lab/fix-validation.json.
+All seven patch stacks reconstruct. The six Release builds and package checks
+passed; fourteen distribution and prepared release archives pass SHA256SUMS.
+The tooling run completed 76 tests (61 passed, 15 optional checks skipped),
+and all three CET portable tests passed again after the final metadata bound.
+All four Windows CET harnesses executed successfully in isolated Wine.
+
+No game or MO2 files were changed. CET startup, overlay/key binding, game-hook
+timing, engine proxy/descriptor dispatch, real GPU behavior, shutdown and save
+compatibility have not been tested in the actual game. Native builds, isolated
+Lua/FFI/SQLite tests and package checks do not establish those behaviors.
+The conditional Lua/engine-worker wait cycle remains unconfirmed. Existing
+ArchiveXL limits still apply.

@@ -1,0 +1,566 @@
+Cyber Engine Tweaks: CP2077 2.5 startup and stability audit
+Recorded: 2026-10-24
+
+Historical baseline: this report describes 001-essentials.patch before the
+stability changes. Implementation, regression evidence and remaining limits
+are tracked in docs/cet-2.5-fix-status.txt. Do not read the findings below as
+a description of the current patched source.
+
+Assessment
+
+CET v1.38.0 is an upstream 2.5 release. This checkout has good evidence for
+address compatibility with retail 3.0.88.46235, but insufficient evidence to
+call the rebuilt RED4ext integration runtime compatible. Concrete lifetime,
+ownership, parsing and reload defects remain. Several can affect startup or
+exit without loading a save; others require a particular Lua mod, renderer
+configuration, reload, malformed local file or failure during initialization.
+These are findings and proposed fixes, not fixes already implemented here.
+
+No game was launched, no save was opened, and no game/MO2 files were changed.
+The isolated COM test uses a fake object, not D3D12 or the game. A passing
+build, a unique address match and a source-level repro are different evidence.
+This review cannot establish that every possible crash has been found.
+
+Scope and reproducibility
+
+Reviewed official CET Gitlink ed706fb8518712ffedf6b566e52873b257bc49fb with
+patches/cyber-engine-tweaks/001-essentials.patch, SHA-256
+6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4.
+Reviewed the RED4ext adapter, loader sequence, shared SDK, Lua initialization,
+override/proxy/conversion paths, task queues, input, overlay, D3D12, TweakDB,
+metadata parsing, reload and shutdown. The optional .research directory had
+no matching CET source/build; relevant legacy address research was considered.
+Concurrent work under compat/ was preserved and is outside this review.
+
+The read-only retail probe identifies executable version 3.0.88.46235 and
+SHA-256 d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4.
+It resolves every CET-declared hash against the local game address database.
+The reference SDK is the CET upstream submodule pin
+fd1867297719e26c6fbd54734c7ce82448d32c6f; its official source archive has
+SHA-256 4c2dcb08a545373c19c5f7ae792842e12d60ca7236843eac7e556fe09b40ebd8.
+No submodule revisions or Git metadata were changed for this audit.
+
+Reproduction tools, source fingerprints and saved results:
+  docs/cet-audit-lab/README.txt
+  docs/cet-audit-lab/inspect_retail.py
+  docs/cet-audit-lab/run_probes.py
+  docs/cet-audit-lab/evidence.json
+Generated diagnostics remain under build/cet-audit/. The lab's small models
+are explicitly distinguished from extracted methods and actual WRL behavior.
+
+Compatibility evidence and counterevidence
+
+1. All 32 declared hashes resolve uniquely; 30 are referenced in CET source.
+   CGame_Main and CPatches_IntroMovie are declared but unused. Address presence
+   does not prove the associated calling convention or whole object layout.
+2. The recursive closure of directly included shared SDK headers contains
+   162 headers. Seven differ from CET's upstream SDK reference: DynArray,
+   three RTTI include-casing headers, ResourceDepot, GameServices and
+   GameServicesGalaxy. The first supplies the saved object-lifetime fix;
+   casing fixes are mechanical; ArchiveScope::Mod is 6; the services have
+   later retail layouts. Other headers in this closure match byte for byte.
+   This is not verification of all generated SDK types or CET's custom types.
+3. Retail TweakDB::Load at RVA 0x20F43D0 reads the bool in DL and path in R8,
+   agreeing with the updated three-argument CET hook. The upstream 2.5
+   change is already present; reverting to the older signature would be bad.
+4. Present/Resize code agrees with devices offset 0xCEBF48, device stride
+   0xB0 and one-based device selection. Present reads the direct queue at
+   RVA 0x5D96FF using context+0x14104D0. These are independently inspected
+   instructions, not offsets inferred solely from CET's struct declarations.
+5. Spawn helpers agree with significant parts of TEMP_SpawnSettings (0xF0),
+   TEMP_Spawner (0x68) and PendingEntity (entity ID/pointer at 0x110/0x118).
+   The callback move helper reads handler+0x38 relative to settings+0x30,
+   consistent with this 0x40 std::function. The separate SDK fixed callback's
+   growth to 0x48 does NOT by itself establish a bug in this spawn callback.
+   Unchecked internal system offsets and constructors still need F35 work.
+6. RED4ext invokes plugin Main(Load) from its WinMain startup path, after
+   the loader lock. Its address system is constructed before plugin loading.
+   CET Main(Load) is NOT running inside CET DllMain. CET's global relocations
+   still execute during DLL initialization, before Query/version preflight.
+7. Upstream PR #1063's runtime Override/Observe registration deadlock fix is
+   already included (c6ccc91/bcbe457: try-lock plus deferred registration).
+   Do not present that original inversion as an outstanding unfixed bug.
+   PR #1055's abstract-class NewHandle guard is also included. F16 and F21
+   concern different remaining paths.
+
+Official release: https://github.com/maximegmd/CyberEngineTweaks/releases/tag/v1.38.0
+Deadlock fix: https://github.com/maximegmd/CyberEngineTweaks/pull/1063
+NewHandle fix: https://github.com/maximegmd/CyberEngineTweaks/pull/1055
+
+Finding notation
+
+P0: first fixes before recommending startup/reload/exit testing with real mods.
+P1: remaining high-impact crash/hang/data-consistency fixes before declaring
+    the relevant feature ready. P2: hardening or unresolved compatibility work.
+C: source defect established (a game crash is not necessarily reproduced).
+R: focused isolated reproduction. H: conditional risk needing a runtime repro
+   or more ABI evidence. Each numbered item includes a concrete fix and check;
+docs/cet-2.5-fix-plan.txt supplies ordering and cross-cutting requirements.
+Source locations below are relative to sources/cyber-engine-tweaks/src/,
+unless explicitly labeled otherwise. No findings depend on guessed addresses.
+
+F01 [P0 C/H] Initialization is not a transaction
+  dllmain.cpp:Initialize; CET.cpp:Initialize; D3D12::Hook, LuaVM::Hook and
+  FunctionOverride::Hook enable individual hooks during object construction.
+  The global CET instance is published only after the constructor returns;
+  Window also starts before the D3D12/LuaVM/Overlay members are constructed.
+  Hook errors often only log and continue; MH_Initialize is unchecked.
+  Failure or an early callback can expose partial state. Catch-all rollback
+  disables hooks but does not quiesce callbacks before unloading the DLL.
+  Normal pre-game WinMain timing reduces exposure; it does not fix rollback.
+  Fix: explicit lifecycle states, checked initialization, create hooks disabled,
+  publish complete state, enable owned hooks together; reverse rollback with
+  callback quiescence. Resolve mandatory addresses lazily after preflight.
+  Check: fail each initialization stage/hook and schedule callbacks at barriers.
+
+F02 [P0 C/H] Detached workers outlive their owners
+  window/window.cpp:Window/~Window (69-97); scripting/LuaVM_Hooks.cpp:Prepare
+  (metadata worker around 270-288). Both detach threads capturing this.
+  Window polling has no stop path and unsynchronized HWND/WndProc/state
+  publication; teardown can race SetWindowLongPtr or free the owner first.
+  The metadata worker similarly uses LuaVM and CET after potential shutdown.
+  Fix: owned cancellable workers, synchronized publication, join before member
+  destruction; detach WndProc on its owner thread without holding needed locks.
+  Check: shutdown before HWND exists, during hook installation, metadata I/O
+  and parsing, and after injected initialization failures.
+
+F03 [P0 C/H] Queued tasks retain destroyed CET members
+  scripting/GameHooks.cpp singleton task lists; PersistentState constructor,
+  D3D12 constructor, LuaVM hook setup and Overlay constructor enqueue [this].
+  No owner cancellation exists. Failure/reinitialization can leave stale tasks
+  in the process-lifetime GameMainThread singleton; hooks have a separate
+  destruction lifetime from the MinHook instance.
+  Fix: owner/generation task tokens, rejection after stop, cancel and drain
+  in-flight tasks before releasing CET; explicit hook-set ownership.
+  Check: tick each game state after partial rollback; no callback reaches an
+  old generation, and retry cannot duplicate running/save/shutdown callbacks.
+
+F04 [P0 C/H] Trampolines and RTTI registrations outlive backing storage
+  scripting/FunctionOverride.cpp:~FunctionOverride (61); Scripting.h member
+  order; ScriptContext.cpp destructor; reverse/NativeProxy.cpp:s_proxies.
+  FunctionOverride frees executable storage without restoring registrations
+  in its destructor. It is destroyed before ScriptStore, whose contexts can
+  still invoke onShutdown. Engine RTTI also retains pointers to proxy types
+  and CET code. A missed game shutdown task or plugin unload can leave live
+  engine references to freed data/code. Static s_vm and state flags add stale
+  references; s_isRunning is never reset on a later initialization.
+  Fix: explicit shutdown while Lua/engine/code remain usable, restore descriptors,
+  then quiesce and reclaim. Specify process-lifetime registrations; if engine
+  unregistration is unavailable, retain their module/storage until process exit.
+  Check: unload/failure/retry with installed overrides, proxies and callbacks;
+  shutdown executes once and no registered pointer refers to freed storage.
+
+F05 [P0 C/H] TweakDB editor joins its async task too late
+  overlay/widgets/TweakDBEditor.h:9,130-133; .cpp:RebuildCache (186).
+  Default destruction destroys m_cachedRecords/m_cachedFlatGroups BEFORE
+  m_rebuildCacheFuture. The async worker captures this and writes those same
+  containers; the future's later join cannot protect already destroyed data.
+  future.get() also propagates worker exceptions into the frame callback.
+  Fix: explicit stop/join before any dependent member is destroyed; build an
+  immutable local cache and publish on the owner thread; contain exceptions.
+  Check: paused cache rebuild plus editor destruction, failed allocation,
+  regex failure and repeated refresh/exit.
+
+F06 [P1 C/H] Logger sink keeps a dead widget callback
+  overlay/widgets/LogWindow.cpp:7-12; LogWindow.h; CET.h destruction order.
+  A permanent logger sink captures this with no matching removal. Overlay
+  widgets die before Lua shutdown and final log flushing. Logging afterward
+  or reusing the named logger on retry can call a destroyed widget.
+  Fix: scoped subscription, synchronize in-flight logging, remove sink before
+  widget teardown; separate durable log storage from UI lifetime.
+  Check: concurrent logging while closing overlay/CET and repeated init failure.
+
+F07 [P1 C/H] Single-instance check does not detect a second CET
+  dllmain.cpp:Initialize (28). CreateMutex occurs after CET construction and
+  ERROR_ALREADY_EXISTS is not checked. An old ASI can therefore coexist with
+  the RED4ext adapter, sharing hooks, data and config. This is an installation
+  condition, not proof that both are currently installed.
+  Fix: process-scoped instance claim before side effects; distinguish creation,
+  existence, failure and mutex ownership; diagnose the old ASI path.
+  Check: two module variants, failed first claim, retry; second load installs
+  no hooks and never releases ownership belonging to another instance.
+
+F08 [P0 C/R] Texture loading double-releases five COM objects
+  scripting/Texture.cpp:Load (159-172). cmdList, cmdAlloc, cmdQueue, fence and
+  uploadBuffer are ComPtr objects but are manually released through operator->.
+  Their destructors release them again. A normal successful image upload can
+  consequently access freed COM objects when the function returns.
+  Fix: remove manual raw releases; use RAII for all COM, event and image data.
+  Check: actual Microsoft WRL fake-object probe gives refs=-1/releases=2 before
+  fixing this ownership pattern; add upload success/failure ownership tests.
+
+F09 [P0 C/H] Main overlay rendering has no explicit GPU completion ownership
+  d3d12/D3D12_Functions.cpp:Update (380-435), ResetState (12-46).
+  Per-frame allocators are reset without a CET completion fence, and reset
+  releases back buffers/heaps/command objects without an explicit CET drain.
+  Game back-buffer scheduling may provide some ordering in a particular mode;
+  this assumption is undocumented and is unsafe across resize/device loss or
+  changed presentation behavior. CPU ImGui locking does not complete GPU work.
+  Fix: signal after CET submissions, record per-frame fence values, wait before
+  allocator reuse and retire resources only after completion; bounded shutdown
+  and device-removal paths must not wait forever.
+  Check: delayed GPU, resize/minimize/exit, device loss and frame generation;
+  D3D12 debug layer must report no allocator/resource lifetime errors.
+  API requirement: https://learn.microsoft.com/en-us/windows/win32/api/d3d12/nf-d3d12-id3d12commandallocator-reset
+
+F10 [P1 C/H] Renderer assumes at most three buffers and a stable swapchain
+  d3d12/D3D12_Functions.cpp:Initialize (78), Update (397);
+  D3D12_Hooks.cpp:CRenderNode_Present_InternalPresent (11-39).
+  Storage is min(BufferCount,3), but indexed by the unrestricted current
+  back-buffer index. A four-buffer swapchain can index past the vector.
+  Present also dereferences context/index/swapchain without validation, and
+  ignores a new swapchain once initialized. Multi-device capacity is guessed.
+  Fix: exact checked buffer allocation, checked active device/queue selection,
+  swapchain identity/generation handling and transparent pass-through on error.
+  Check: fake chains with 0/1/2/3/4 buffers, bad index, replacement, null/device
+  removal; actual DLSS/FSR/frame-generation modes remain game tests.
+
+F11 [P1 C/H] Texture descriptors and draw data have mismatched lifetimes
+  d3d12/D3D12_Hooks.cpp:CreateTextureDescriptor (75);
+  scripting/Texture.cpp:Load/Release/ImGuiImage; draw-list cloning in PrepareUpdate.
+  A static counter consumes descriptors even on failed image loads and never
+  returns them. Heap recreation invalidates handles held by surviving Texture
+  objects. Release leaves a drawable handle after freeing the resource; copied
+  draw commands do not own that resource until GPU completion.
+  Fix: renderer-generation descriptor pool, rollback failed allocations,
+  invalidate released handles, and retain textures through draw submission
+  plus fence completion. Recreate or explicitly reject old-generation textures.
+  Check: more than 199 load/release cycles, failed loads, release after Image,
+  resize/font rebuild and mod reload with queued draw data.
+
+F12 [P1 C/H] Failed D3D12 operations become null dereferences or infinite waits
+  scripting/Texture.cpp:Load; imgui_impl/dx12.cpp:CreateFontsTexture.
+  Many HRESULTs are ignored or guarded only by optional IM_ASSERT; waits use
+  INFINITE without checking Signal/SetEventOnCompletion/Wait results. Integer
+  upload-size arithmetic is unchecked. Device removal or allocation failure
+  can crash or block the game thread while Lua/ImGui locks remain held.
+  Fix: explicit runtime HRESULT/result checks, bounded cancellable waits,
+  device-removal diagnostics, checked sizes and RAII rollback on every exit.
+  Check: fail each API call; huge/invalid images, missing fonts, removed device,
+  failed signal/event, memory pressure. Assertions are not error handling.
+
+F13 [P1 C/H] ImGui state is shared without complete synchronization
+  d3d12/D3D12.cpp:OnWndProc (29); D3D12_Functions.cpp:ResetState, PrepareUpdate,
+  Update, ReloadFonts. WndProc uses ImGui while game/render threads manipulate
+  its context; reset clears significant state outside m_imguiLock and Update
+  uses draw data after releasing it. Font config lacks range/finite validation;
+  mod exceptions/unbalanced ImGui stacks can leave later frames unusable.
+  Fix: choose one ImGui owner thread, queue input, publish immutable draw data,
+  serialize backend reset and validate fonts; recover a failed mod frame with
+  diagnostics. Do not merely add a lock around arbitrary Lua calls.
+  Check: WndProc/frame/reset interleavings, missing/bad font, zero-size window,
+  bad font dimensions, and a mod throwing after Begin/PushStyleVar.
+
+F14 [P0 C/R] Override continuation captures dead parameter variables
+  scripting/FunctionOverride.cpp:WrapNextOverride (463-529); Utils.h:MakeSolFunction.
+  Returned lambdas use [&] / [&,aStep], capturing apRealFunction/apRealContext
+  by reference to this function's local pointer parameters. They are already
+  dead when the returned Lua function runs. Copying the lambda into sol does
+  not extend their lifetimes. Other captured references are stack-owned too;
+  a Lua mod retaining next beyond the current invocation creates another UAF.
+  Fix: capture pointer values explicitly and use an owned invocation context
+  with a lifetime token. Reject escaped continuations after the call returns;
+  retain the chain snapshot and arguments for the valid invocation lifetime.
+  Check: ASan capture model reproduces stack-use-after-return; test actual sol
+  one/multiple override chains, nested calls, GC and retained next after return.
+
+F15 [P0 C/H] Override error propagation unlocks shared state mid-chain
+  FunctionOverride.cpp:WrapNextOverride (482,515), ExecuteChain.
+  Error handlers manually unlock the shared lock then raise a Lua error.
+  Outer error paths can unlock the same lock again; ExecuteChain can continue
+  touching the chain after unlock while Clear replaces it. Error text is also
+  passed as luaL_error's format string, so '%' in an error can read nonexistent
+  variadic arguments. These are independent of the original registration fix.
+  Fix: owned immutable invocation snapshots and one RAII lock owner; return
+  structured errors through protected boundaries, always format errors as data.
+  Check: nested errors/clear/reload races, errors containing %s/%n/%%, and
+  after-observers; no double unlock or access to a replaced chain.
+
+F16 [P0 C/H] Clear and Refresh do not share a consistent Lua/chain protocol
+  FunctionOverride.cpp:Clear (92), Refresh (84), HookRun*/RegisterOverride;
+  Scripting.cpp:UnloadAllMods (620). Clear destroys sol references without
+  holding the Lua lock; Refresh modifies descriptors without the chain mutex.
+  Concurrent script execution/reload can race these operations. Adding Lua
+  locking around Clear's existing blocking chain lock can recreate inversion.
+  Normal ReloadAllMods is NOT shown here to hold Lua while entering Clear;
+  do not claim that exact old deadlock is proven on every reload.
+  Fix: quiescent mutation phase, immutable chain snapshots, deferred Lua-object
+  destruction on its owner thread; no chain lock across Lua/native execution.
+  Check: deterministic worker override + clear/refresh/reload barriers; preserve
+  upstream #1063's deferred-registration behavior and test it independently.
+
+F17 [P1 C/H] Generated-code and descriptor operations lack failure safety
+  FunctionOverride.cpp:constructor, MakeExecutable, Override, HookCreateFunction,
+  CopyFunctionDescription. Executable allocation/exhaustion is unchecked at
+  consumers; allocation hook discards requested size. Raw swaps copy objects
+  with owning metadata, explicitly marked undefined behavior upstream.
+  Fix: checked code arena and transactional descriptor replacement, reject
+  unsupported subclasses, honor larger allocation requests, restore originals
+  before reclaiming code. Retain old code while invocations still reference it.
+  Check: failed VirtualAlloc, arena exhaustion, oversized function subclasses,
+  exception during registration and repeated override/clear without double free.
+
+F18 [P1 C/H] Failed/mismatched Lua conversion reaches native Assign
+  scripting/Scripting.cpp:ToRED(CStackType&) (1002); reverse/Converter.h:
+  ClassConverter/RawConverter. The former calls Assign even when result.value
+  is null. The latter accept wrapper objects without validating their actual
+  RTTI against the destination, permitting a wrong-size/type native read.
+  Fix: checked conversion result with source/destination compatibility, defined
+  nil semantics and failure rollback; validate out/return conversions too.
+  Check: bad override return/out values, wrong class/raw wrapper, nil/abstract
+  handle, arrays/variants, and allocator failures; native memory stays intact.
+  The separate property setter already checks its conversion result; preserve it.
+
+F19 [P1 C/H] Converter metadata is global mutable state across reentry
+  reverse/Converter.cpp:s_metaVisitor; Converter.h:BitFieldConverter (128-189).
+  Is() stores m_pRtti in shared converter objects. ToRED can invoke Lua tostring
+  before using m_pRtti to decide write width. A reentrant conversion can change
+  the remembered type after allocation using the original type's size.
+  Fix: stateless converters using only the current invocation's RTTI, with
+  checked bit width and no retained mutable per-conversion metadata.
+  Check: nested tostring converts a differently sized bitfield; test 1/2/4/8
+  byte values and parallel callers under the actual Lua ownership protocol.
+
+F20 [P1 C/H] Engine-held proxy can outlive its Lua owner
+  reverse/NativeProxy.cpp:constructor/Callback (145); NativeProxy.h.
+  Engine valueHolder stores raw NativeProxy*. No destructor invalidates it.
+  A game-owned target can survive Lua GC or reload, and Callback dereferences
+  self/m_functions before acquiring the Lua lock. Move updates do not solve GC.
+  Fix: separately owned callback control block, weak generation-aware Lua state,
+  invalidation before owner destruction, validation before any dereference.
+  Check: target retained by engine after Lua GC/reload, callback during stop,
+  move and failed proxy construction; stale callbacks safely do nothing.
+
+F21 [P1 C/H] NewProxy accepts native bases it cannot safely construct
+  NativeProxy.cpp:ResolveProxy (190), NativeProxyType constructor (180),
+  ConstructCls/AllocMemory (369). Any IScriptable descendant is accepted, but
+  proxy size is sizeof(NativeProxy), independent of base size. A nonabstract
+  larger base constructor can write beyond this allocation; vtable/allocator
+  semantics are also not established for arbitrary native classes.
+  Fix: define and enforce supported interface/abstract bases, or implement a
+  fully reviewed native-base layout/constructor contract. max(sizeof(...))
+  alone is insufficient. Return a normal Lua error for unsupported bases.
+  Check: abstract interface, IScriptable, large concrete class and invalid name;
+  correct allocation, construction, dispatch and destruction in every case.
+
+F22 [P1 C/H] Expired weak Lua state crashes while being locked
+  build/deps/tiltedcore/Code/core/include/Lockable.hpp:Ref::Lock and Locked.hpp
+  constructor. Expiry returns Locked with null data, whose constructor immediately
+  dereferences m_pData->Lock; IsValid cannot help after that dereference.
+  Fix: reviewed dependency patch mechanism or CET-owned safe locking wrapper
+  with an explicit empty result, then validate every caller before using Lua.
+  Do not silently edit the downloaded dependency or alter its pin.
+  Check: expired state reference and callback racing the final owner release.
+
+F23 [P1 C/R] TweakDB name cycles hang while holding the lookup mutex
+  scripting/LuaVM.cpp:GetTDBIDString (149), RegisterTDBIDString (174);
+  LuaVM_Hooks.cpp:HookTDBIDCtorDerive (291). Registration permits self-parent
+  and longer cycles; lookup has no visited set/depth bound. Empty native
+  derivation can preserve the same hash and register a self-parent entry.
+  This is the native constructor route, not a claim that every Lua ID
+  constructor triggers the engine hook. The extracted-method self-parent probe
+  times out and holds the mutex, blocking other lookups too.
+  Fix: ignore identity derivations, reject/repair cyclic registrations and
+  bound lookup traversal with diagnostic fallback; repair reverse-parent links.
+  Check: self/two-node/long cycle, collision/re-registration, unknown parent,
+  valid deep names and concurrent metadata publication.
+
+F24 [P1 C/R/H] Task queues execute user work under container locks
+  scripting/GameHooks.cpp:RepeatedTaskQueue::Drain (15); pinned TiltedCore
+  TaskQueue::Drain used by VKBindings::Update. The first permits recursive
+  AddTask while iterating a vector: reallocation invalidates its iterator.
+  The extracted-method probe aborts on a singular iterator. Normal startup
+  registrations need not trigger this; runtime/debug registrations can.
+  The second holds a nonrecursive mutex across callbacks: direct reentry
+  deadlocks; a window enqueue plus callback waiting on that window is another
+  conditional lock cycle, not an observed game hang.
+  Fix: take a batch under lock, execute outside it, merge repeat tasks with
+  defined next-tick semantics; cancellation and generation rules from F03.
+  Check: callback enqueue/cancel/drain, window enqueue during slow callback,
+  exception, concurrent stop and recursive enqueue; deterministic time limits.
+
+F25 [P1 H] Lua-to-engine synchronous waits can form cross-thread cycles
+  HookRun* and NativeProxy::Callback take the Lua lock; RTTI execution calls
+  arbitrary engine functions while Lua remains owned. If such a function
+  waits for a job whose observer/override needs Lua, neither can finish.
+  No specific 2.5 engine job pair was proved here; do not label all native
+  calls deadlocked or fix this by releasing Lua around live sol objects.
+  Fix: record callback thread/lock context, identify blocking engine routes,
+  prohibit or schedule affected calls with documented phase semantics;
+  use value-only deferred notifications where synchronous returns permit it.
+  Check: controlled native call waits for worker that enters an observer;
+  instrument waits in real game before widening scheduling restrictions.
+
+F26 [P1 C/H] FlatPool/editor mutations have no complete transaction ownership
+  reverse/TweakDB/FlatPool.cpp; TweakDB.cpp:InternalGetFlat (438),
+  InternalSetFlat (454), SetFlat; TweakDBEditor native editing routes.
+  Cached maps/type/vtable state are accessed outside a common ownership rule;
+  native editor paths need not hold Lua while worker Lua hooks use the pool.
+  InternalSetFlat changes a DBID offset under a shared engine lock. Returned
+  raw value pointers outlive that lock; grow-only cache assumptions need
+  explicit invalidation if a DB reload replaces storage.
+  Fix: copy values under a valid engine lock, serialize pool transactions,
+  use exclusive locks for structural writes and invalidate by DB generation.
+  Specify engine-lock/pool-lock order before adding locks; avoid an inversion.
+  Check: editor + worker SetFlat/clone/delete, growth/reload, failing allocation,
+  race detection on extracted ownership logic and game stress with all essentials.
+  SDK SharedSpinLock allows nested shared acquisition; that alone is not a bug.
+
+F27 [P1 C/R] Metadata/resource readers trust lengths before validation
+  scripting/LuaVM_Hooks.cpp:InitializeTweakDBMetadata (71), ReadCompressedInt;
+  reverse/TweakDB/ResourcesList.cpp:Initialize (25). Both read an eight-byte
+  header without checking file length; the isolated three-byte header read
+  reproduces a heap overread before any Oodle call. Decoded sizes/counts and
+  narrowing to int are unchecked; compressed signed integer parsing can overflow.
+  Release assertions do not validate format versions. Resource lines always
+  lose their final character, corrupting LF-only input and underflowing empty
+  lines. Some allocations occur outside worker exception handling. Initialization
+  also holds the name mutex across large file I/O/decompression, blocking users.
+  Fix: bounded byte-reader with checked format/length/count arithmetic; strip
+  only an actual CR, parse into local immutable state, catch worker failures,
+  publish briefly under lock and expose unavailable metadata without crashing.
+  Check: truncated/oversized KARK and raw files, bad version/varint, empty and
+  LF/CRLF lists, allocation failure, cancellation and readers during publication.
+  Package checksums protect shipped inputs, not files changed after installation.
+
+F28 [P1 C/R] Period in a mod name selects the wrong bindings schema
+  VKBindings.cpp:Load (160-193). A nested new-format object with a name such
+  as WalkByDefault2.0 is interpreted as an old flat numeric entry, throwing
+  nlohmann type_error. This can recur on the next launch with persisted binds.
+  Actual pinned JSON plus the dispatch branch reproduces the exception.
+  Fix: inspect value shape first, migrate legacy scalar entries explicitly,
+  retain dotted names verbatim, validate numeric ranges and save atomically.
+  Check: old/new/mixed formats, dotted/Unicode names, bad types and round trips.
+  Matching upstream report: https://github.com/maximegmd/CyberEngineTweaks/issues/946
+
+F29 [P1 C/H] Configuration errors either abort startup or overwrite useful state
+  Options.cpp:Load/Save/constructor; PersistentState.cpp:Load/Save;
+  VKBindings.cpp:Load/Save. JSON parsing can be nonthrowing while later typed
+  access throws. Load-then-Save rewrites defaults after discarded JSON; direct
+  truncating writes can leave incomplete files after interruption.
+  Fix: typed schema/range checks, keep last good config, preserve invalid input
+  with diagnostics, atomic same-directory replace and explicit migration.
+  Check: null/scalar/wrong-type nodes, interrupted writes, unwritable directories,
+  full disk and existing profile config; no automatic deletion of user data.
+
+F30 [P1 C/R] Reload skips sandbox/DB cleanup if no module used require
+  scripting/LuaSandbox.cpp:ResetState (199). m_modules.empty() causes an early
+  return even with live mod sandboxes/SQLite handles. Extracted-method probe
+  retains three sandboxes and closes no databases. This leaks/stales mod state
+  independently of successful ScriptStore shutdown.
+  Fix: determine cleanup from sandbox/DB ownership, invalidate old generation,
+  close DB handles after callbacks finish, clear modules and collect references.
+  Check: mods with and without require, DB statements/cursors, repeated reload,
+  failed mod init, cross-mod DB contention and close errors.
+
+F31 [P1 C/H] Mod I/O changes process-wide current directory
+  scripting/Scripting.cpp:Initialize (67), ScriptContext.cpp:169,
+  LuaSandbox.cpp:IO/DB/texture initialization. Manual current_path changes
+  race other game/plugin threads and exceptions can skip restoration.
+  A CET Lua mutex cannot serialize other modules' relative file I/O.
+  Fix: use absolute paths and per-sandbox resolution throughout; scoped restore
+  is only a transition and cannot solve the cross-plugin process-wide race.
+  Check: concurrent external relative I/O and exceptions in script/DB/image load;
+  CET must leave process current directory unchanged on every path.
+
+F32 [P1 C/H] Retained registration functions capture initialization stack state
+  scripting/ScriptContext.cpp:constructor/registerBinding/wrapHandler and move.
+  Registration closures depend on constructor-local helpers/references and a
+  movable ScriptContext. Removing the globals after initialization does not
+  invalidate a function that a Lua mod saved elsewhere.
+  Fix: stable per-mod control block and phase token; capture values/owned state,
+  reject registration after initialization with a normal error.
+  Check: save registerHotkey/registerInput and call after init, after context
+  move, during reload and after unload; no access to constructor stack objects.
+
+F33 [P1 C/H] Input thread transports Lua references across reload boundaries
+  VKBindings.cpp:VKBind::DelayedCall (6), OnWndProc/queued callbacks (655,691),
+  Load/InitializeMods. Binding tables/flags are shared with the window thread;
+  copying closures there can copy/destroy sol references without Lua ownership.
+  An already queued old-mod callback can survive onShutdown and run afterward.
+  Fix: queue value-only binding IDs/events plus generation, resolve callbacks
+  on the Lua owner thread; publish immutable binding tables and cancel stale
+  events. Never destroy Lua references on WndProc merely by dropping a queue.
+  Check: held inputs during reload, old key-up, rapid overlay toggles, callback
+  exceptions, queued events at exit and concurrent binding reconfiguration.
+
+F34 [P2 C/H] Optional code patches and options hook ignore failure contracts
+  patches/DisableBoundaries.cpp, DisableVignette.cpp, OptionsPatch.cpp;
+  reverse/GameOptions.*. Raw patch writes ignore VirtualProtect failure,
+  attempt protection restoration with null old-protection output and do not
+  flush instruction cache or retain rollback bytes. Registry entries are raw
+  game pointers without a clear lifetime/synchronization contract.
+  Fix: checked supported-byte preflight, protection RAII with valid outputs,
+  FlushInstructionCache, reversible patch ownership; validate/retire options.
+  Check: failed protect/hook, wrong bytes, repeated apply/remove and option
+  recreation. Optional patches are disabled by default; do not blame them for
+  an otherwise unexplained default startup failure.
+
+F35 [P1 H] Custom RTTI/spawn internals retain unverified 2.5 assumptions
+  reverse/RTTIExtender.cpp:CreateSingleton, WorldFunctionalTests_*,
+  exEntitySpawnerSystem; reverse/NativeProxy.cpp custom bytecode.
+  Significant spawn offsets match retail code (above), but system+0xB8,
+  game-instance internal registries and every constructor/virtual-call contract
+  are not yet established. Several dereferences assume a class/system exists.
+  Query and hash matches cannot validate these internal layouts. NativeProxy
+  hand-built bytecode opcodes/flags also need an actual dispatch check.
+  GameCall<T> caches a relocation per function-pointer type rather than per
+  hash; current call signatures differ, but reusing a signature is a latent bug.
+  Fix: verify each accessed field/prototype against exact retail call sites,
+  add unconditional ABI assertions and null guards, use per-instance/hash cache,
+  fail an unsupported optional feature explicitly without guessing offsets.
+  Check: singleton registration, spawn/despawn/callback/cancel on new/load/exit,
+  unavailable systems, NativeProxy dispatch and two same-signature relocations.
+
+F36 [P1 H] Build success does not cover native behavioral dependency changes
+  cmake/CyberEngineTweaks.cmake, scripts/luajit_codegen.py, cmake/AbiChecks.cpp,
+  tests/test_cet.py. LuaJIT Windows GC64 cross-build, newer sol2 and pinned
+  ImGui/FreeType need behavioral validation; package tests do not exercise them.
+  General RED4EXT_ASSERT_OFFSET is disabled with Clang, including some CET
+  custom checks. Explicit root assertions protect key shared ABI facts only.
+  Fix: unconditional checks for all CET-accessed custom offsets/alignments and
+  native/Lua smoke tests for callbacks, exceptions, GC, FFI, JIT, SQLite,
+  Unicode/fonts and renderer backend behavior; retain Microsoft's runtime ABI.
+  Check: host native harness plus isolated Windows harness, then actual game on
+  Windows and Proton with JIT on/off. A JIT-off diagnostic is not a default fix.
+
+F37 [P1 C/H] Editor mutates engine strings outside the flat update transaction
+  overlay/widgets/TweakDBEditor.cpp:ImGui::InputTextCStr (29), CString editing
+  (1312). It const_casts engine-owned buffers; same-capacity edits write directly
+  into them while the helper reports modifications only on callback resize.
+  This bypasses flat replacement/cache ownership and can alter shared strings.
+  SortString also passes potentially negative UTF-8 char values to std::tolower.
+  Fix: owned editable string, compare and commit via validated flat transaction;
+  safe character conversion or explicit Unicode comparison policy.
+  Check: shorter/equal/longer Unicode edits, shared string values, canceled
+  edits, immutable input and repeated sorting; no original buffer write on cancel.
+
+External crash reports: leads, not diagnoses of this build
+
+The following official upstream reports inform the test matrix. None supplies
+a symbolized trace from this rebuilt DLL on 3.0.88.46235, so matching a symptom
+or old ASI offset does not prove any finding caused that report.
+
+- #1061: CET 1.37.1/game 2.31 main-menu/session teardown report in a heavily
+  modded setup. Exercise exit without loading a save; it is not proof of an
+  isolated CET 1.38.0/2.5 failure.
+  https://github.com/maximegmd/CyberEngineTweaks/issues/1061
+- #1047: older 2.31 exit crash with FSR 3.1 frame generation. Include FG and
+  renderer teardown, but do not infer the current cause from that combination.
+  https://github.com/maximegmd/CyberEngineTweaks/issues/1047
+- #1054/#1062: Proton startup/exit reports. Their version.dll/ASI load route
+  differs from our RED4ext adapter; test Proton independently.
+  https://github.com/maximegmd/CyberEngineTweaks/issues/1054
+  https://github.com/maximegmd/CyberEngineTweaks/issues/1062
+- #1010: older Special K/JIT interaction report; useful for an overlay/JIT
+  diagnostic matrix, not grounds for automatically disabling JIT on 2.5.
+  https://github.com/maximegmd/CyberEngineTweaks/issues/1010
+- #975: older viewport resize/AMD compatibility report; test window modes,
+  swapchain replacement and GPU vendors with the current rendering hooks.
+  https://github.com/maximegmd/CyberEngineTweaks/issues/975
+
+Prior integration validation is recorded in docs/cet-2.5-integration.txt. It
+predates the shared SDK transaction-system layer and used an isolated baseline.
+Do not silently treat those previous build artifacts as verification of today's
+combined checkout. This audit adds read-only compatibility evidence and seven
+isolated defect reproductions; it adds no new native fix or in-game evidence.

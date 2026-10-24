@@ -21,10 +21,11 @@ add_custom_command(OUTPUT "${luajit_gen}/src/lj_vm.obj"
   DEPENDS ${luajit_inputs} "${ESSENTIALS_ROOT}/scripts/luajit_codegen.py" VERBATIM)
 add_custom_target(cet_luajit_codegen DEPENDS "${luajit_gen}/src/lj_vm.obj")
 file(GLOB luajit_sources CONFIGURE_DEPENDS "${luajit}/src/lj_*.c" "${luajit}/src/lib_*.c")
-add_library(cet_luajit STATIC ${luajit_sources} "${luajit_gen}/src/lj_vm.obj")
+add_library(cet_luajit STATIC ${luajit_sources} "${luajit_gen}/src/lj_vm.obj" "${cet_src}/src/common/LuaJitFile.c")
 add_dependencies(cet_luajit cet_luajit_codegen)
 target_include_directories(cet_luajit SYSTEM PUBLIC "${luajit}/src" PRIVATE "${luajit_gen}/src")
-target_compile_definitions(cet_luajit PRIVATE _CRT_SECURE_NO_WARNINGS)
+target_compile_definitions(cet_luajit PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(cet_luajit PRIVATE "/FI${cet_src}/src/common/LuaJitFile.h")
 
 add_library(cet_sqlite STATIC "${dep}/cet-sqlite/sqlite3.c")
 target_include_directories(cet_sqlite SYSTEM PUBLIC "${dep}/cet-sqlite")
@@ -35,6 +36,7 @@ target_compile_definitions(cet_sqlite PRIVATE SQLITE_THREADSAFE=1 SQLITE_ENABLE_
 add_library(cet_imgui STATIC
   "${dep}/cet-imgui/imgui.cpp" "${dep}/cet-imgui/imgui_draw.cpp"
   "${dep}/cet-imgui/imgui_tables.cpp" "${dep}/cet-imgui/imgui_widgets.cpp"
+  "${dep}/cet-imgui/misc/cpp/imgui_stdlib.cpp"
   "${dep}/cet-imgui/imgui_demo.cpp" "${dep}/cet-imgui/misc/freetype/imgui_freetype.cpp")
 target_include_directories(cet_imgui SYSTEM PUBLIC "${dep}/cet-imgui")
 target_compile_definitions(cet_imgui PUBLIC IMGUI_USE_WCHAR32 IMGUI_ENABLE_FREETYPE
@@ -89,7 +91,7 @@ target_include_directories(CyberEngineTweaks SYSTEM PRIVATE
 target_precompile_headers(CyberEngineTweaks PRIVATE "${cet_src}/src/stdafx.h")
 target_compile_definitions(CyberEngineTweaks PRIVATE WINVER=0x0A00 _WIN32_WINNT=0x0A00
   WIN32_LEAN_AND_MEAN NOMINMAX UNICODE _UNICODE _CRT_SECURE_NO_WARNINGS
-  SOL_ALL_SAFETIES_ON SOL_LUAJIT=1 SOL_EXCEPTIONS_SAFE_PROPAGATION
+  SOL_ALL_SAFETIES_ON SOL_LUAJIT=1 SOL_EXCEPTIONS_SAFE_PROPAGATION=0
   SPDLOG_WCHAR_TO_UTF8_SUPPORT SPDLOG_WCHAR_FILENAMES SPDLOG_WCHAR_SUPPORT
   "$<$<CONFIG:Debug>:CET_DEBUG>")
 target_compile_options(CyberEngineTweaks PRIVATE /GR- /EHsc /bigobj /utf-8)

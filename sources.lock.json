@@ -144,6 +144,10 @@
         {
           "path": "patches/cyber-engine-tweaks/001-essentials.patch",
           "sha256": "6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4"
+        },
+        {
+          "path": "patches/cyber-engine-tweaks/002-runtime-stability.patch",
+          "sha256": "b64c62e4b3bc874de35a0256d2e050602290c8de26fe4f010086d435d2107931"
         }
       ],
       "provenance": {

@@ -27,12 +27,19 @@ identity stay consistent; do not create cumulative diffs over later layers.
 | codeware | KelpHect's [PR 63](https://github.com/psiberx/cp2077-codeware/pull/63), including contributed fixes | Explicit base-handle conversion under Clang |
 | tweak-xl | KelpHect's [PR 22](https://github.com/psiberx/cp2077-tweak-xl/pull/22) | Root build supplies the shared SDK |
 | input-loader | Pinned official upstream plus defensive behavior researched in Keen's InputLoaderReborn binary | Shared SDK v1 API adaptation; `002-re-input-hardening.patch` retains newer upstream startup/cache and action/id fixes; [binary evidence](../docs/input-loader-research.txt). `003-durable-input-pipeline.patch` implements transactional generation publication, deterministic snapshot merging and startup lifecycle fixes from the [2.5 audit](../docs/input-loader-2.5-audit.txt). |
-| cyber-engine-tweaks | Official v1.38.0 includes game 2.5 support | Loads through RED4ext and its shared SDK resolver; keeps upstream Lua paths; Clang/header casing fixes. The bundled ASI loader is excluded. Native integration needs in-game validation. |
+| cyber-engine-tweaks | Official v1.38.0 includes game 2.5 support | Loads through RED4ext and its shared SDK resolver; keeps upstream Lua paths; Clang/header casing fixes. `002-runtime-stability.patch` adds lifecycle, Lua/override, graphics, TweakDB, IO and configuration fixes; [implementation and evidence](../docs/cet-2.5-fix-status.txt). The bundled ASI loader is excluded. Game validation remains pending. |
 | red4ext-sdk | KelpHect's [retail layout update](https://github.com/wopss/RED4ext.SDK/pull/228), then [ArchiveScope::Mod correction](https://github.com/wopss/RED4ext.SDK/pull/229) | Correct RTTI include casing |
 
 Exact imported source revisions are retained in `sources.lock.json` provenance.
 These changes are not all original work by this project; preserve contributor
 credit and the [upstream license notices](../licenses/README.md).
+
+CET's stability layer is local work against the preserved integration layer,
+not an imported community fix or an upstream update. Its lock/queue and UTF-8
+file adapters are CET-owned; dependency sources and pins remain unchanged.
+Focused regressions exercise production helpers and Lua continuations. The
+[test scope](../tests/native/cet/README.txt) and implementation record retain
+the unresolved engine ABI/job-cycle questions and actual game-test limits.
 
 The plugins' community vendor-SDK gitlink bumps are deliberately excluded:
 all builds use the separate patched official SDK submodule. Build scripts,
