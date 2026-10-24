@@ -7,6 +7,9 @@ Evidence for this report: docs/legacy-plugin-compat-evidence.txt, entries E01-E2
 Later implementation investigation: docs/legacy-plugin-compat-readiness.txt
 (E22-E28, including the constructor-publication correction below).
 New experiment: docs/legacy-compat-mitigation-lab/README.txt.
+Official release follow-up: docs/red4ext-1.31.0-update.txt / evidence E29.
+RED4ext v1.31.0 keeps the researched runtime sources and SDK pin; the legacy ABI
+limitations below still apply. Historical lab sources/results remain intact.
 
 Finding
 -------

@@ -6,6 +6,8 @@ Scope: shared compatibility for unchanged plugins, not individual DLL patches.
 Companion plan: docs/legacy-plugin-compat-plan.txt
 Limitations follow-up: docs/legacy-plugin-compat-mitigations.txt
 Implementation readiness: docs/legacy-plugin-compat-readiness.txt
+Current loader baseline: official RED4ext v1.31.0; see E29 and
+docs/red4ext-1.31.0-update.txt. Historical experiment inputs remain unchanged.
 
 Conclusion
 ----------
@@ -352,6 +354,64 @@ Consequence: preserve the native-owned tail and use per-domain typed table slots
 The fake frame model does not establish the game's constructor/destructor or
 arbitrary opcode argument semantics.
 
+E29. Official RED4ext 1.31.0 preserves the researched runtime/SDK baseline.
+Status: verified against the official release API and fetched Git objects.
+The release was published on 2026-10-24 at 17:23:07 UTC. Our former loader pin
+47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6 already included its game-2.5 support.
+The release commit 9f135ac339b00c55a68d06ce7106e960dd82962a changes only
+.github/workflows/release.yml relative to that pin; src/, cmake/ and the root
+CMakeLists.txt have identical object identities. The release still selects SDK
+0f5eba42a4cf3a1161ad3de0b4ed6f1901ec169e, also official SDK HEAD when checked.
+Consequence: advance the loader/version/provenance baseline, retain our Clang
+and shared-SDK patches, and continue the same 2.31 -> 2.5 ABI implementation.
+This release supplies no legacy engine-ABI shim. It does not close G1-G5.
+Evidence: docs/red4ext-1.31.0-evidence.json and docs/red4ext-1.31.0-update.txt.
+
+E30. Reusable operation adapters and bounded live-view validation now execute.
+Status: current standalone implementation checks passed on 2026-10-24;
+no production loader, native Windows or game execution.
+Sources: compat/{include,src}/, tests/compatibility/{live_tests,function_tests,
+sdk_tests}.cpp, cmake/Compatibility.cmake, scripts/test-compatibility.py.
+
+The CPU differential oracle checks 171 encodings with 96 inputs each (16,416
+cases), comparing memory, GPR/XMM state and architecturally defined flags. It
+exposed false CMOV r32 upper-bit clearing, which is now covered by the emulator.
+This is finite instruction evidence, not proof of complete x64 semantics.
+Pointer-array preflight, contention/retirement, original-address promotion,
+canonical bounds, diagnostic overflow and foreign exception controls also pass.
+An injected native-backing access violation initially failed in the optimized
+SEH probe. Distinct non-inlined probes compiled with /EHa now report NativeFault
+without leaking an access lease or handler state, and subsequent access works.
+No atomicity/rollback guarantee against concurrently invalidated native storage
+is inferred. Native scalar object lifetime/synchronization remains a contract.
+
+The old-header fixture now uses reusable callback, frame, opcode-table and
+class/static-function adapters. Protected class/array views translate inline
+publication; retained metadata updates reach native backing without a manual
+barrier. All adapter resources exist before the fake native constructor runs.
+Prepublication failure cleans up; possible engine publication retains state on
+constructor failure or missing/failed detach. Separate process tests establish
+that published ownership survives loss of the public handle and is not destroyed
+at static shutdown. Real engine detach remains unknown. Scalar-only results,
+null opcode auxiliary arguments and registered pointer identities bound this
+initial operation contract; arbitrary opcodes/object graphs are not supported.
+
+Validation: portable Release core/live (2 runs), portable ASan/UBSan/LSan core/live
+(2 tests), nine Python schema tests, and all 9 Win64 runs under both Wine 11.20
+(Staging) and GE Wine 11.0 with Steam Runtime. Optimized and unoptimized actual
+old-header DLLs pass. Native-Windows CI remains pending.
+Local build-record SHA256 identities at validation:
+  portable: 2bdb281fb6b2b3b0ff13159ae34469bedefc33e617fa19b4df414a65cf9eb0ce
+  win64:    622c04fc78d760d35e9448be8f4e50e6c06ce8b9a5c9ee71907f439050a29923
+Runtime records: build/compat/portable/results-linux.json and
+build/compat/win64/results-{system-wine,ge-proton}.json. Sanitizer CTest evidence:
+build/compat/asan/Testing/Temporary/LastTest.log. The earlier native-fault failure
+is retained locally in build/compat/win64/native-fault-diagnostic.log.
+These generated records are local, not immutable checked-in laboratory bundles;
+reproduction commands and remaining contracts are in compat/README.txt.
+Consequence: proceed to growable-array/allocation lifetimes and virtual-call/
+object coverage; keep general admission disabled and G1-G5 open.
+
 Decision
 --------
 
@@ -390,5 +450,7 @@ Primary sources
   https://frida.re/docs/stalker/
 - Decoder candidate, no runtime pin selected:
   https://github.com/zyantific/zydis
+- Intel instruction semantics, including CMOV and defined/undefined flags:
+  https://www.intel.com/content/www/us/en/developer/articles/technical/intel-sdm.html
 - Header-generated call adapters and reverse callbacks, architectural precedent:
   https://raw.githubusercontent.com/FEX-Emu/FEX/main/ThunkLibs/README.md

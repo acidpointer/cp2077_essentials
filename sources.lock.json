@@ -11,7 +11,12 @@
       ],
       "provenance": {
         "port": "https://github.com/wopss/RED4ext/pull/154",
-        "commit": "47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6"
+        "commit": "47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6",
+        "upstream": "https://github.com/wopss/RED4ext",
+        "version_tag": "v1.31.0",
+        "release": "https://github.com/wopss/RED4ext/releases/tag/v1.31.0",
+        "release_commit": "9f135ac339b00c55a68d06ce7106e960dd82962a",
+        "notes": "Official 2.5 release. Relative to the previous 47ac01c pin, only upstream release automation changed; runtime sources, dependencies and SDK pin are identical. The local Clang patch is retained unchanged. See docs/red4ext-1.31.0-update.txt."
       }
     },
     "archive-xl": {

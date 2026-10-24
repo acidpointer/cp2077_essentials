@@ -1,0 +1,184 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Isolated compatibility core ABI profile",
+  "description": "Structural schema. generate_schema.py additionally checks semantic closure, coverage, overlaps, pointer contracts and identity uniqueness.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "scope",
+    "source_abi",
+    "target_abi",
+    "types",
+    "operations"
+  ],
+  "properties": {
+    "version": {
+      "const": 1
+    },
+    "scope": {
+      "const": "isolated-core"
+    },
+    "source_abi": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "target_abi": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+$"
+    },
+    "types": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "policy",
+          "guest_size",
+          "native_size",
+          "alignment",
+          "fields"
+        ],
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
+          },
+          "name": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "policy": {
+            "enum": [
+              "value",
+              "live_view",
+              "opaque"
+            ]
+          },
+          "guest_size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1024
+          },
+          "native_size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1024
+          },
+          "alignment": {
+            "enum": [
+              1,
+              2,
+              4,
+              8,
+              16
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name",
+                "guest",
+                "native",
+                "width",
+                "kind"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+                },
+                "guest": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1024
+                },
+                "native": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0,
+                  "maximum": 1024
+                },
+                "width": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 1024
+                },
+                "kind": {
+                  "enum": [
+                    "scalar",
+                    "pointer",
+                    "zero",
+                    "padding"
+                  ]
+                },
+                "pointee": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "nullable": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "operations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "primary",
+          "secondary",
+          "kind",
+          "signature",
+          "table_size"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+          },
+          "primary": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4294967295
+          },
+          "secondary": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{1,64}$"
+          },
+          "kind": {
+            "enum": [
+              "function",
+              "table"
+            ]
+          },
+          "signature": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_*,()]+$"
+          },
+          "table_size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 256
+          }
+        }
+      }
+    }
+  }
+}

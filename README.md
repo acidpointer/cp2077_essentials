@@ -23,13 +23,18 @@ and build tools**. It does not vendor the upstream source trees.
 
 | Project | Official source | Compatibility work |
 | --- | --- | --- |
-| RED4ext | [wopss/RED4ext](https://github.com/wopss/RED4ext) | [Merged 2.5 support](https://github.com/wopss/RED4ext/pull/154), local Clang fixes |
+| RED4ext | [wopss/RED4ext](https://github.com/wopss/RED4ext) | [Official v1.31.0 2.5 release](https://github.com/wopss/RED4ext/releases/tag/v1.31.0), local Clang fixes |
 | ArchiveXL | [psiberx/cp2077-archive-xl](https://github.com/psiberx/cp2077-archive-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-archive-xl/pull/31) |
 | Codeware | [psiberx/cp2077-codeware](https://github.com/psiberx/cp2077-codeware) | [Community 2.5 port](https://github.com/psiberx/cp2077-codeware/pull/63), explicit handle conversion |
 | TweakXL | [psiberx/cp2077-tweak-xl](https://github.com/psiberx/cp2077-tweak-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-tweak-xl/pull/22) |
 | Input Loader | [jackhumbert/cyberpunk2077-input-loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) | Shared SDK; audited input/cache fixes; game untested |
 | Cyber Engine Tweaks | [maximegmd/CyberEngineTweaks](https://github.com/maximegmd/CyberEngineTweaks) | Official v1.38.0 2.5 support; shared SDK and RED4ext plugin integration; game untested |
 | Shared SDK | [wopss/RED4ext.SDK](https://github.com/wopss/RED4ext.SDK) | [Retail layout fixes](https://github.com/wopss/RED4ext.SDK/pull/228), [archive scope fix](https://github.com/wopss/RED4ext.SDK/pull/229), include casing |
+
+RED4ext now uses the official v1.31.0 release baseline. Its runtime source and
+SDK pin match our previous 2.5-support commit; the [update audit](docs/red4ext-1.31.0-update.txt)
+records the comparison. This release does not translate older plugins' compiled
+engine layouts.
 
 The Gitlinks record exact official upstream commits. Compatibility changes are
 stored in [patches/](patches/README.md), with provenance in
@@ -219,8 +224,8 @@ timestamp or `dirty` suffix:
 
 | Archive | Purpose |
 | --- | --- |
-| `RED4ext-1.30.0-game2.5-mo2-rootbuilder.zip` | MO2 with Root Builder |
-| `RED4ext-1.30.0-game2.5-game-root.zip` | Manual game-root installation; alternative to Root Builder |
+| `RED4ext-1.31.0-game2.5-mo2-rootbuilder.zip` | MO2 with Root Builder |
+| `RED4ext-1.31.0-game2.5-game-root.zip` | Manual game-root installation; alternative to Root Builder |
 | `ArchiveXL-1.27.5-game2.5.zip` | ArchiveXL runtime |
 | `Codeware-1.20.6-game2.5.zip` | Codeware runtime |
 | `TweakXL-1.11.5-game2.5.zip` | TweakXL runtime |

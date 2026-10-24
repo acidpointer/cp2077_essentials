@@ -7,6 +7,10 @@ Source ABI examined: the SDK snapshot immediately before the 2.5 update,
 f9ad5334362a8a0815baf58f47615697485feb52, whose runtime list ends at 2.31.
 Follow-up to docs/legacy-plugin-compat-mitigations.txt and evidence E01-E21.
 New reproducible material: docs/legacy-compat-readiness-lab/.
+Release reconciliation: docs/red4ext-1.31.0-update.txt / evidence E29.
+The official v1.31.0 loader has the same runtime sources and SDK pin as this
+investigation. Historical inputs and G1-G5 remain unchanged; current runtime
+implementation progress is recorded separately in compat/README.txt.
 
 Finding
 -------

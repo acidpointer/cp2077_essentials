@@ -6,7 +6,20 @@ Evidence: docs/legacy-plugin-compat-evidence.txt
 Limitations/mitigations: docs/legacy-plugin-compat-mitigations.txt
 Implementation contracts and new evidence: docs/legacy-plugin-compat-readiness.txt
 Initial version pair: engine/SDK ABI 2.31 -> game 2.5 / 3.0.88.46235.
-This is a change plan. No production runtime or admission changes were made.
+Production integration baseline: official RED4ext v1.31.0, commit
+9f135ac339b00c55a68d06ce7106e960dd82962a. Its runtime sources and SDK pin match
+the previously researched 47ac01c commit; only release automation changed.
+See docs/red4ext-1.31.0-update.txt and evidence E29. The ABI pair is unchanged.
+This is a change plan. No production shim or admission changes were made.
+
+Implementation has started in compat/ with standalone tests/compatibility/.
+See compat/README.txt for the implemented P0/P1/P2 components and P3 live-view
+prototype, reproduction commands and remaining gates. The production loader
+has been advanced to the official release; the shim is still isolated from it.
+The latest implementation adds reusable construction/callback/frame/opcode
+adapters, instruction differential tests and native-fault recovery (E30).
+Next are growable arrays and allocation lifetimes, virtual-call/object coverage,
+then early loader routing. These additions do not complete P0-P3 acceptance.
 
 Design contract
 ---------------
@@ -174,6 +187,10 @@ E26 now demonstrates a bounded old-header chain against fake native services,
 including an adapted opcode table, nested frames and explicit array publication.
 Real constructors/destructors, additional publication paths and automatic
 coherence remain open; its retained-write negative control rejects copy-once.
+E30's implementation fixture now replaces that explicit publication barrier
+with protected class/array views and reusable operation adapters. Retained writes
+are coherent for the modeled fields. E26 remains an unchanged historical control;
+the game lifecycle and broader pointer/object coverage are still open.
 The single-fault MOV follow-up halves its matched measured cost but still needs
 exception controls and remains too expensive to assume suitable for hot paths.
 

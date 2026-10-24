@@ -1,0 +1,136 @@
+name: Compatibility core
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'compat/**'
+      - 'tests/compatibility/**'
+      - 'tests/test_compatibility.py'
+      - 'scripts/test-compatibility.py'
+      - 'cmake/Compatibility.cmake'
+      - 'cmake/toolchains/clang-cl-linux.cmake'
+      - 'sources/red4ext-sdk'
+      - 'sources.lock.json'
+      - 'patches/red4ext-sdk/**'
+      - '.github/workflows/compatibility.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'compat/**'
+      - 'tests/compatibility/**'
+      - 'tests/test_compatibility.py'
+      - 'scripts/test-compatibility.py'
+      - 'cmake/Compatibility.cmake'
+      - 'cmake/toolchains/clang-cl-linux.cmake'
+      - 'sources/red4ext-sdk'
+      - 'sources.lock.json'
+      - 'patches/red4ext-sdk/**'
+      - '.github/workflows/compatibility.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Prepare the pinned, patched SDK in this disposable CI checkout
+        run: |
+          git submodule update --init sources/red4ext-sdk
+          python scripts/patches.py apply red4ext-sdk
+      - name: Validate profiles and portable core
+        run: |
+          python -m unittest discover -s tests -p test_compatibility.py -v
+          python scripts/test-compatibility.py --platform portable --label linux
+      - name: Preserve the exact patched headers for the Windows job
+        # Patch helpers use Linux temporary-file semantics. Windows consumes
+        # their verified output rather than applying a different patch stack.
+        run: |
+          tar -cf build/compat/patched-sdk.tar -C sources/red4ext-sdk include
+          sha256sum build/compat/patched-sdk.tar > build/compat/patched-sdk.sha256
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          lock = json.loads(Path('sources.lock.json').read_text())
+          digest = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          Path('build/compat/sdk-lock.sha256').write_text(digest + '\n')
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-sdk-input
+          path: |
+            build/compat/patched-sdk.tar
+            build/compat/patched-sdk.sha256
+            build/compat/sdk-lock.sha256
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-linux-results
+          path: |
+            build/compat/portable/*.log
+            build/compat/portable/*.json
+          if-no-files-found: ignore
+          retention-days: 7
+
+  windows:
+    needs: portable
+    runs-on: windows-2022
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          repository: wopss/RED4ext.SDK
+          ref: f9ad5334362a8a0815baf58f47615697485feb52
+          path: build/compat/historical
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/download-artifact@v4
+        with:
+          name: compatibility-sdk-input
+          path: build/compat/sdk-input
+      - name: Verify and unpack the patched SDK headers
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, json, tarfile
+          base = Path('build/compat/sdk-input')
+          expected = (base / 'patched-sdk.sha256').read_text().split()[0]
+          if hashlib.sha256((base / 'patched-sdk.tar').read_bytes()).hexdigest() != expected:
+              raise RuntimeError('SDK artifact checksum mismatch')
+          lock = json.loads(Path('sources.lock.json').read_text())
+          identity = hashlib.sha256(json.dumps(lock, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+          if identity != (base / 'sdk-lock.sha256').read_text().strip():
+              raise RuntimeError('SDK artifact belongs to a different lockfile')
+          with tarfile.open(base / 'patched-sdk.tar') as archive:
+              archive.extractall('sources/red4ext-sdk', filter='data')
+      - name: Build and run with ClangCL and the Microsoft ABI
+        run: >-
+          python scripts/test-compatibility.py
+          --old-sdk build/compat/historical
+          --generator "Visual Studio 17 2022"
+          --label native-windows
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: compatibility-windows-results
+          path: |
+            build/compat/win64/*.log
+            build/compat/win64/*.json
+          if-no-files-found: ignore
+          retention-days: 7

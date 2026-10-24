@@ -1,0 +1,105 @@
+RED4ext 1.31.0 baseline update
+=============================
+
+Checked on 2026-10-24 after the official release at 17:23:07 UTC.
+Release: https://github.com/wopss/RED4ext/releases/tag/v1.31.0
+Machine-readable comparison: docs/red4ext-1.31.0-evidence.json
+
+What changed
+------------
+
+Previous loader pin: 47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6
+Official v1.31.0 pin: 9f135ac339b00c55a68d06ce7106e960dd82962a
+
+The release includes the same PR #154 game-2.5 support that this repository
+already used: minimum game version 2.5 and coexistence of the in-game mod menu
+with redscript. Relative to our previous pin, the only changed path is
+.github/workflows/release.yml. The two intervening commits add release
+attestation and Nexus upload. The src/ and cmake/ trees and CMakeLists.txt are
+identical; their Git object identities are recorded in the evidence file.
+
+The release's own SDK dependency still pins:
+  0f5eba42a4cf3a1161ad3de0b4ed6f1901ec169e
+This was also the official SDK HEAD when checked. There is no new SDK layout
+to port to. Our three ordered SDK patches remain necessary: retail layout and
+scope/include corrections, DynArray lifetime, and the transaction-system ABI.
+No SDK patch bytes, upstream pins for other projects, or ABI assertions change.
+
+The loader's existing 001-essentials.patch contains Clang portability fixes.
+It was exported/verified, safely unapplied, then reapplied to the release pin.
+Its SHA256 remains:
+  e45bd42d06398c670dbc5b07113d02b265022d49ce3c21388e110fb72ef0236e
+The root Gitlink records the release commit; no upstream child commit is made.
+The release tag supplies the correct 1.31.0 binary/package version.
+
+Local builds still use the single patched shared SDK. They are not byte-identical
+to upstream's official release assets. Asset digests in the evidence file are
+upstream metadata, not a claim of downloading or verifying those ZIPs.
+
+Effect on legacy compatibility implementation
+--------------------------------------------
+
+The supported pair remains SDK/engine ABI 2.31 -> game 2.5 / 3.0.88.46235.
+Historical fixture headers stay pinned to f9ad5334362a8a0815baf58f47615697485feb52.
+The new release adds no old-layout adapter, callback bridge, protected views,
+instruction translator, or old-plugin admission policy. Loader support for the
+current game does not repair ABI assumptions compiled into an older plugin.
+
+Consequently the schema, field offsets, typed entry thunks, callback ownership,
+frame marshalling, canonical pointer rules and native publication constraints
+remain applicable. P4 should integrate against v1.31.0 rather than the former
+development commit; the planned runtime source touch points are unchanged.
+G1-G5 in docs/legacy-plugin-compat-readiness.txt remain open where previously
+unproved. The official release alone supplies none of the missing acceptance
+evidence for the shim.
+
+Preserve historical experiments and their checksums. The old negative control
+showing stale retained writes is still valid for snapshots. The implementation
+in compat/ now also has protected live views and an instruction-mediation
+prototype; its optimized and unoptimized old-SDK chains pass without the manual
+publication barrier under system Wine and GE. That is a newer isolated result, not a
+replacement for the historical experiment or a production-completeness claim.
+See compat/README.txt for current scope and outstanding backend validation.
+
+Validation
+----------
+
+Completed on 2026-10-24:
+
+- RED4ext Release rebuild with clang-cl/lld-link and the shared patched SDK:
+  passed. Runtime, game-root and symbol ZIPs carry version 1.31.0.
+- Independent reconstruction of the unchanged loader patch on the new pin:
+  passed. Official source-boundary and root/submodule pin audit: passed.
+- Five-project dist/release verification: source/SDK identities, AMD64 DLLs,
+  exports, matching PDBs, package payloads and all eleven ZIP checksums passed.
+  The old assembled distribution initially contained stale ArchiveXL/SDK
+  provenance, so the collector correctly refused it. Reassembly used the current
+  already-built ArchiveXL, Codeware, TweakXL and Input Loader package records,
+  all matching the current source/SDK fingerprints. Those projects were not
+  rebuilt. Ongoing CET source/build work is preserved and excluded from this
+  five-project collection; this is not a new six-project CET integration result.
+- Thirteen release/package regression tests and nine compatibility schema tests:
+  passed. Portable Release compatibility build/core tests: passed.
+- The current four Win64 compatibility runs pass on both Wine 11.20 (Staging)
+  and GE-Proton11-11 / Wine 11.0 (Staging). The SDK chain mediates 14 accesses
+  with optimization and 19 without, with no manual publication barrier. These
+  are correctness-fixture access counts, not game performance measurements.
+  System-Wine results preceded the pin move; GE was rerun afterward with the
+  same source/binary identities. The isolated target does not link the loader.
+
+Records: build/logs/red4ext-1.31.0-update.log,
+build/compat/win64/build-record.json and results-{system-wine,ge-proton}.json,
+build/compat/portable/results-linux.json, and dist/release/manifest.json.
+The build log retains the initial collector rejection; the final manifest and
+successful verifier describe the completed reassembly.
+
+No game startup, gameplay, save/load, MO2 installation or publication is part
+of this update. Native Windows and real-game shim integration remain untested.
+
+Primary sources
+---------------
+
+https://github.com/wopss/RED4ext/releases/tag/v1.31.0
+https://github.com/wopss/RED4ext/compare/47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6...9f135ac339b00c55a68d06ce7106e960dd82962a
+https://github.com/wopss/RED4ext/blob/9f135ac339b00c55a68d06ce7106e960dd82962a/cmake/deps/RED4extSdk.cmake
+https://github.com/wopss/RED4ext.SDK/commit/0f5eba42a4cf3a1161ad3de0b4ed6f1901ec169e

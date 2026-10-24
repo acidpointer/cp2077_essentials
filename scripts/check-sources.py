@@ -16,7 +16,7 @@ UPSTREAMS = {
 }
 ROOT_FILES = {'.gitattributes', '.gitignore', '.gitmodules', '.vscode/settings.json', 'AGENTS.md',
               'CMakeLists.txt', 'README.md', 'build-linux.sh', 'sources.lock.json'}
-ROOT_DIRECTORIES = {'.github', 'cmake', 'docs', 'licenses', 'patches', 'scripts', 'tests'}
+ROOT_DIRECTORIES = {'.github', 'cmake', 'compat', 'docs', 'licenses', 'patches', 'scripts', 'tests'}
 
 
 def audit():

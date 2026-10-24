@@ -1,0 +1,50 @@
+{
+  "checked_on": "2026-10-24",
+  "release_url": "https://github.com/wopss/RED4ext/releases/tag/v1.31.0",
+  "published_at": "2026-10-24T17:23:07Z",
+  "previous_loader_commit": "47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6",
+  "release_loader_commit": "9f135ac339b00c55a68d06ce7106e960dd82962a",
+  "upstream_sdk_commit": "0f5eba42a4cf3a1161ad3de0b4ed6f1901ec169e",
+  "compare_url": "https://github.com/wopss/RED4ext/compare/47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6...9f135ac339b00c55a68d06ce7106e960dd82962a",
+  "changed_paths": [
+    ".github/workflows/release.yml"
+  ],
+  "commits": [
+    {
+      "commit": "124ee0239b2b174af3a0106c54bc2a3c4db66344",
+      "subject": "Add build provenance attestation to release (#157)"
+    },
+    {
+      "commit": "9f135ac339b00c55a68d06ce7106e960dd82962a",
+      "subject": "Add Nexus upload to release workflow (#156)"
+    }
+  ],
+  "trees": {
+    "src": {
+      "previous": "af1d92345515d9bd17d9f3ae2eb4c5f71be5f73b",
+      "release": "af1d92345515d9bd17d9f3ae2eb4c5f71be5f73b"
+    },
+    "cmake": {
+      "previous": "51a4ea71553e2c9380226eeea0c1f0018aa2cbcd",
+      "release": "51a4ea71553e2c9380226eeea0c1f0018aa2cbcd"
+    },
+    "CMakeLists.txt": {
+      "previous": "76dc61137cc05d4da64cdc96edeaa34469dbc731",
+      "release": "76dc61137cc05d4da64cdc96edeaa34469dbc731"
+    }
+  },
+  "local_loader_patch_sha256": "e45bd42d06398c670dbc5b07113d02b265022d49ce3c21388e110fb72ef0236e",
+  "official_release_assets": [
+    {
+      "name": "red4ext-1.31.0.zip",
+      "digest": "sha256:b9ae4351f547f90af58dfbf7445d45c55cd5ba24fbee27fb16fb5d91e9df621e",
+      "url": "https://github.com/wopss/RED4ext/releases/download/v1.31.0/red4ext-1.31.0.zip"
+    },
+    {
+      "name": "red4ext-symbols-1.31.0.zip",
+      "digest": "sha256:3125ecfb9f81d6ad3d2de7e066e2419bf022034578d6673d49b367d0f624d598",
+      "url": "https://github.com/wopss/RED4ext/releases/download/v1.31.0/red4ext-symbols-1.31.0.zip"
+    }
+  ],
+  "asset_note": "Upstream asset digests are release metadata, not a locally verified download. Local packages are rebuilt with the shared patched SDK."
+}

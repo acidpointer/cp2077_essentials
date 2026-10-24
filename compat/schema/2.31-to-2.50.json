@@ -1,0 +1,550 @@
+{
+  "version": 1,
+  "scope": "isolated-core",
+  "source_abi": "cp2077-2.31",
+  "target_abi": "cp2077-2.5-3.0.88.46235",
+  "types": [
+    {
+      "id": 1,
+      "name": "StackFrame",
+      "policy": "value",
+      "guest_size": 104,
+      "native_size": 168,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "code",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 7,
+          "nullable": false
+        },
+        {
+          "name": "func",
+          "guest": 8,
+          "native": 8,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 2,
+          "nullable": true
+        },
+        {
+          "name": "localVars",
+          "guest": 16,
+          "native": 16,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 6,
+          "nullable": true
+        },
+        {
+          "name": "params",
+          "guest": 24,
+          "native": 24,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 6,
+          "nullable": true
+        },
+        {
+          "name": "unk20",
+          "guest": 32,
+          "native": 32,
+          "width": 8,
+          "kind": "zero"
+        },
+        {
+          "name": "unk28",
+          "guest": 40,
+          "native": 40,
+          "width": 8,
+          "kind": "zero"
+        },
+        {
+          "name": "data",
+          "guest": 48,
+          "native": 48,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 6,
+          "nullable": true
+        },
+        {
+          "name": "dataType",
+          "guest": 56,
+          "native": 56,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 4,
+          "nullable": true
+        },
+        {
+          "name": "context",
+          "guest": 64,
+          "native": 64,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 5,
+          "nullable": true
+        },
+        {
+          "name": "parent",
+          "guest": 72,
+          "native": 72,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 1,
+          "nullable": true
+        },
+        {
+          "name": "unk50",
+          "guest": 80,
+          "native": 80,
+          "width": 2,
+          "kind": "zero"
+        },
+        {
+          "name": "padding52",
+          "guest": 82,
+          "native": null,
+          "width": 6,
+          "kind": "padding"
+        },
+        {
+          "name": "unk58",
+          "guest": 88,
+          "native": 88,
+          "width": 8,
+          "kind": "zero"
+        },
+        {
+          "name": "paramFlags",
+          "guest": 96,
+          "native": 96,
+          "width": 2,
+          "kind": "scalar"
+        },
+        {
+          "name": "currentParam",
+          "guest": 98,
+          "native": 98,
+          "width": 1,
+          "kind": "scalar"
+        },
+        {
+          "name": "useDirectData",
+          "guest": 99,
+          "native": 99,
+          "width": 1,
+          "kind": "scalar"
+        },
+        {
+          "name": "padding64",
+          "guest": 100,
+          "native": null,
+          "width": 4,
+          "kind": "padding"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Function",
+      "policy": "live_view",
+      "guest_size": 192,
+      "native_size": 256,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "fullName",
+          "guest": 8,
+          "native": 8,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "shortName",
+          "guest": 16,
+          "native": 16,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "returnType",
+          "guest": 24,
+          "native": 24,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 9,
+          "nullable": true
+        },
+        {
+          "name": "unk20",
+          "guest": 32,
+          "native": 32,
+          "width": 8,
+          "kind": "zero"
+        },
+        {
+          "name": "paramsData",
+          "guest": 40,
+          "native": 40,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 10,
+          "nullable": true
+        },
+        {
+          "name": "paramsCounts",
+          "guest": 48,
+          "native": 48,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "localsData",
+          "guest": 56,
+          "native": 56,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 10,
+          "nullable": true
+        },
+        {
+          "name": "localsCounts",
+          "guest": 64,
+          "native": 64,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "flags",
+          "guest": 168,
+          "native": 168,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "unkAC",
+          "guest": 172,
+          "native": 172,
+          "width": 4,
+          "kind": "zero"
+        },
+        {
+          "name": "parent",
+          "guest": 176,
+          "native": 240,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 3,
+          "nullable": true
+        },
+        {
+          "name": "regIndex",
+          "guest": 184,
+          "native": 248,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "paddingBC",
+          "guest": 188,
+          "native": null,
+          "width": 4,
+          "kind": "padding"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Class",
+      "policy": "live_view",
+      "guest_size": 720,
+      "native_size": 720,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "parent",
+          "guest": 16,
+          "native": 16,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 3,
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "guest": 24,
+          "native": 24,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "computedName",
+          "guest": 32,
+          "native": 32,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "propsData",
+          "guest": 40,
+          "native": 40,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 10,
+          "nullable": true
+        },
+        {
+          "name": "propsCounts",
+          "guest": 48,
+          "native": 48,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "overriddenPropsData",
+          "guest": 56,
+          "native": 56,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 10,
+          "nullable": true
+        },
+        {
+          "name": "overriddenPropsCounts",
+          "guest": 64,
+          "native": 64,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "funcsData",
+          "guest": 72,
+          "native": 72,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 8,
+          "nullable": true
+        },
+        {
+          "name": "funcsCounts",
+          "guest": 80,
+          "native": 80,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "staticFuncsData",
+          "guest": 88,
+          "native": 88,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 8,
+          "nullable": true
+        },
+        {
+          "name": "staticFuncsCounts",
+          "guest": 96,
+          "native": 96,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "size",
+          "guest": 104,
+          "native": 104,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "holderSize",
+          "guest": 108,
+          "native": 108,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "flags",
+          "guest": 112,
+          "native": 112,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "alignment",
+          "guest": 116,
+          "native": 116,
+          "width": 4,
+          "kind": "scalar"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "RttiType",
+      "policy": "opaque",
+      "guest_size": 0,
+      "native_size": 0,
+      "alignment": 1,
+      "fields": []
+    },
+    {
+      "id": 5,
+      "name": "Instance",
+      "policy": "opaque",
+      "guest_size": 0,
+      "native_size": 0,
+      "alignment": 1,
+      "fields": []
+    },
+    {
+      "id": 6,
+      "name": "Bytes",
+      "policy": "opaque",
+      "guest_size": 0,
+      "native_size": 0,
+      "alignment": 1,
+      "fields": []
+    },
+    {
+      "id": 7,
+      "name": "Bytecode",
+      "policy": "opaque",
+      "guest_size": 0,
+      "native_size": 0,
+      "alignment": 1,
+      "fields": []
+    },
+    {
+      "id": 8,
+      "name": "FunctionPointer",
+      "policy": "live_view",
+      "guest_size": 8,
+      "native_size": 8,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "value",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 2,
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Property",
+      "policy": "live_view",
+      "guest_size": 48,
+      "native_size": 48,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "type",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 4,
+          "nullable": true
+        },
+        {
+          "name": "name",
+          "guest": 8,
+          "native": 8,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "group",
+          "guest": 16,
+          "native": 16,
+          "width": 8,
+          "kind": "scalar"
+        },
+        {
+          "name": "parent",
+          "guest": 24,
+          "native": 24,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 3,
+          "nullable": true
+        },
+        {
+          "name": "valueOffset",
+          "guest": 32,
+          "native": 32,
+          "width": 4,
+          "kind": "scalar"
+        },
+        {
+          "name": "padding24",
+          "guest": 36,
+          "native": null,
+          "width": 4,
+          "kind": "padding"
+        },
+        {
+          "name": "flags",
+          "guest": 40,
+          "native": 40,
+          "width": 8,
+          "kind": "scalar"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "PropertyPointer",
+      "policy": "live_view",
+      "guest_size": 8,
+      "native_size": 8,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "value",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 9,
+          "nullable": true
+        }
+      ]
+    }
+  ],
+  "operations": [
+    {
+      "id": "Memory_Vault_Alloc",
+      "primary": 2418676960,
+      "secondary": "3ac84f5ddb21c5843971094721376d1d489049aec85fc75667cd52efcacb33ff",
+      "kind": "function",
+      "signature": "void(vault*,allocation_out*,u64)",
+      "table_size": 0
+    },
+    {
+      "id": "CClassStaticFunction_ctor",
+      "primary": 2920426135,
+      "secondary": "2beb917bfec394b2b1de6ff4cb4b9a8059db55415b65c23b69eae924c8322621",
+      "kind": "function",
+      "signature": "function*(function*,class*,u64,u64,script_callback,u32)",
+      "table_size": 0
+    },
+    {
+      "id": "OpcodeHandlers",
+      "primary": 961751128,
+      "secondary": "20091dab1c83e661c4efc71a243360f03d3ad4a80d7859b087691ba9e054480d",
+      "kind": "table",
+      "signature": "void(instance*,frame*,out*,aux*)",
+      "table_size": 256
+    }
+  ]
+}

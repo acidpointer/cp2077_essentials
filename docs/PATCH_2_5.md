@@ -3,10 +3,16 @@
 Investigated on 2026-10-23 against game file version **3.0.88.46235** and RED4ext
 commit **47ac01cd1d04a33f1748d1ebf8d8bf64814ee6c6**.
 
-## Fixes already in this checkout
+Update on 2026-10-24: the checkout now pins the official
+[v1.31.0 release](https://github.com/wopss/RED4ext/releases/tag/v1.31.0), commit
+`9f135ac339b00c55a68d06ce7106e960dd82962a`. Runtime source and the upstream SDK pin
+are unchanged from the investigated commit; only upstream release automation
+differs. See the [update audit](red4ext-1.31.0-update.txt). Original logs and
+measurements below retain their historical versions.
 
-[RED4ext PR #154](https://github.com/wopss/RED4ext/pull/154) is already merged at
-HEAD. The official [build for that commit](https://github.com/wopss/RED4ext/actions/runs/39823025406)
+## Fixes already in the investigated checkout
+
+[RED4ext PR #154](https://github.com/wopss/RED4ext/pull/154) was already merged in the investigated commit. The official [build for that commit](https://github.com/wopss/RED4ext/actions/runs/39823025406)
 passed. This is newer code than the v1.30.0 release tag even though its base
 version remains 1.30.0; Git metadata distinguishes the development build.
 
