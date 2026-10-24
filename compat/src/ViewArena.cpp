@@ -49,11 +49,11 @@ Error ViewArena::ValidateAllocation(void* guest, uint32_t domain, size_t bytes)
     if (slot.state!=State::Provisional) return Error::Retired;
     return slot.domain->id()==domain && slot.bytes==bytes ? Error::None : Error::IdentityMismatch;
 }
-Error ViewArena::Promote(void* guest, TypeId id, void* native, size_t count, uint32_t expectedDomain)
+Error ViewArena::Promote(void* guest, TypeId id, void* native, size_t count, uint32_t expectedDomain, uintptr_t virtualTable)
 {
     const auto* type = schema_.Find(id);
     if (!type || !count || type->guest_size > stride_/count) return Error::InvalidRange;
-    LiveMemory::Mapping part{0,0,type,reinterpret_cast<uintptr_t>(guest),reinterpret_cast<uintptr_t>(native),count};
+    LiveMemory::Mapping part{0,0,type,reinterpret_cast<uintptr_t>(guest),reinterpret_cast<uintptr_t>(native),count,false,virtualTable};
     return PromoteParts(guest,{&part,1},expectedDomain);
 }
 Error ViewArena::PromoteArray(void* guest, TypeId id, void* native, size_t count, TypeId allocatorSlot, uint32_t expectedDomain)
@@ -99,7 +99,7 @@ Error ViewArena::PromoteParts(void* guest, std::span<const LiveMemory::Mapping> 
     for(size_t i=0;i<parts.size();++i)slot.mappings[i]=maps[i].guest;
     slot.mappingCount=parts.size();slot.state=State::Live;return Error::None;
 }
-void* ViewArena::Borrow(Domain::Ptr domain, TypeId id, void* native, size_t count)
+void* ViewArena::Borrow(Domain::Ptr domain, TypeId id, void* native, size_t count, uintptr_t virtualTable)
 {
     const auto* type = schema_.Find(id);
     if (!type || !count || type->guest_size > stride_ / count) throw Failure(Error::InvalidRange);
@@ -110,10 +110,16 @@ void* ViewArena::Borrow(Domain::Ptr domain, TypeId id, void* native, size_t coun
         if (reinterpret_cast<uintptr_t>(native)>UINTPTR_MAX-(count-1)*type->native_size ||
             memory_.Translate(domain->id(),id,Direction::ToGuest,reinterpret_cast<uintptr_t>(native)+(count-1)*type->native_size,end)!=Error::None ||
             end!=existing+(count-1)*type->guest_size) throw Failure(Error::InvalidRange);
+        if (virtualTable)
+        {
+            uintptr_t table{};
+            Check(memory_.Read(existing,std::as_writable_bytes(std::span(&table,1))));
+            if (table!=virtualTable) throw Failure(Error::IdentityMismatch);
+        }
         return reinterpret_cast<void*>(existing);
     }
     auto* guest = Allocate(std::move(domain), type->guest_size * count);
-    auto result = Promote(guest, id, native, count);
+    auto result = Promote(guest, id, native, count, 0, virtualTable);
     if (result != Error::None) { (void)Retire(guest); throw Failure(result); }
     return guest;
 }

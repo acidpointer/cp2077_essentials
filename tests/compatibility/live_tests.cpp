@@ -253,6 +253,27 @@ static void Retirement()
     Require(!bad && retiredValue==completed && backing.value[0]==retiredValue,"retirement drains atomic accesses");
     std::puts("PASS concurrent native atomics and retirement");
 }
+static void VirtualIdentity()
+{
+    LiveMemory memory(profile::Core,8);
+    alignas(8) std::array<uintptr_t,90> cls{};
+    constexpr uintptr_t guest=0x10000, table=0x20000;
+    cls[0]=0xBAD000;
+    Check(memory.Add({1,1,profile::Core.Find(profile::Class),guest,reinterpret_cast<uintptr_t>(cls.data()),1,false,table}));
+    uintptr_t value{};
+    Check(memory.Read(guest,std::as_writable_bytes(std::span(&value,1))));
+    Require(value==table && cls[0]==0xBAD000,"guest virtual table never exposes or alters native table");
+    Check(memory.Translate(1,profile::RttiType,Direction::ToNative,guest,value));
+    Require(value==reinterpret_cast<uintptr_t>(cls.data()),"derived to base native identity");
+    Check(memory.Translate(1,profile::RttiType,Direction::ToGuest,value,value));
+    Require(value==guest,"base to canonical derived guest identity");
+    Require(memory.Write(guest,std::as_bytes(std::span(&value,1)))==Error::UnsupportedAccess,"virtual table is immutable");
+    Require(memory.Translate(1,profile::Function,Direction::ToNative,guest,value)==Error::UnknownPointer,"unrelated type rejects");
+    Require(memory.Add({1,2,profile::Core.Find(profile::Property),0x30000,0x40000,1,false,table})==Error::InvalidSchema,"unreviewed virtual table rejects");
+    Check(memory.Retire(1,guest,1));
+    Require(memory.Translate(1,profile::RttiType,Direction::ToNative,guest,value)==Error::UnknownPointer,"retirement closes base aliases");
+    std::puts("PASS virtual identity: immutable tables, canonical base aliases, retirement");
+}
 static void CompoundMappings()
 {
     LiveMemory memory(profile::Core,6);
@@ -411,7 +432,7 @@ static void WindowsViews()
 #endif
 int main()
 {
-    try { Hardware(); Mappings(); CompoundMappings(); Retirement(); Rejections();
+    try { Hardware(); Mappings(); CompoundMappings(); Retirement(); VirtualIdentity(); Rejections();
 #ifdef _WIN32
         WindowsViews();
 #endif

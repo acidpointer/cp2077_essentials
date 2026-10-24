@@ -9,6 +9,17 @@ const Type* Schema::Find(TypeId id) const noexcept
     for (const auto& type : types) if (type.id == id) return &type;
     return nullptr;
 }
+bool Schema::IsA(TypeId actual, TypeId requested) const noexcept
+{
+    for(size_t depth=0;depth<types.size();++depth)
+    {
+        if(actual==requested)return true;
+        const auto* type=Find(actual);
+        if(!type || !type->base_type)return false;
+        actual=type->base_type;
+    }
+    return false;
+}
 
 Error Schema::Validate() const noexcept
 {
@@ -22,6 +33,13 @@ Error Schema::Validate() const noexcept
             (type.alignment & (type.alignment - 1))) return Error::InvalidSchema;
         for (size_t j = 0; j < i; ++j)
             if (types[j].id == type.id || types[j].name == type.name) return Error::InvalidSchema;
+        if(type.base_type)
+        {
+            const auto* base=Find(type.base_type);
+            if(!base || type.policy!=Policy::LiveView || base->policy!=Policy::Opaque || base->guest_size>type.guest_size ||
+               base->native_size>type.native_size || type.alignment<base->alignment || IsA(base->id,type.id))
+                return Error::InvalidSchema;
+        }
         if (type.policy == Policy::Opaque)
         {
             if (!type.fields.empty()) return Error::InvalidSchema;
@@ -35,7 +53,10 @@ Error Schema::Validate() const noexcept
         {
             const auto& field = type.fields[index];
             if (field.kind != FieldKind::Scalar && field.kind != FieldKind::Pointer &&
-                field.kind != FieldKind::Zero && field.kind != FieldKind::Padding) return Error::InvalidSchema;
+                field.kind != FieldKind::Zero && field.kind != FieldKind::Padding && field.kind != FieldKind::Vtable)
+                return Error::InvalidSchema;
+            if(field.kind==FieldKind::Vtable && (type.policy!=Policy::LiveView || field.width!=8 ||
+               field.guest_offset || field.native_offset))return Error::InvalidSchema;
             if (field.name.empty() || !field.width || field.guest_offset > type.guest_size ||
                 field.width > type.guest_size - field.guest_offset) return Error::InvalidSchema;
             for (size_t earlier = 0; earlier < index; ++earlier)

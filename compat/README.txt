@@ -52,6 +52,41 @@ CallbackBridge:
   Logical ownership does not acquire an OS module reference. Loader integration
   must keep code mapped and must not run plugin Unload until CanUnload is true.
 
+RttiAdapter/PropertyAdapter/ModulePin:
+  Compiler-built historical virtual tables now cover RTTI type/class/async-ID
+  lookup, script-name lookup/conversion, common IType metadata, and register /
+  post-register callbacks. The old destructor slot remains at 0x138; the native
+  2.5 table moved it to 0x158. The by-value old callback has a 32-byte payload
+  and 0x28 total size. Its payload is copied through the old handler and consumed
+  inside the retained domain before the compiler destroys the parameter.
+  Native callback sinks receive an owned closure for constructing their 0x48
+  callback, including when a sink publishes before throwing.
+
+  Guest vptr reads return immutable compiler-built tables, never native vptrs.
+  Class and common type views share canonical zero-offset IType identities.
+  No direct access to private CRTTISystem maps is granted. Unsupported virtual
+  operations throw UnknownOperation; deleting borrowed singletons/types is a
+  fatal contract violation. Tables use a bounded, never-reused bank. Unpublished
+  retirement requires drained callers and tombstones cached entries; callback
+  publication retains the adapter and backing for the process lifetime.
+
+  PropertyAdapter promotes a constructed native property before old inline
+  construction writes its fields. The allocator boundary must identify the
+  RTTIProperty pool explicitly; size equality does not identify a property.
+  Construction/mapping failures destroy provisional native backing. Publish
+  must precede returning the guest allocation: inline construction can expose
+  it through a class array without another engine call. Published properties
+  remain resident because no native removal/drain contract is established.
+  Property cleanup services must not throw; adapter handles have one owner on
+  the control plane.
+
+  ModulePin acquires a real OS module reference from an address. Keep pins in
+  the shared lifetime owner until all defining-module calls/destructors drain.
+  Acquisition/release is a control-plane operation, not notification/VEH work.
+  It does not suppress plugin Unload or automatically discover dependencies;
+  both still require loader integration. Do not confuse an OS reference with
+  preservation of the plugin's own application state.
+
 CallbackAdapter/FrameAdapters/FunctionAdapter:
   Reusable adapters now own the old-header chain's callback, frame, opcode and
   class/static-function construction boundaries. The fake engine supplies native
@@ -124,6 +159,8 @@ ObjectRegistry:
   preserve native lifetimes for any use of translated pointers beyond a guard,
   retire mappings before freeing backing, and reserve guest addresses against
   reuse. This synchronized control-plane registry is NOT a VEH-safe lookup index.
+  Reviewed zero-offset opaque base aliases share the concrete mapping. A base
+  alias does not inherit a concrete type's linear-byte interior permission.
 
 ValueMarshaller/BorrowedValue:
   Conversion validates in bounded scratch space before writing destination
@@ -221,12 +258,13 @@ Test coverage and remaining implementation
 -----------------------------------------
 
 On 2026-10-25, portable Release and ASan/UBSan/LSan core/live-memory checks passed.
-All eleven Win64 runs passed under Wine 11.20 (Staging) and GE Wine 11.0 through
-Steam Runtime, including optimized/unoptimized actual old-header array DLLs.
-Ten Python schema tests passed. The earlier core results remain recorded in E30.
+All fourteen Win64 runs passed under Wine 11.20 (Staging) and GE Wine 11.0 through
+Steam Runtime, including optimized/unoptimized actual old-header registration
+and array DLLs. Eleven Python schema tests passed. Earlier results remain
+recorded in E30/E31.
 Current build and run identities are under build/compat/{portable,win64}; the
 sanitizer CTest record is under build/compat/asan/Testing/Temporary/LastTest.log.
-See evidence E31 for current build identities. The earlier official-release
+See evidence E32 for current build identities. The earlier official-release
 validation remains historical in docs/red4ext-1.31.0-update.txt.
 Native Windows CI is configured but has not run in this session.
 
@@ -272,11 +310,24 @@ retired cached vtables. Each run balances six native allocations and frees.
 Independent portable checks cover compound publication failure and vector stores
 that change both an array pointer and its capacity discriminator.
 
+registration_tests.cpp adds actual old CRTTISystem::Get, virtual lookup,
+callback installation, pool lookup, CProperty::Create, function creation and
+inline class-array registration in one chain. It checks common type metadata
+and CName returns, two callback phases, delayed callback execution, publication
+followed by a sink exception, script invocation, and cleanup after Close. The
+loader's DLL reference is released before registration; retained OS pins keep
+the guest callable. Independent controls verify final module release, canonical
+base aliases, cross-domain rejection, retired cached virtual entries, and
+property construction/mapping rollback. Native RTTI services, pool registry,
+function constructor and allocator are test services; class arrays start empty.
+This is not a test of existing populated game classes or game constructors.
+
 This supplies P0/P1/P2 components and a P3 live-view prototype. It does not
 complete their acceptance gates. Next implementation work, in order:
   1. Extend the pointer-array contract to reviewed nontrivial element lifetimes,
      array copy/move, native-initiated growth, other allocators and owner forms.
-  2. Add virtual-call contracts and broader function/property/object lifetimes;
+  2. Extend virtual-call contracts beyond the implemented RTTI metadata and
+     registration slots, and complete broader function/property/object lifetimes;
      verify pointer coverage with additional old-header fixtures and snapshots.
   3. Implement early loader admission/routing and module pinning only for the
      reviewed contract, with structured diagnostics for missing operations.

@@ -392,8 +392,16 @@
           "native": 116,
           "width": 4,
           "kind": "scalar"
+        },
+        {
+          "name": "vtable",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "vtable"
         }
-      ]
+      ],
+      "base_type": 4
     },
     {
       "id": 4,
@@ -559,6 +567,41 @@
           "nullable": false
         }
       ]
+    },
+    {
+      "id": 13,
+      "name": "RttiSystem",
+      "policy": "live_view",
+      "guest_size": 568,
+      "native_size": 568,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "vtable",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "vtable"
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "RttiMetadata",
+      "policy": "live_view",
+      "guest_size": 16,
+      "native_size": 16,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "vtable",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "vtable"
+        }
+      ],
+      "base_type": 4
     }
   ],
   "operations": [

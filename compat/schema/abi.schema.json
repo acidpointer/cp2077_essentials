@@ -118,7 +118,8 @@
                     "scalar",
                     "pointer",
                     "zero",
-                    "padding"
+                    "padding",
+                    "vtable"
                   ]
                 },
                 "pointee": {
@@ -141,6 +142,11 @@
                 }
               }
             }
+          },
+          "base_type": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535
           }
         }
       }

@@ -8,7 +8,7 @@ namespace compat
 {
 using TypeId = uint32_t;
 enum class Policy { Value, LiveView, Opaque };
-enum class FieldKind { Scalar, Pointer, Zero, Padding };
+enum class FieldKind { Scalar, Pointer, Zero, Padding, Vtable };
 enum class Direction { ToNative, ToGuest };
 enum class AddressKind { Function, Table };
 
@@ -31,6 +31,7 @@ struct Type
     Policy policy;
     size_t guest_size, native_size, alignment;
     std::span<const Field> fields;
+    TypeId base_type{}; // Reviewed base at offset zero in both ABIs.
 };
 struct Operation
 {
@@ -48,5 +49,6 @@ struct Schema
     std::span<const Operation> operations;
     Error Validate() const noexcept;
     const Type* Find(TypeId id) const noexcept;
+    bool IsA(TypeId actual, TypeId requested) const noexcept;
 };
 }

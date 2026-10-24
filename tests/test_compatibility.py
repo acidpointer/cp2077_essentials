@@ -65,6 +65,15 @@ class CompatibilitySchemaTests(unittest.TestCase):
         self.reject(lambda p: p['operations'][2].update(secondary=''))
         self.reject(lambda p: p['operations'][0].update(primary=True))
 
+    def test_virtual_tables_and_zero_offset_bases_require_explicit_contracts(self):
+        self.assertIn('FieldKind::Vtable', schema.generate(self.profile))
+        self.reject(lambda p: p['types'][2].update(base_type=999))
+        self.reject(lambda p: p['types'][2].update(base_type=2))
+        self.reject(lambda p: p['types'][3].update(base_type=4))
+        self.reject(lambda p: p['types'][2]['fields'][-1].update(width=4))
+        self.reject(lambda p: p['types'][2]['fields'][-1].update(native=8))
+        self.reject(lambda p: p['types'][0]['fields'][-1].update(kind='vtable'))
+
     def test_duplicate_json_keys_are_not_silently_overwritten(self):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / 'invalid.json'

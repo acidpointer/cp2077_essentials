@@ -227,9 +227,14 @@ static void ValueTests()
     Check(registry.Add({1, profile::Function, 1, 0x1000, 0x2000, 192, 256}));
     Check(registry.Add({2, profile::Function, 1, 0x3000, 0x2000, 192, 256}));
     Check(registry.Add({1, profile::Bytecode, 1, 0x5000, 0x6000, 8, 8, true, true}));
+    Check(registry.Add({1, profile::Class, 1, 0x10000, 0x20000, 720, 720, true}));
     TranslationContext context{&registry, 1};
     PointerTranslator translator{&context, Translate};
     uintptr_t pointer{};
+    Require(Translate(&context,profile::RttiType,Direction::ToNative,0x10000,pointer)==Error::None && pointer==0x20000,
+            "canonical zero-offset class/type base");
+    Require(Translate(&context,profile::RttiType,Direction::ToNative,0x10008,pointer)==Error::UnknownPointer,
+            "base alias does not inherit a concrete linear-bytes permission");
     Require(Translate(&context, profile::Function, Direction::ToGuest, 0x2000, pointer) == Error::None && pointer == 0x1000, "domain canonical identity");
     Require(Translate(&context, profile::Function, Direction::ToNative, 0x1008, pointer) == Error::UnknownPointer, "unreviewed interior rejected");
     std::array<uintptr_t, 3> input{0x1000, 0, 0xDEAD}, output{9, 9, 9};

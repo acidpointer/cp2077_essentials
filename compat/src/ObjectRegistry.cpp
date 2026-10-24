@@ -52,13 +52,14 @@ Error ObjectRegistry::ReadGuard::Translate(uint32_t domain, TypeId type, Directi
     for (const auto& entry : registry_.entries_)
     {
         const auto& map = entry.mapping;
-        if (!entry.live || map.domain != domain || map.type != type) continue;
+        if (!entry.live || map.domain != domain || !registry_.schema_.IsA(map.type,type)) continue;
         auto from = direction == Direction::ToNative ? map.guest : map.native;
         auto to = direction == Direction::ToNative ? map.native : map.guest;
         auto size = direction == Direction::ToNative ? map.guest_size : map.native_size;
         if (source < from) continue;
         auto offset = source - from;
-        if (offset != 0 && (!map.linear_bytes || offset > size || (offset == size && !map.allow_end))) continue;
+        if (offset != 0 && (map.type != type || !map.linear_bytes || offset > size ||
+                            (offset == size && !map.allow_end))) continue;
         if (found) return Error::AmbiguousPointer;
         found = true; result = to + offset;
     }

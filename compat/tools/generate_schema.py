@@ -39,7 +39,7 @@ def validate(profile):
     require(isinstance(profile['types'], list) and profile['types'], 'types required')
     ids, names = set(), set()
     for typ in profile['types']:
-        keys(typ, ('id', 'name', 'policy', 'guest_size', 'native_size', 'alignment', 'fields'))
+        keys(typ, ('id', 'name', 'policy', 'guest_size', 'native_size', 'alignment', 'fields'), ('base_type',))
         integer(typ['id'], 1, 65535)
         name(typ['name'])
         require(typ['id'] not in ids and typ['name'] not in names, 'duplicate type')
@@ -52,6 +52,12 @@ def validate(profile):
             integer(typ[key], 0 if policy == 'opaque' else 1)
         require(type(typ['alignment']) is int and typ['alignment'] in (1, 2, 4, 8, 16), 'invalid alignment')
         require(not typ['guest_size'] % typ['alignment'] and not typ['native_size'] % typ['alignment'], 'unaligned size')
+        if 'base_type' in typ:
+            integer(typ['base_type'], 1, 65535)
+            base = next((t for t in profile['types'] if t['id'] == typ['base_type']), None)
+            require(base is not None and policy == 'live_view' and base['policy'] == 'opaque', 'base must be an opaque zero-offset identity')
+            require(base['guest_size'] <= typ['guest_size'] and base['native_size'] <= typ['native_size'] and
+                    base['alignment'] <= typ['alignment'], 'base extent/alignment mismatch')
         require(isinstance(typ['fields'], list), 'fields must be a list')
         require(policy != 'opaque' or not typ['fields'], 'opaque type cannot supply copy fields')
         guest, native, fields = set(), set(), set()
@@ -62,7 +68,10 @@ def validate(profile):
             fields.add(field['name'])
             integer(field['guest'])
             integer(field['width'], 1)
-            require(field['kind'] in ('scalar', 'pointer', 'zero', 'padding'), 'unknown field policy')
+            require(field['kind'] in ('scalar', 'pointer', 'zero', 'padding', 'vtable'), 'unknown field policy')
+            if field['kind'] == 'vtable':
+                require(policy == 'live_view' and field['width'] == 8 and field['guest'] == 0 and field['native'] == 0,
+                        'vtable requires a live object at offset zero')
             if field['kind'] == 'pointer':
                 integer(field.get('pointee'), 1, 65535)
                 require(field['width'] == 8 and field.get('pointee') in ids, 'unbounded/untyped pointer')
@@ -136,7 +145,7 @@ def generate(profile):
     lines.append(f'inline constexpr std::array<Type, {len(profile["types"])}> Types{{{{')
     for typ in profile['types']:
         lines.append('    {' + ', '.join([str(typ['id']), json.dumps(typ['name']), 'Policy::' + policies[typ['policy']],
-            str(typ['guest_size']), str(typ['native_size']), str(typ['alignment']), typ['name'] + 'Fields']) + '},')
+            str(typ['guest_size']), str(typ['native_size']), str(typ['alignment']), typ['name'] + 'Fields', str(typ.get('base_type', 0))]) + '},')
     lines.append('}};')
     lines.append(f'inline constexpr std::array<Operation, {len(profile["operations"])}> Operations{{{{')
     for operation in profile['operations']:

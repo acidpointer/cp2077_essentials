@@ -463,6 +463,82 @@ Results remain under build/compat/{portable,win64}/results-<label>.json and
 build/compat/asan/Testing/Temporary/LastTest.log. These are local generated
 records; older immutable lab bundles are unchanged. G1-G5 remain open.
 
+E32. Historical RTTI virtual dispatch and inline property registration
+--------------------------------------------------------------------
+
+Date: 2026-10-25. Sources: compat/src/{RttiAdapter,PropertyAdapter,ModulePin}.cpp,
+compat/src/LegacyVirtuals.hpp, compat/schema/2.31-to-2.50.json, and
+tests/compatibility/{registration_tests.cpp,fixtures/registration_guest.cpp}.
+The historical fixture still uses SDK f9ad5334362a8a0815baf58f47615697485feb52;
+both it and the patched native SDK compile explicit RTTI/property layout checks.
+
+The old IRTTISystem destructor occupies slot 0x138. Native 2.5 inserted four
+virtual methods there and moved the destructor to 0x158. Registration callbacks
+are passed by value and grew from 0x28 to 0x48. Equal outer CRTTISystem sizes
+therefore do not establish virtual-call compatibility. The adapter supplies a
+compiler-built historical table and converts the callback through its old
+handler, preserving cleanup scope on ordinary returns and sink exceptions.
+It marks publication before invoking a sink that may retain the callback.
+
+Live mappings now supply immutable guest virtual tables and explicit zero-offset
+opaque base identities. A Class returned through GetType and GetClass has one
+canonical guest address; unrelated domains remain separate. Private RTTI maps
+and unreviewed virtual operations do not receive raw native access. A base alias
+cannot acquire interior-byte permissions from its concrete type. Unpublished
+retirement invalidates both concrete/base identities and cached virtual entries.
+Published registrations retain their services and backing for the process.
+
+The combined fixture performs actual old CRTTISystem::Get, virtual type/class/
+async/script-name lookup, IType metadata queries, both registration callback
+phases, pool lookup, CProperty::Create, class-static function creation, pointer
+array growth and inline insertion/lookup. Native property backing is constructed
+before old inline writes begin; type and parent pointers translate to native
+identities immediately. Allocation routing distinguishes property/function pool
+contexts before checking their extents. It does not infer a type from size.
+Published properties remain resident; unpublished/failing promotion destroys
+native backing and quarantines guest storage.
+
+The fixture's relocation identities were checked in the historical/current SDK
+and the previously recorded target address database (SHA256
+eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4):
+  CRTTISystem_Get: 1247874916 / 0x4A610F64
+    secondary a15fa31a13e6606cbc5344b6b481eb7909589ea7b37e34ebe376eafcd6e21900
+  Memory_Vault: 458427884 / 0x1B530DEC (data address, not a callable)
+    secondary cc0ec9220d5c951927414ed9bea1f84d0205abebab62d0e281d521ea2bb1ab02
+  CNamePool_AddCstr: 10488987 / 0x00A00C9B
+    secondary f55b055e3ddedb98cf4f2303dd929c0df4595a7219dd50588bb4a6eb5b8e210f
+Each has one database match. These additional fixture services are not yet
+production AddressCatalog bindings or native engine calls.
+
+ModulePin adds a real GetModuleHandleEx reference distinct from logical domain
+ownership. Tests release the loader reference before registration and execute
+the retained guest afterward. A separate unpublished control verifies that
+releasing the final pin unloads the DLL. Pins belong in the shared lifetime
+owner and must outlive guest destructors. Loader notification publication,
+dependency selection and suppression of plugin Unload are still integration work.
+
+Optimized/unoptimized old DLLs and a sink that stores then throws pass. Tests
+also cover native callback execution after the installation scope ends, script
+invocation, callback destruction after Close, independent domain retirement,
+stale cached virtual calls, null allocation and failed property promotion.
+The fake class metadata and fake constructor's native/static flags had to be
+corrected during fixture bring-up; runtime schema/admission checks were retained.
+
+Validation: 11 Python profile tests; 2 portable Release runs; 2 portable
+ASan/UBSan/LSan tests; 14 Win64 runs under each of Wine 11.20 and GE Wine 11.0
+through Steam Runtime. Final local build-record SHA256 identities:
+  portable: ee0b190fb4355f584311bd8807a314134041abc523c04bafe983714cb13a1795
+  win64:    7567c1e4c5e73d385dad9ec9353eab982e6b04d301fe5a15ec0f79d1302692f2
+Records are under build/compat/{portable,win64}; earlier lab bundles are unchanged.
+Native Windows and in-game execution were not performed.
+
+This closes specific implementation gaps in the modeled registration chain,
+not G1-G5 or production compatibility. Native RTTI/allocator/function services
+remain supplied by the test host, class arrays start empty, and unsupported
+virtual slots reject calls. Populated native arrays, native-initiated growth,
+nontrivial elements, object/handle lifetimes, broader function calls and loader/
+hook routing still need implementation. No production plugin admission changed.
+
 Decision
 --------
 

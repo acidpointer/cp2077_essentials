@@ -125,6 +125,10 @@ Error LiveMemory::AddBatch(std::span<const Mapping> mappings)
         if (!map.domain || !map.generation || !map.type || !map.guest || !map.native || !map.count)
             return Error::InvalidRange;
         if (schema_.Find(map.type->id) != map.type) return Error::InvalidSchema;
+        if (map.virtualTable && (map.virtualTable%alignof(uintptr_t) || map.identity ||
+            std::none_of(map.type->fields.begin(),map.type->fields.end(),
+                         [](const Field& field){return field.kind==FieldKind::Vtable;})))
+            return Error::InvalidSchema;
         if (map.identity ? map.type->policy != Policy::Opaque :
             map.type->policy != Policy::LiveView || map.type->fields.empty()) return Error::InvalidSchema;
         const auto gs = map.identity ? 1 : map.type->guest_size;
@@ -198,7 +202,7 @@ Error LiveMemory::Translate(uint64_t domain, TypeId type, Direction direction,
     for (size_t i = 0; i < count; ++i)
     {
         const auto& map = records_[i].mapping;
-        if (map.domain != domain || map.type->id != type) continue;
+        if (map.domain != domain || !schema_.IsA(map.type->id,type)) continue;
         const auto base = direction == Direction::ToNative ? map.guest : map.native;
         const auto extent = Extent(map, direction);
         if (source < base || source - base >= extent) continue;
@@ -246,6 +250,12 @@ Error LiveMemory::Transfer(uintptr_t address, std::span<std::byte> bytes, bool w
         const auto size = std::min(bytes.size() - done, field->width - inside);
         auto* native = reinterpret_cast<std::byte*>(map.native + index * map.type->native_size + field->native_offset + inside);
         if (field->kind == FieldKind::Padding) { done += size; continue; }
+        if (field->kind == FieldKind::Vtable)
+        {
+            if(write || !map.virtualTable)return Error::UnsupportedAccess;
+            std::memcpy(converted.data()+done,reinterpret_cast<const std::byte*>(&map.virtualTable)+inside,size);
+            done+=size;continue;
+        }
         if (field->kind == FieldKind::Pointer)
         {
             // Partial pointer stores have no meaningful bidirectional mapping.

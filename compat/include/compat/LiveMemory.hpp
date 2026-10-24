@@ -20,6 +20,7 @@ public:
         uintptr_t guest, native;
         size_t count{1};
         bool identity{}; // Explicit bounded byte identity, only for Opaque types.
+        uintptr_t virtualTable{}; // Immutable guest table for reviewed Vtable fields.
     };
     LiveMemory(const Schema& schema, size_t capacity);
     ~LiveMemory();

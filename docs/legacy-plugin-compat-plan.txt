@@ -19,9 +19,12 @@ has been advanced to the official release; the shim is still isolated from it.
 The latest implementation adds reusable construction/callback/frame/opcode
 adapters, instruction differential tests and native-fault recovery (E30).
 E31 adds growth/shrink/free for reviewed pointer arrays, including private
-allocator metadata and allocator virtual dispatch. Next are nontrivial element
-and broader allocation lifetimes, virtual-call/object coverage, then early loader
-routing. These additions do not complete P0-P3 acceptance.
+allocator metadata and allocator virtual dispatch. E32 connects historical RTTI
+virtual lookup/callback registration, inline property construction, canonical
+Class/IType identities and OS module references to a combined registration test.
+Next are native-populated array adoption and broader allocation/element lifetimes,
+remaining virtual/object coverage, then early loader routing. These additions
+do not complete P0-P3 acceptance or authorize real plugin admission.
 
 Design contract
 ---------------

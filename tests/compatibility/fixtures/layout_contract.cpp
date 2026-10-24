@@ -2,6 +2,8 @@
 #include <RED4ext/Scripting/Functions.hpp>
 #include <RED4ext/Scripting/Stack.hpp>
 #include <RED4ext/Callback.hpp>
+#include <RED4ext/RTTISystem.hpp>
+#include <RED4ext/Scripting/CProperty.hpp>
 #include <compat/Profile.hpp>
 
 #pragma clang diagnostic push
@@ -17,6 +19,15 @@
 static_assert(sizeof(RED4ext::CStackFrame) == SIZE(compat::profile::Types[0]));
 static_assert(sizeof(RED4ext::CClassStaticFunction) == SIZE(compat::profile::Types[1]));
 static_assert(sizeof(RED4ext::CClass) == SIZE(compat::profile::Types[2]));
+static_assert(sizeof(RED4ext::CRTTISystem) == SIZE(compat::profile::Types[12]));
+static_assert(sizeof(RED4ext::rtti::IType) == SIZE(compat::profile::Types[13]));
+static_assert(sizeof(RED4ext::CProperty) == SIZE(compat::profile::Types[8]));
+static_assert(offsetof(RED4ext::CProperty,type) == OFFSET(compat::profile::PropertyFields[0]));
+static_assert(offsetof(RED4ext::CProperty,name) == OFFSET(compat::profile::PropertyFields[1]));
+static_assert(offsetof(RED4ext::CProperty,group) == OFFSET(compat::profile::PropertyFields[2]));
+static_assert(offsetof(RED4ext::CProperty,parent) == OFFSET(compat::profile::PropertyFields[3]));
+static_assert(offsetof(RED4ext::CProperty,valueOffset) == OFFSET(compat::profile::PropertyFields[4]));
+static_assert(offsetof(RED4ext::CProperty,flags) == OFFSET(compat::profile::PropertyFields[6]));
 #define FRAME(name, index) \
     static_assert(offsetof(RED4ext::CStackFrame, name) == OFFSET(compat::profile::StackFrameFields[index])); \
     static_assert(sizeof(((RED4ext::CStackFrame*)nullptr)->name) == compat::profile::StackFrameFields[index].width)

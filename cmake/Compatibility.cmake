@@ -18,6 +18,12 @@ if(WIN32)
   target_sources(compat_core PRIVATE "${_compat}/src/ViewArena.cpp" "${_compat}/src/ExceptionBackend.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/FunctionAdapter.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/ArrayAdapter.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/RttiAdapter.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/PropertyAdapter.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/ModulePin.cpp")
+  target_include_directories(compat_core SYSTEM PRIVATE "${ESSENTIALS_ROOT}/sources/red4ext-sdk/include")
+  set_source_files_properties("${_compat}/src/RttiAdapter.cpp" PROPERTIES
+    COMPILE_DEFINITIONS "RED4EXT_STATIC_LIB;NOMINMAX;WIN32_LEAN_AND_MEAN")
   # Native-memory probes must retain asynchronous SEH regions even when memcpy
   # or atomics become intrinsics. /EHsc can optimize those scopes away.
   set_source_files_properties("${_compat}/src/LiveMemory.cpp" PROPERTIES COMPILE_OPTIONS "/EHa")

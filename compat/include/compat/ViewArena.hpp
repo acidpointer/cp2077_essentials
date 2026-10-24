@@ -18,12 +18,13 @@ public:
     ViewArena& operator=(const ViewArena&) = delete;
     void* Allocate(Domain::Ptr domain, size_t bytes);
     Error ValidateAllocation(void* guest, uint32_t domain, size_t bytes);
-    Error Promote(void* guest, TypeId type, void* native, size_t count = 1, uint32_t expectedDomain = 0);
+    Error Promote(void* guest, TypeId type, void* native, size_t count = 1, uint32_t expectedDomain = 0,
+                  uintptr_t virtualTable = 0);
     // A pointer-element buffer followed by the reviewed allocator slot. Both
     // mappings become visible together; padding between them is inaccessible.
     Error PromoteArray(void* guest, TypeId element, void* native, size_t count,
                        TypeId allocatorSlot, uint32_t expectedDomain);
-    void* Borrow(Domain::Ptr domain, TypeId type, void* native, size_t count = 1);
+    void* Borrow(Domain::Ptr domain, TypeId type, void* native, size_t count = 1, uintptr_t virtualTable = 0);
     Error Retire(void* guest);
     bool Owns(uintptr_t address) const noexcept;
     size_t allocation_limit() const noexcept { return stride_; }
