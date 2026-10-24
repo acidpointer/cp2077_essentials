@@ -412,6 +412,57 @@ reproduction commands and remaining contracts are in compat/README.txt.
 Consequence: proceed to growable-array/allocation lifetimes and virtual-call/
 object coverage; keep general admission disabled and G1-G5 open.
 
+E31. Old-header pointer arrays grow, shrink and free through typed live views.
+Status: standalone implementation checks passed on 2026-10-25; no loader/game
+integration or native-Windows execution. See compat/README.txt for contracts.
+Sources: compat/src/ArrayAdapter.cpp, LiveMemory.cpp, ViewArena.cpp and the schema;
+tests/compatibility/fixtures/array_guest.cpp, array_tests.cpp and live_tests.cpp.
+
+The historical DynArray stores an allocator vtable in the empty data slot and
+after the allocated element buffer. Its destructor copies that vptr to a local
+object before virtual Free. The runtime now describes the capacity-dependent
+pointer type, publishes element/tail mappings together, and supplies compiler-
+built virtual allocator entries tied to the domain. No generic erased-function
+cast or raw native allocator entry is supplied to the guest. Unknown allocator
+methods, unbound array owners and non-null element movers reject calls.
+
+DynArray_Realloc identity was checked against the actual historical header and
+the same address database fingerprint recorded in the earlier target evidence:
+  SHA256: eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4
+  primary: 2057311186 / 0x7AA013D2
+  secondary: aa4829856171ea4ef90954f58d41029279e3891b2d349f5670ed7179ed6e6465
+  symbol: red::DynamicBuffer::ResizeBuffer
+The database has one match. The adapter signature follows old SetCapacity's
+five-argument declaration. Native allocation/free remain explicit test services;
+the game function itself is not executed or forwarded to by these tests.
+
+Optimized and unoptimized unchanged old SDK code passes multi-page growth,
+1,025 inline pointer insertions, shrink/empty-shrink, allocator queries and
+destruction. Guest function pointers reach native storage as native pointers.
+Native allocation failure and mapping-budget exhaustion preserve the original
+array; oversized requests reject before allocation. Old data aliases remain
+tombstones after moves/frees. Cleanup Free works after domain admission closes;
+cached retired allocator entries reject calls. Six native allocations/frees
+balance in each fixture. Portable tests independently cover failed compound
+publication and vector stores changing both pointer and capacity.
+
+Scope remains reviewed pointer elements in initially empty registered owner
+fields. Mutation requires exclusive access against native and guest observers.
+Array copy/move, native-initiated growth, arbitrary private/stack arrays, general
+allocators and nontrivial elements remain open. In particular, the old SDK's
+nontrivial mover assigns into fresh storage; an adapter cannot infer a correct
+constructor for arbitrary guest types. Rejecting that callback avoids invoking
+the defect but does not establish nontrivial-container compatibility.
+
+Validation: 10 Python schema tests; 2 portable Release runs; 2 portable
+ASan/UBSan/LSan tests; all 11 Win64 runs under both system Wine 11.20 and GE
+Wine 11.0 through Steam Runtime. Recorded local build-record SHA256 identities:
+  portable: d4edd9223097fb2b2ccff7a8451430d622b05c996c78c2f1e17f7479ae89d4dd
+  win64:    479a220016729d4d418fb606cadc2f54cf67e6854537d398826c9925672625e6
+Results remain under build/compat/{portable,win64}/results-<label>.json and
+build/compat/asan/Testing/Temporary/LastTest.log. These are local generated
+records; older immutable lab bundles are unchanged. G1-G5 remain open.
+
 Decision
 --------
 

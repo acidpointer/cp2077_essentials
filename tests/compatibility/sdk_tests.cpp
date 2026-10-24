@@ -8,6 +8,7 @@
 #include <compat/BorrowedValue.hpp>
 #include <compat/CallbackAdapter.hpp>
 #include <compat/FunctionAdapter.hpp>
+#include <compat/ArrayAdapter.hpp>
 #include <compat/CallRouter.hpp>
 #include <compat/ObjectRegistry.hpp>
 #include <compat/ExceptionBackend.hpp>
@@ -30,6 +31,8 @@ using NativeCallback = RED4ext::Callback<void (*)(), 64>;
 using Script = ScriptEntry;
 using Opcode = void (*)(void*, void*, void*, void*);
 struct ResolveTag; struct AllocTag; struct ConstructorTag;
+struct ReallocateTag;
+using Reallocator=CallRouter<void(void*,uint32_t,uint32_t,uint32_t,ArrayAdapter::Mover),ReallocateTag>;
 using Resolver = CallRouter<uintptr_t(uint32_t), ResolveTag>;
 using Allocator = CallRouter<void(void*, RED4ext::Memory::AllocationResult*, uint64_t), AllocTag>;
 using Constructor = CallRouter<void*(void*, void*, uint64_t, uint64_t, Script, uint32_t), ConstructorTag>;
@@ -155,8 +158,11 @@ static void Run(const wchar_t* fixture)
         return function_adapter->guest();
     });
     AddressCatalog catalog(profile::Core, domain);
-    std::array<uintptr_t, 3> entries{reinterpret_cast<uintptr_t>(allocate.entry()),
-        reinterpret_cast<uintptr_t>(constructor.entry()), reinterpret_cast<uintptr_t>(opcodes.data())};
+    // This fixed-capacity frame/callback fixture has no array allocator owner.
+    // The independent array fixture exercises the reviewed growth adapter.
+    auto reallocate=Reallocator::Bind(domain,[](void*,uint32_t,uint32_t,uint32_t,ArrayAdapter::Mover) { throw Failure(Error::UnknownPointer); });
+    std::array<uintptr_t, 4> entries{reinterpret_cast<uintptr_t>(allocate.entry()),
+        reinterpret_cast<uintptr_t>(constructor.entry()), reinterpret_cast<uintptr_t>(opcodes.data()),reinterpret_cast<uintptr_t>(reallocate.entry())};
     for (size_t i = 0; i < entries.size(); ++i)
     {
         const auto& op = profile::Operations[i];
@@ -196,7 +202,7 @@ static void Run(const wchar_t* fixture)
     // The fake engine has an explicit detach contract. Production does not.
     domain->Close(); Require(!domain->CanUnload(), "retained owners prevent unload");
     native_callback.reset(); Require(counts.live == 0, "old callback destructor");
-    Check(resolve.Retire()); Check(constructor.Retire()); Check(allocate.Retire());
+    Check(resolve.Retire()); Check(constructor.Retire()); Check(allocate.Retire());Check(reallocate.Retire());
     const auto* cachedTable=opcodes.data();
     Check(function_adapter->Retire());function_adapter.reset();Require(native_destructions==1,"native function destroyed once after detach");
     Check(opcodes.Retire());

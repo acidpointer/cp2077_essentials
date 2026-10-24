@@ -128,6 +128,16 @@
                 },
                 "nullable": {
                   "type": "boolean"
+                },
+                "empty_pointee": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                },
+                "capacity_native": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 1024
                 }
               }
             }

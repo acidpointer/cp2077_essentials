@@ -26,6 +26,9 @@ public:
     LiveMemory(const LiveMemory&) = delete;
     LiveMemory& operator=(const LiveMemory&) = delete;
     Error Add(const Mapping& mapping);
+    // Publish a compound allocation (elements plus allocator metadata) together.
+    // Validation failure publishes nothing and does not consume record capacity.
+    Error AddBatch(std::span<const Mapping> mappings);
     Error Retire(uint64_t domain, uintptr_t guest, uint64_t generation);
     Error Translate(uint64_t domain, TypeId type, Direction direction,
                     uintptr_t source, uintptr_t& target) const noexcept;

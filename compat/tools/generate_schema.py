@@ -56,7 +56,7 @@ def validate(profile):
         require(policy != 'opaque' or not typ['fields'], 'opaque type cannot supply copy fields')
         guest, native, fields = set(), set(), set()
         for field in typ['fields']:
-            keys(field, ('name', 'guest', 'native', 'width', 'kind'), ('pointee', 'nullable'))
+            keys(field, ('name', 'guest', 'native', 'width', 'kind'), ('pointee', 'nullable', 'empty_pointee', 'capacity_native'))
             name(field['name'])
             require(field['name'] not in fields, 'duplicate field')
             fields.add(field['name'])
@@ -69,6 +69,17 @@ def validate(profile):
                 require(type(field.get('nullable')) is bool, 'pointer nullability must be explicit')
             else:
                 require('pointee' not in field and 'nullable' not in field, 'non-pointer contract')
+            if 'empty_pointee' in field:
+                integer(field['empty_pointee'], 1, 65535)
+                integer(field.get('capacity_native'))
+                require(policy == 'live_view' and field['kind'] == 'pointer', 'allocator union requires live pointer')
+                require(any(t['id'] == field['empty_pointee'] and t['policy'] == 'opaque' for t in profile['types']), 'unknown allocator identity')
+                require(type(field['native']) is int and field['capacity_native'] == field['native'] + 8 and
+                    field['capacity_native'] + 8 <= typ['native_size'] and any(
+                    f['kind'] == 'scalar' and f['native'] == field['capacity_native'] and f['guest'] == field['guest'] + 8 and
+                    f['width'] == 8 for f in typ['fields']), 'missing capacity field')
+            else:
+                require('capacity_native' not in field, 'capacity without allocator union')
             extent = set(range(field['guest'], field['guest'] + field['width']))
             require(max(extent) < typ['guest_size'] and not guest & extent, 'guest overlap/range')
             guest |= extent
@@ -119,7 +130,8 @@ def generate(profile):
         for field in typ['fields']:
             lines.append('    {' + ', '.join([json.dumps(field['name']), str(field['guest']), str(field['native'] or 0),
                 str(field['width']), 'FieldKind::' + field['kind'].capitalize(), str(field.get('pointee', 0)),
-                str(field.get('nullable', False)).lower()]) + '},')
+                str(field.get('nullable', False)).lower(), str(field.get('empty_pointee', 0)),
+                str(field.get('capacity_native', 0))]) + '},')
         lines.append('}};')
     lines.append(f'inline constexpr std::array<Type, {len(profile["types"])}> Types{{{{')
     for typ in profile['types']:

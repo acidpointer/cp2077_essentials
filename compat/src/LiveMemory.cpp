@@ -112,38 +112,47 @@ bool LiveMemory::Lease::Acquire(const Record& candidate) noexcept
         { record = &candidate; return true; }
     return false;
 }
-Error LiveMemory::Add(const Mapping& map)
+Error LiveMemory::Add(const Mapping& map) { return AddBatch({&map,1}); }
+Error LiveMemory::AddBatch(std::span<const Mapping> mappings)
 {
-    if (!map.domain || !map.generation || !map.type || !map.guest || !map.native || !map.count)
-        return Error::InvalidRange;
-    if (schema_.Find(map.type->id) != map.type) return Error::InvalidSchema;
-    if (map.identity ? map.type->policy != Policy::Opaque :
-        map.type->policy != Policy::LiveView || map.type->fields.empty()) return Error::InvalidSchema;
-    const auto gs = map.identity ? 1 : map.type->guest_size;
-    const auto ns = map.identity ? 1 : map.type->native_size;
-    if (!gs || !ns || map.count > SIZE_MAX / gs || map.count > SIZE_MAX / ns ||
-        map.guest > UINTPTR_MAX - map.count * gs || map.native > UINTPTR_MAX - map.count * ns)
-        return Error::InvalidRange;
-    if (!map.identity && (map.guest % map.type->alignment || map.native % map.type->alignment))
-        return Error::InvalidRange;
+    if (mappings.empty()) return Error::InvalidRange;
     std::lock_guard guard(writer_);
     const auto count = size_.load(std::memory_order_relaxed);
-    if (count == capacity_) return Error::Capacity;
-    for (size_t i = 0; i < count; ++i)
+    if (mappings.size() > capacity_ - count) return Error::Capacity;
+    for (size_t n = 0; n < mappings.size(); ++n)
     {
-        const auto& existing = records_[i].mapping;
-        if (Overlaps(map.guest, map.count * gs, existing.guest, Extent(existing, Direction::ToNative)))
-            return Error::Overlap; // Tombstones are never reassigned.
-        if (map.domain == existing.domain &&
-            Overlaps(map.native, map.count * ns, existing.native, Extent(existing, Direction::ToGuest)))
+        const auto& map = mappings[n];
+        if (!map.domain || !map.generation || !map.type || !map.guest || !map.native || !map.count)
+            return Error::InvalidRange;
+        if (schema_.Find(map.type->id) != map.type) return Error::InvalidSchema;
+        if (map.identity ? map.type->policy != Policy::Opaque :
+            map.type->policy != Policy::LiveView || map.type->fields.empty()) return Error::InvalidSchema;
+        const auto gs = map.identity ? 1 : map.type->guest_size;
+        const auto ns = map.identity ? 1 : map.type->native_size;
+        if (!gs || !ns || map.count > SIZE_MAX / gs || map.count > SIZE_MAX / ns ||
+            map.guest > UINTPTR_MAX - map.count * gs || map.native > UINTPTR_MAX - map.count * ns)
+            return Error::InvalidRange;
+        if (!map.identity && (map.guest % map.type->alignment || map.native % map.type->alignment))
+            return Error::InvalidRange;
+        for (size_t i = 0; i < count + n; ++i)
         {
-            if (!(records_[i].state.load(std::memory_order_acquire) & Closed)) return Error::Overlap;
-            if (map.generation <= existing.generation) return Error::IdentityMismatch;
+            const auto& existing = i < count ? records_[i].mapping : mappings[i-count];
+            if (Overlaps(map.guest, map.count * gs, existing.guest, Extent(existing, Direction::ToNative)))
+                return Error::Overlap;
+            if (map.domain == existing.domain &&
+                Overlaps(map.native, map.count * ns, existing.native, Extent(existing, Direction::ToGuest)))
+            {
+                if (i >= count || !(records_[i].state.load(std::memory_order_acquire) & Closed)) return Error::Overlap;
+                if (map.generation <= existing.generation) return Error::IdentityMismatch;
+            }
         }
     }
-    records_[count].mapping = map;
-    records_[count].state.store(0, std::memory_order_release);
-    size_.store(count + 1, std::memory_order_release);
+    for (size_t n = 0; n < mappings.size(); ++n)
+    {
+        records_[count+n].mapping = mappings[n];
+        records_[count+n].state.store(0,std::memory_order_release);
+    }
+    size_.store(count+mappings.size(),std::memory_order_release);
     return Error::None;
 }
 Error LiveMemory::Retire(uint64_t domain, uintptr_t guest, uint64_t generation)
@@ -245,7 +254,24 @@ Error LiveMemory::Transfer(uintptr_t address, std::span<std::byte> bytes, bool w
             if (write) std::memcpy(&source,bytes.data()+done,sizeof(source));
             else if (!NativeCopy(&source,native-inside,sizeof(source))) return Error::NativeFault;
             if (!source && !field->nullable) return Error::UnsupportedValue;
-            if (auto error = Translate(map.domain, field->pointee, write ? Direction::ToNative : Direction::ToGuest,
+            TypeId pointee = field->pointee;
+            if (field->empty_pointee)
+            {
+                uint32_t capacity{};
+                if (!NativeCopy(&capacity,reinterpret_cast<const void*>(map.native + index * map.type->native_size + field->capacity_native),4))
+                    return Error::NativeFault;
+                // A single vector store may replace both the pointer and capacity.
+                // Interpret the pointer using the fully supplied new discriminator.
+                for (const auto& count : map.type->fields)
+                    if (write && count.kind == FieldKind::Scalar && count.native_offset == field->capacity_native)
+                    {
+                        const auto pos = map.guest + index * map.type->guest_size + count.guest_offset;
+                        if (pos >= address && pos - address <= bytes.size() && 4 <= bytes.size() - (pos-address))
+                            std::memcpy(&capacity,bytes.data()+(pos-address),4);
+                    }
+                if (!capacity) pointee = field->empty_pointee;
+            }
+            if (auto error = Translate(map.domain, pointee, write ? Direction::ToNative : Direction::ToGuest,
                                        source, target); error != Error::None) return error;
             std::memcpy(converted.data() + done, reinterpret_cast<const std::byte*>(&target) + inside, size);
         }

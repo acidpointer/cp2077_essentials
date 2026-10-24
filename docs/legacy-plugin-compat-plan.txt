@@ -18,8 +18,10 @@ prototype, reproduction commands and remaining gates. The production loader
 has been advanced to the official release; the shim is still isolated from it.
 The latest implementation adds reusable construction/callback/frame/opcode
 adapters, instruction differential tests and native-fault recovery (E30).
-Next are growable arrays and allocation lifetimes, virtual-call/object coverage,
-then early loader routing. These additions do not complete P0-P3 acceptance.
+E31 adds growth/shrink/free for reviewed pointer arrays, including private
+allocator metadata and allocator virtual dispatch. Next are nontrivial element
+and broader allocation lifetimes, virtual-call/object coverage, then early loader
+routing. These additions do not complete P0-P3 acceptance.
 
 Design contract
 ---------------
@@ -59,7 +61,7 @@ Proposed root files:
   cmake/Compatibility.cmake
 
 Promote the fixtures preserved in docs/legacy-compat-lab/ into a reproducible,
-standalone Microsoft-ABI test target. Keep normal essential builds and the six
+standalone Microsoft-ABI test target. Keep normal essential builds and the seven
 source projects unchanged.
 Do not use SDK CMake configuration that writes generated headers into sources.
 Store generated schemas, fixture DLLs, logs and prefixes under build/compat/.
@@ -257,10 +259,10 @@ Repository and release boundaries
   need ordered exported patch layers, never child commits or hand-edited hashes.
 - A plan does not authorize Git mutation, patch-helper object/index writes,
   submodule initialization, staging, commits or publication.
-- Build the loader for loader changes; any shared SDK change requires all five
+- Build the loader for loader changes; any shared SDK change requires all six
   native builds and ABI checks. Preserve current runtime/layout/script invariants.
-- Defer package/release changes until P5 passes. Do not silently add a sixth
-  runtime archive or backend binary to the existing five-package release set.
+- Defer package/release changes until P5 passes. Do not silently add a seventh
+  runtime archive or backend binary to the existing six-package release set.
 - Report script/resource/save-format limits separately from native ABI support.
 
 Open acceptance evidence

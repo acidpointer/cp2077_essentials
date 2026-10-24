@@ -19,6 +19,10 @@ struct Field
     FieldKind kind;
     TypeId pointee{};
     bool nullable{};
+    // DynArray data is an allocator vtable when capacity is zero. These two
+    // fields enable that explicitly reviewed union, only on live pointer fields.
+    TypeId empty_pointee{};
+    size_t capacity_native{};
 };
 struct Type
 {

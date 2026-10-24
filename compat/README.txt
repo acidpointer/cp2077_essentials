@@ -80,6 +80,34 @@ CallbackAdapter/FrameAdapters/FunctionAdapter:
   This profile currently covers the class/static function shape; base/global
   function objects and polymorphic dispatch require separate contracts.
 
+ArrayAdapter:
+  Binds an initially empty array through a reviewed owning Class/Function field.
+  It supports function/property pointer elements and mediates the actual old
+  DynArray_Realloc boundary. Element type comes from that field, not byte size.
+  Empty arrays store an allocator vtable in their data slot; allocated arrays
+  store it after the element buffer. The schema describes that union explicitly.
+  Compiler-built allocator virtual members handle the SDK's copied-vptr Free
+  and GetHandle calls. Other allocator methods reject calls. Vtable slots are
+  bounded, domain-owned and never reused; cached retired entries reject calls.
+
+  Growth/shrink prepares native backing and both element/tail views before
+  changing the owner. Allocation or mapping failure preserves the old header
+  and contents. Retired buffers keep guest-address tombstones. Empty shrink
+  restores the allocator identity; the old inline destructor frees once through
+  the adapter, including retained-owner cleanup after domain admission closes.
+  Oversized requests fail before native allocation. A busy adapter retains its
+  services/backing instead of destroying reachable arrays.
+
+  This requires exclusive access against guest AND native observers during
+  mutation, valid native owner lifetimes, fresh native allocations and nonthrowing
+  free services. Owner binding/retirement is a control-plane operation; retirement
+  additionally requires callers to stop using its allocator identity. Native
+  growth outside the adapter, arbitrary stack/private arrays, array copy/move,
+  nontrivial elements and general pool allocation remain unsupported. Non-null
+  move callbacks are rejected before allocation: the actual old SDK callback
+  uses assignment into fresh storage, whose nontrivial lifetime problem is not
+  repaired by translating pointers. No universal element constructor is inferred.
+
 AddressCatalog:
   Resolves only a sealed catalog for the active, matching source/target domain.
   Binding checks primary plus secondary identity, signature and function/table
@@ -114,8 +142,11 @@ LiveMemory/ViewArena/ExceptionBackend/InstructionPlan (P3 prototype):
   handler data plane. Transfer preflights reviewed fields and pointer values;
   unmapped fields and partial pointer stores are rejected. Retirement waits
   for admitted accesses. Native backing lifetime remains the caller's contract.
-  The Windows arena reserves a page per allocation, gives provisional storage
-  writable pages, then promotes the original address to a protected view.
+  The Windows arena reserves bounded page ranges per allocation, commits only
+  requested provisional pages, then promotes the original address to a protected
+  view. One page remains the default limit; explicit larger limits support arrays.
+  Compound element/allocator mappings publish together with no visible prefix
+  on validation failure. The handler still performs no allocation or locking.
   Retired addresses remain reserved until the arena is destroyed. Live views
   retain their domain; backend removal/arena destruction require drained callers.
   Function/class/property metadata and typed pointer-array elements now have
@@ -135,8 +166,8 @@ LiveMemory/ViewArena/ExceptionBackend/InstructionPlan (P3 prototype):
   native concurrency contract; alignment alone does not establish that contract.
   This remains experimental. Trap-flag execution is rejected, and no general
   debugger compatibility, instruction coverage or performance result is claimed.
-  Bulk/string/AVX instructions, virtual dispatch, growable containers and broader
-  object lifetimes are still required.
+  Bulk/string/AVX instructions, general virtual dispatch, nontrivial/generic
+  containers and broader object lifetimes are still required.
 
 The profile's Frame VALUE policy classifies every historical byte. Unknown
 fields must be zero; bytecode/storage pointers need explicit bounded mappings.
@@ -189,12 +220,13 @@ https://github.com/actions/runner-images/blob/main/images/windows/Windows2022-Re
 Test coverage and remaining implementation
 -----------------------------------------
 
-On 2026-10-24, the current core and live-memory tests passed portable Release
-and ASan/UBSan/LSan. All nine Win64 runs passed under Wine 11.20 (Staging) and
-GE Wine 11.0 through Steam Runtime. Nine Python schema tests also passed.
+On 2026-10-25, portable Release and ASan/UBSan/LSan core/live-memory checks passed.
+All eleven Win64 runs passed under Wine 11.20 (Staging) and GE Wine 11.0 through
+Steam Runtime, including optimized/unoptimized actual old-header array DLLs.
+Ten Python schema tests passed. The earlier core results remain recorded in E30.
 Current build and run identities are under build/compat/{portable,win64}; the
 sanitizer CTest record is under build/compat/asan/Testing/Temporary/LastTest.log.
-See evidence E30 for recorded build identities. The earlier official-release
+See evidence E31 for current build identities. The earlier official-release
 validation remains historical in docs/red4ext-1.31.0-update.txt.
 Native Windows CI is configured but has not run in this session.
 
@@ -232,10 +264,18 @@ exactly-once destruction. Separate process cases verify retention when a native
 constructor publishes then throws, when detach is unavailable, and when detach
 fails. Published state is not destroyed during static process teardown.
 
+array_tests.cpp executes the actual historical header through empty allocation,
+growth beyond one page, repeated inline insertion, shrinking, empty shrink and
+destruction. It checks translated pointer contents, allocator tail/empty-slot
+dispatch, oversized/allocation/mapping failure preservation, stale aliases and
+retired cached vtables. Each run balances six native allocations and frees.
+Independent portable checks cover compound publication failure and vector stores
+that change both an array pointer and its capacity discriminator.
+
 This supplies P0/P1/P2 components and a P3 live-view prototype. It does not
 complete their acceptance gates. Next implementation work, in order:
-  1. Model allocation/reallocation/free and growable typed arrays, including the
-     old SDK's private allocator metadata and element lifetime behavior.
+  1. Extend the pointer-array contract to reviewed nontrivial element lifetimes,
+     array copy/move, native-initiated growth, other allocators and owner forms.
   2. Add virtual-call contracts and broader function/property/object lifetimes;
      verify pointer coverage with additional old-header fixtures and snapshots.
   3. Implement early loader admission/routing and module pinning only for the

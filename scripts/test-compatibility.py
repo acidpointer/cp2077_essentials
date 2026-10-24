@@ -79,7 +79,7 @@ def main():
     sdk_digest = headers(ROOT / 'sources/red4ext-sdk/include')
     targets = ['compat_core_tests', 'compat_live_tests']
     if args.platform == 'win64':
-        targets += ['compat_sdk_tests', 'compat_platform_tests', 'compat_function_tests']
+        targets += ['compat_sdk_tests', 'compat_platform_tests', 'compat_function_tests', 'compat_array_tests']
     suffix = '.exe' if args.platform == 'win64' else ''
     if os.name == 'nt' and args.platform == 'portable':
         parser.error('portable mode is a Unix algorithm check; use win64 on Windows')
@@ -138,7 +138,7 @@ def main():
             raise RuntimeError('inputs changed during compilation; rebuild')
         binaries = [out / 'bin' / (target + suffix) for target in targets]
         if args.platform == 'win64':
-            binaries += [out / 'bin' / (name + '.dll') for name in ('legacy_guest', 'legacy_guest_unoptimized', 'dependency', 'initializer')]
+            binaries += [out / 'bin' / (name + '.dll') for name in ('legacy_guest', 'legacy_guest_unoptimized', 'array_guest', 'array_guest_unoptimized', 'dependency', 'initializer')]
         record['binaries'] = {p.relative_to(out).as_posix(): digest(p) for p in binaries}
         record['complete'] = True
         save(record, manifest)
@@ -162,6 +162,7 @@ def main():
     runs = [(target, []) for target in targets]
     if args.platform == 'win64':
         runs.append(('compat_sdk_tests', ['unoptimized']))
+        runs.append(('compat_array_tests', ['unoptimized']))
         runs.extend(('compat_function_tests', [mode]) for mode in ('throw', 'persistent', 'detach-failure'))
     for target, arguments in runs:
         name = target + ('-' + '-'.join(arguments) if arguments else '')

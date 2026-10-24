@@ -17,6 +17,7 @@ add_library(compat_core STATIC
 if(WIN32)
   target_sources(compat_core PRIVATE "${_compat}/src/ViewArena.cpp" "${_compat}/src/ExceptionBackend.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/FunctionAdapter.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/ArrayAdapter.cpp")
   # Native-memory probes must retain asynchronous SEH regions even when memcpy
   # or atomics become intrinsics. /EHsc can optimize those scopes away.
   set_source_files_properties("${_compat}/src/LiveMemory.cpp" PROPERTIES COMPILE_OPTIONS "/EHa")

@@ -253,6 +253,41 @@ static void Retirement()
     Require(!bad && retiredValue==completed && backing.value[0]==retiredValue,"retirement drains atomic accesses");
     std::puts("PASS concurrent native atomics and retirement");
 }
+static void CompoundMappings()
+{
+    LiveMemory memory(profile::Core,6);
+    alignas(8) std::array<std::byte,0x2D0> cls{};
+    std::array<uintptr_t,2> entries{};
+    const auto* element=profile::Core.Find(profile::FunctionPointer);
+    const auto* tail=profile::Core.Find(profile::ArrayAllocator);
+    LiveMemory::Mapping parts[]{
+        {1,1,element,0x20000,reinterpret_cast<uintptr_t>(entries.data()),1},
+        {1,1,tail,0x20000,reinterpret_cast<uintptr_t>(&entries[1]),1}};
+    Require(memory.AddBatch(parts)==Error::Overlap,"compound overlap rejected");
+    uintptr_t translated{};
+    Require(memory.Translate(1,element->id,Direction::ToGuest,reinterpret_cast<uintptr_t>(entries.data()),translated)==Error::UnknownPointer,
+            "failed batch publishes no prefix");
+    parts[1].guest+=8;Check(memory.AddBatch(parts));
+    Check(memory.Add({1,1,profile::Core.Find(profile::Class),0x10000,reinterpret_cast<uintptr_t>(cls.data())}));
+    Check(memory.Add({1,1,profile::Core.Find(profile::AllocatorVtable),0x30000,0x40000,1,true}));
+    struct Header { uintptr_t data;uint32_t capacity,size; };
+    Header empty{0x40000,0,0};std::memcpy(cls.data()+0x58,&empty,16);entries[1]=0x40000;
+    Check(memory.Read(0x10058,std::as_writable_bytes(std::span(&translated,1))));
+    Require(translated==0x30000,"empty data slot means allocator vtable");
+    Check(memory.Read(0x20008,std::as_writable_bytes(std::span(&translated,1))));
+    Require(translated==0x30000,"tail allocator translation");
+    Header populated{0x20000,1,0};
+    Check(memory.Write(0x10058,std::as_bytes(std::span(&populated,1))));
+    Header native{};std::memcpy(&native,cls.data()+0x58,16);
+    Require(native.data==reinterpret_cast<uintptr_t>(entries.data()) && native.capacity==1,"vector publication uses new capacity");
+    empty.data=0x30000;Check(memory.Write(0x10058,std::as_bytes(std::span(&empty,1))));
+    std::memcpy(&native,cls.data()+0x58,16);
+    Require(native.data==0x40000 && !native.capacity,"vector clearing restores allocator union");
+    LiveMemory exhausted(profile::Core,1);
+    Require(exhausted.AddBatch(parts)==Error::Capacity,"batch capacity rejected atomically");
+    Check(exhausted.Add(parts[0]));
+    std::puts("PASS compound mappings: atomic publication, allocator discriminator and vector transitions");
+}
 static void Rejections()
 {
     const std::vector<std::vector<uint8_t>> invalid{
@@ -376,7 +411,7 @@ static void WindowsViews()
 #endif
 int main()
 {
-    try { Hardware(); Mappings(); Retirement(); Rejections();
+    try { Hardware(); Mappings(); CompoundMappings(); Retirement(); Rejections();
 #ifdef _WIN32
         WindowsViews();
 #endif

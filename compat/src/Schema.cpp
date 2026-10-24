@@ -45,6 +45,20 @@ Error Schema::Validate() const noexcept
             if (field.kind == FieldKind::Pointer)
             { if (field.width != 8 || !Find(field.pointee)) return Error::InvalidSchema; }
             else if (field.pointee || field.nullable) return Error::InvalidSchema;
+            if (field.empty_pointee)
+            {
+                const auto* empty = Find(field.empty_pointee);
+                if (type.policy != Policy::LiveView || field.kind != FieldKind::Pointer ||
+                    !empty || empty->policy != Policy::Opaque || field.capacity_native != field.native_offset+8 ||
+                    field.capacity_native > type.native_size || 8 > type.native_size - field.capacity_native) return Error::InvalidSchema;
+                bool capacityField = false;
+                for (const auto& count : type.fields)
+                    if (count.kind == FieldKind::Scalar && count.native_offset == field.capacity_native &&
+                        count.guest_offset == field.guest_offset+8 && count.width == 8)
+                        capacityField = true;
+                if (!capacityField) return Error::InvalidSchema;
+            }
+            else if (field.capacity_native) return Error::InvalidSchema;
             for (size_t byte = 0; byte < field.width; ++byte)
             {
                 if (guest[field.guest_offset + byte]) return Error::InvalidSchema;

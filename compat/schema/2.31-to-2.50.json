@@ -194,7 +194,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 10,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 48
         },
         {
           "name": "paramsCounts",
@@ -210,7 +212,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 10,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 64
         },
         {
           "name": "localsCounts",
@@ -296,7 +300,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 10,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 48
         },
         {
           "name": "propsCounts",
@@ -312,7 +318,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 10,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 64
         },
         {
           "name": "overriddenPropsCounts",
@@ -328,7 +336,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 8,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 80
         },
         {
           "name": "funcsCounts",
@@ -344,7 +354,9 @@
           "width": 8,
           "kind": "pointer",
           "pointee": 8,
-          "nullable": true
+          "nullable": true,
+          "empty_pointee": 11,
+          "capacity_native": 96
         },
         {
           "name": "staticFuncsCounts",
@@ -519,6 +531,34 @@
           "nullable": true
         }
       ]
+    },
+    {
+      "id": 11,
+      "name": "AllocatorVtable",
+      "policy": "opaque",
+      "guest_size": 0,
+      "native_size": 0,
+      "alignment": 1,
+      "fields": []
+    },
+    {
+      "id": 12,
+      "name": "ArrayAllocator",
+      "policy": "live_view",
+      "guest_size": 8,
+      "native_size": 8,
+      "alignment": 8,
+      "fields": [
+        {
+          "name": "vtable",
+          "guest": 0,
+          "native": 0,
+          "width": 8,
+          "kind": "pointer",
+          "pointee": 11,
+          "nullable": false
+        }
+      ]
     }
   ],
   "operations": [
@@ -545,6 +585,14 @@
       "kind": "table",
       "signature": "void(instance*,frame*,out*,aux*)",
       "table_size": 256
+    },
+    {
+      "id": "DynArray_Realloc",
+      "primary": 2057311186,
+      "secondary": "aa4829856171ea4ef90954f58d41029279e3891b2d349f5670ed7179ed6e6465",
+      "kind": "function",
+      "signature": "void(array*,u32,u32,u32,move_callback)",
+      "table_size": 0
     }
   ]
 }

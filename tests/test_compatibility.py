@@ -53,6 +53,12 @@ class CompatibilitySchemaTests(unittest.TestCase):
     def test_equal_sizes_do_not_enable_opaque_copy(self):
         self.reject(lambda p: p['types'][3]['fields'].append(copy.deepcopy(p['types'][0]['fields'][0])))
 
+    def test_array_allocator_union_requires_reviewed_discriminator(self):
+        self.reject(lambda p: p['types'][1]['fields'][4].update(empty_pointee=2))
+        self.reject(lambda p: p['types'][1]['fields'][4].update(capacity_native=8))
+        self.reject(lambda p: p['types'][1]['fields'][4].pop('empty_pointee'))
+        self.reject(lambda p: p['types'][0]['fields'][0].update(empty_pointee=11,capacity_native=96))
+
     def test_primary_collisions_and_wrong_address_kinds_are_rejected(self):
         self.reject(lambda p: p['operations'][1].update(primary=p['operations'][0]['primary']))
         self.reject(lambda p: p['operations'][2].update(kind='function'))
