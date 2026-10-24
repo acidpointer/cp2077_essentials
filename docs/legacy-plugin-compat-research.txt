@@ -8,6 +8,8 @@ Status: preliminary architecture, followed by isolated Win64/Wine experiments.
 Current evidence and implementation decisions:
   docs/legacy-plugin-compat-evidence.txt
   docs/legacy-plugin-compat-plan.txt
+  docs/legacy-plugin-compat-mitigations.txt
+  docs/legacy-plugin-compat-readiness.txt
 No compatibility runtime has been integrated or tested in CP2077.
 
 Objective
@@ -39,6 +41,13 @@ tests while keeping original code addresses, but were much slower than native
 access and did not catch raw native pointers. The evidence report records these
 limits. This document's component descriptions are proposals, not validated
 end-to-end capabilities.
+
+The limitations follow-up now includes an actual historical-header DLL and
+isolated allocation-promotion/pointer-conversion experiments. It establishes
+that constructor return replacement alone fails, and that unchanged pointer
+containers also need mediation. A one-exception MOV path reduced measured
+overhead but remained expensive. See the mitigations report for a narrower
+registration/script-call scope and the remaining coverage limits.
 
 Call adapters alone cannot cover existing SDK plugins, because inline SDK
 code accesses engine objects and allocates ABI-sized storage inside each DLL.

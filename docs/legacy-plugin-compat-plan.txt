@@ -3,6 +3,8 @@ Shared legacy ABI runtime: proposed changes
 
 Date: 2026-10-24
 Evidence: docs/legacy-plugin-compat-evidence.txt
+Limitations/mitigations: docs/legacy-plugin-compat-mitigations.txt
+Implementation contracts and new evidence: docs/legacy-plugin-compat-readiness.txt
 Initial version pair: engine/SDK ABI 2.31 -> game 2.5 / 3.0.88.46235.
 This is a change plan. No production runtime or admission changes were made.
 
@@ -20,6 +22,11 @@ Use four explicit representation policies:
   LIVE_VIEW: stable legacy addresses with mediated access to changed live data.
   CUSTOM: reviewed engine-level semantic adaptation for a changed operation.
 An unknown policy is not implicitly IDENTITY. Equal sizes are not proof.
+
+The follow-up E18 control also requires compatible pointer contents: unchanged
+containers can publish guest addresses into native state. Assign policies by
+following pointer-bearing fields, tables and containers, including unchanged
+types. This is part of pointer coverage, not merely record-layout extraction.
 
 The protected-view backend is not sufficient for arbitrary native pointers.
 General admission remains blocked until the supported ABI contract has a
@@ -104,6 +111,9 @@ construction/registration, property registration, stack-frame calls and their
 allocators/destructors. Use full Win64 signatures, including hidden sret and
 stack arguments. C++ exception specifications and ownership are part of the
 contract. Do not reinterpret arbitrary erased function pointers as compatible.
+Use compiled typed slot banks first (E23); cached entries retain their domain.
+Distinguish callable relocations from data tables: OpcodeHandlers needs a
+domain-owned table of reviewed adapter entries (E26/E28).
 
 Own old callbacks through their ABI handlers. Keep defining modules alive until
 the final callback/destructor returns; drain callbacks before removing a domain.
@@ -123,11 +133,22 @@ Proposed root files:
   compat/src/InstructionPlan.cpp
   compat/src/ExceptionBackend.cpp
 
+Preserve preexisting guest addresses. The historical SDK Create path ignores
+constructor return replacements (E16). Route eligible guest allocations into
+controlled storage before they escape; learn their type at a reviewed operation
+and promote that original address (restricted mechanism E17). Cover realloc/free
+and page sharing. Stack/embedded/private allocations need separate policies.
+
 Use canonical identities keyed by native object, lifetime generation, subobject
 and source ABI. Support interior/base pointers and bidirectional pointer fields.
 Keep one native backing; do not duplicate reference counts or take ownership of
 borrowed objects without a lifetime rule. Quarantine retired views to avoid
 mapping stale pointers onto reused native allocations.
+Native function constructors already publish callback slots (E25). Reserve
+callback/domain ownership before construction; do not treat registration-end
+as the first publication point or assume constructor failure can be rolled back.
+Until a real detach protocol exists, published registrations remain resident
+for the session and prevent plugin Unload. Code pinning alone is insufficient.
 
 Allocate views in a reserved arena. Handle only owned view faults and owned
 single-step completions. A production handler must be preinitialized, bounded,
@@ -145,6 +166,16 @@ Gate: aliasing, derived classes, arrays, handles, reclamation, nested faults,
 typed bulk copies and concurrent native updates pass. The lab's MOV/XADD subset
 is not a production implementation. Establish coverage for pointer-producing
 boundaries and raw aliases before claiming automatic admission is safe.
+
+Before loader integration, demonstrate one complete registration/invocation/
+teardown chain, including inline CClass pointer-array publication. The mitigation
+report specifies this next gate. Do not infer it from individual field passes.
+E26 now demonstrates a bounded old-header chain against fake native services,
+including an adapted opcode table, nested frames and explicit array publication.
+Real constructors/destructors, additional publication paths and automatic
+coherence remain open; its retained-write negative control rejects copy-once.
+The single-fault MOV follow-up halves its matched measured cost but still needs
+exception controls and remains too expensive to assume suitable for hot paths.
 
 P4. Loader integration and controlled diagnostics
 
@@ -218,7 +249,11 @@ Repository and release boundaries
 Open acceptance evidence
 ------------------------
 
-Native Windows, early notification ordering, complete operation/boundary
+Native Windows (including early notification ordering), complete operation/boundary
 coverage, rich object lifetime semantics, production hook compatibility and
 gameplay/save/performance results remain open. Their exact tests and sequencing
 are specified above. No claim that all evidence gaps are closed is warranted.
+E22/E23 establish dependency notification ordering and compiled/generated bridge
+controls in the tested Wine/GE environments. The readiness report gives the
+implementation decisions and remaining G1-G5 gates without requiring a general
+JIT or a writable metadata-mirror optimization for the first isolated core.

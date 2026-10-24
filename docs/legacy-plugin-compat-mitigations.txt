@@ -1,0 +1,308 @@
+Legacy compatibility: which limitations can be mitigated?
+=========================================================
+
+Date: 2026-10-24, follow-up to the initial experiments.
+Target: CP2077 2.5 / 3.0.88.46235; initial guest ABI family: 2.31.
+Evidence for this report: docs/legacy-plugin-compat-evidence.txt, entries E01-E21.
+Later implementation investigation: docs/legacy-plugin-compat-readiness.txt
+(E22-E28, including the constructor-publication correction below).
+New experiment: docs/legacy-compat-mitigation-lab/README.txt.
+
+Finding
+-------
+
+A shared shim for a defined set of old SDK operations is a credible engineering
+project. The previous limitations are not all fundamental barriers. Callback
+ownership can be adapted, allocation addresses can be preserved, pointer fields
+can be converted in both directions, and some frequently used operations have
+call boundaries that avoid translating every instruction.
+
+The hard part is covering all the ways native C++ code touches engine memory.
+Old plugins contain inline field access, allocation sizes, array operations and
+virtual calls. Many operations never call RED4ext. A resolver shim therefore
+cannot observe them just by changing the addresses it returns.
+
+The best next scope is a shared SDK-operation compatibility profile, starting
+with registration and synchronous script invocation. Its rules remain keyed by
+ABI/type/operation, not mod names or DLL hashes. This is a hypothesis about a
+useful subset, not evidence about the percentage of real mods it will support.
+No production compatibility mode should be enabled from these experiments.
+
+New findings from actual historical headers
+------------------------------------------
+
+Historical SDK: f9ad5334362a8a0815baf58f47615697485feb52, parent of the 2.5
+support commit 0f5eba42. These exact headers are the tested input; they do not
+represent every SDK snapshot that an old mod might contain.
+
+1. Replacing a constructor's return value is insufficient.
+
+   Scripting/Functions.hpp, CClassStaticFunction::Create:
+     allocate sizeof(CClassStaticFunction);
+     call constructor(memory, ...);
+     return memory;
+
+   The result of the constructor is ignored. The old allocation is 0xC0;
+   the current representation is 0x100. An isolated DLL compiled using the
+   unchanged old headers confirmed that a replacement returned by the fake
+   constructor was ignored and the original allocation retained stale data.
+
+   Mitigation demonstrated: intercept the allocator first, give the guest a
+   page-isolated allocation, learn its type at the constructor boundary, then
+   turn that SAME address into a protected view with separate native backing.
+   The guest keeps all preexisting aliases. Old parent/index fields at
+   +0xB0/+0xB8 were mapped to +0xF0/+0xF8. Parent pointers were translated in
+   both directions, including null. Another 0xC0 allocation remained untyped
+   and writable: size was not used to infer the object's type.
+
+   This tested real old SDK allocation/control flow against a fake engine.
+   It did not construct a real current engine function, supply its vtable,
+   register a function with the game, or prove destruction/allocator ownership.
+
+2. Equal-layout objects can still require mediation.
+
+   RTTITypes-inl.hpp, CClass::RegisterFunction is inline. It appends the function
+   pointer directly to funcs or staticFuncs using DynArray::PushBack. There is
+   no CClass_RegisterFunction resolver boundary to intercept on this path.
+   CClass::GetFunction also searches arrays and reads function fields inline.
+
+   A negative control used the actual historical DynArray::PushBack with spare
+   capacity. Given a writable native-format pointer array and a protected guest
+   function address, it silently published the guest address into the array.
+   No view fault occurred. The host required the native backing address instead.
+
+   Consequence: a type is not IDENTITY merely because all its offsets match.
+   Pointer-bearing fields, arrays and tables must also have compatible pointee
+   representations and ownership. The schema needs to follow these references
+   until every crossing is accounted for. A class containing pointers to changed
+   functions may need a facade or mediated arrays even if its own layout is
+   unchanged. The negative control did not execute CClass::RegisterFunction;
+   its source establishes the connection to the tested array operation.
+
+3. The ordinary execution path is more promising than the broadest ABI case.
+
+   Historical CBaseFunction::Execute already calls ExecuteScripted or
+   ExecuteNative engine entry points. The private Execute_ helper constructs
+   a local CStackFrame, but is not called by that normal Execute method.
+   Functions-inl.hpp is unchanged between this historical snapshot and the
+   current working SDK. Do not attribute Execute_'s local frame to every call.
+
+   CStackFrame's fields through useDirectData at +0x63 retain their offsets.
+   The current frame adds ownership/state starting at +0x64 and grows from
+   0x68 to 0xA8. An engine-owned current frame may therefore be usable directly
+   for a restricted borrowed-prefix contract, if pointer values, operations
+   and lifetime also match. This does NOT permit old allocation, copying,
+   memset(sizeof(old_frame)), or destruction of a current frame.
+
+   Where pointers need translation, a bounded legacy frame plus native frame
+   can instead synchronize at each opcode/call boundary. Preserve the native
+   tail, synchronize before nested engine entry and after return, and reuse
+   the active native frame across related calls. Do not construct/destroy a
+   new root map for each parameter. OpcodeHandlers::Get obtains entries from
+   a resolved table, so a legacy table of typed adapters is a candidate route.
+   GetParameter mutates fields before calling that table and may return data
+   pointers afterward; both directions need coverage. This is source-backed
+   design work, not a demonstrated frame bridge.
+
+4. Removing single-step exceptions helps but does not make faults cheap.
+
+   The new host emulates three prevalidated MOV forms in the vectored handler.
+   It updates the saved register or native field and resumes at the next guest
+   instruction, without a temporarily remapped register or a single-step trap.
+   Pointer translation uses a preallocated two-entry identity map.
+
+   Five matched trials of 20,000 parent-pointer reads, system Wine 11.20:
+     Native baseline:                 median 0.040 ms
+     One access violation per read:   median 55.407 ms
+     Access violation + single step: median 110.843 ms
+
+   The one-fault path was about twice as fast as the two-fault path in this
+   workload, and still far slower than native access. Both protected modes
+   used the same DLL, field and pointer mapping. The native baseline supplies
+   a biased address solely to make the old offset hit the current field.
+   Timings exclude thread creation, run in a fixed order, and are not an FPS
+   estimate. Do not compare their ratios to the older two-worker XADD test.
+
+   No general instruction emulator was built. Atomics, vectors, arbitrary
+   addressing forms, debugger behavior, concurrent mutation and exception
+   recovery were not tested in this follow-up. The earlier exception controls
+   do not automatically validate this new backend. The raw-native-pointer
+   negative control still bypasses it and reads stale data.
+
+Mitigation choices
+------------------
+
+Address/signature changes and retained callbacks
+  Use generated typed adapters and ABI-specific facade vtables. Give each
+  adapter an explicit domain so callbacks on new threads do not depend on the
+  loading thread's TLS. Callback ownership already has limited positive
+  evidence (E07). Implement allocation, construction, reverse calls and cleanup
+  as one contract. Calling conventions, hidden aggregate returns, stack
+  arguments and semantic changes still need reviewed descriptions [S1].
+
+Guest-owned allocations and embedded objects
+  Reserve compatible guest storage before the plugin receives its pointer;
+  promote to a typed view at a known constructor. Intercept realloc/free too.
+  Use allocator/pool provenance plus typed operations, never size alone.
+  A reserved arena can avoid one VirtualAlloc reservation per object, but
+  protection remains page-granular. Mixed writable/untyped and protected/typed
+  objects cannot share a page without handling all its other accesses [S2].
+  Borrowed stack storage, embedded members and allocations through private
+  allocators cannot generally be moved after aliases exist. They need bounded
+  value semantics, mediated instructions, or an explicitly unsupported contract.
+
+Registration without a fault on every field
+  A writable old metadata mirror can be edited during an exclusively owned
+  registration transaction, then converted/published at its end. Intercepted
+  nested calls must synchronize too. An adapter around the retained register
+  callback is a possible transaction boundary, not RegisterFunction itself.
+  This only works after proving the engine cannot observe intermediate state,
+  and establishing what happens to pointers retained after the callback.
+  Frozen read-only metadata can be a fast path only if later writes and native
+  changes are either forbidden by the contract or reliably mediated.
+  An unreviewed copy-out at callback return is not an implementation of this.
+  Follow-up E25 found actual native constructors publish callback slots before
+  this proposed boundary. E26 demonstrates stale retained writes without an
+  explicit barrier. Keep this as an optional optimization requiring proof;
+  use typed live views as the conservative persistent-metadata design.
+
+Pointer escape, containers and lifetimes
+  Traverse every supported pointer-producing path: resolver data, RTTI lookups,
+  vtables, return values, out parameters, callback arguments, frame data,
+  arrays, handles and interior/base pointers. Give the same object one guest
+  identity per ABI and lifetime generation. Repeated callbacks must reuse it.
+  Keep one native reference count; translate handle operations rather than
+  duplicating their ownership. Retire/quarantine guest identities on release.
+  This can close specific, enumerable routes. It cannot discover a pointer
+  independently synthesized from a raw RVA or obtained through an unknown hook.
+  Test raw pointer bypass AND guest pointer publication as negative controls.
+  An audit log alone cannot prove that unobserved accesses are safe.
+
+Frequent field access
+  First eliminate mediation where full IDENTITY or bounded VALUE contracts
+  allow it. Use readable facade vtables instead of faulting on every virtual
+  dispatch when their object contract permits. Keep protected views for the
+  remaining changed live data and diagnostics, not as the assumed hot path.
+  The single-fault MOV result warrants a restricted emulator experiment.
+  Arithmetic/atomics require exact flags, ordering and fault behavior, not
+  just a C++ approximation of the instruction. Handlers must avoid allocation
+  and synchronization-object acquisition [S3].
+
+  A later optimization could dynamically replace frequently executed memory
+  operations with guarded generated code. Such a rule is keyed by instruction
+  semantics and runtime object identity, not a hand-maintained mod RVA. The
+  guard is necessary: one machine instruction can access several unrelated
+  types over its lifetime. Code patching, instruction relocation, concurrent
+  execution, exception PCs and unwind metadata remain substantial work [S4].
+  A cached decode plan still incurs a fault; it does not solve this cost alone.
+
+Exception/unwind failures in the earlier DBI probes
+  Keep ordinary compiled code/thunks and the original guest instruction PCs
+  for the first implementation. This avoids depending immediately on the
+  failed Stalker/DynamoRIO configurations. It does not prove all exceptions
+  are correct, especially in temporary register-remap states. Retest controls.
+  Separately investigate the backend failures with native Windows and minimal
+  Wine regressions. Those failures are configuration evidence, not proof that
+  DBI cannot work. DynamoRIO explicitly requires application-state translation
+  for faults and suspended execution [S5]; a decoder is not that machinery.
+
+Initialization and ABI selection
+  Select the guest ABI family for a module group before LoadLibraryEx, prepare
+  pools/maps/handlers beforehand, and validate Query later. Module dependencies
+  and static initialization belong to the same declared coverage contract.
+  Shared helper DLLs serving different ABI domains need their own routing rule.
+  Ldr notifications can record module ranges using preallocated state; their
+  restrictions do not allow treating the callback as an unrestricted place to
+  initialize a translator [S6]. Automatic inference from sdk=1.0.0 remains
+  insufficient. A configured ABI group is compatible with shared rules, but
+  does not prove arbitrary initialization code uses only those rules.
+
+Hooks and machine-code patches
+  Start with known function entries, known signatures and RED4ext's Hooking
+  API, which supplies a plugin handle. Return an original-call adapter in the
+  guest ABI and bridge native-to-guest detours. Preserve chain ordering and
+  object identity through nested hooks. This is achievable in principle.
+  Privately bundled hook libraries and direct code writes bypass that service.
+  Mid-function patches and scans for historical bytes need historical code
+  identity, live register/stack correspondence and semantic review. A virtual
+  code image may help address discovery; it does not create those semantics.
+  No generic automatic mitigation was established for these operations.
+
+Scripts, resources, saves and removed behavior
+  Use separate shared script API adapters or reviewed resource transformations
+  where their semantics are understood. Native ABI translation cannot recreate
+  removed engine behavior or establish save compatibility. Each remains its
+  own scope and runtime evidence requirement.
+
+Shortcuts that still fail
+-------------------------
+
+- Allocate a larger block: fixes capacity only; shifted fields and old strides
+  remain wrong. Returning a different pointer from the constructor fails the
+  actual old Create contract demonstrated here.
+- Mark only changed-size types as special: unchanged containers can publish
+  guest pointers into native structures (the new ARRAY_ESCAPE control).
+- Temporarily unprotect a page: grants access at that address to other threads
+  too. PAGE_GUARD is a one-shot alarm, not per-access mediation [S2, S7].
+- Alias a whole page: aliases preserve byte positions within a page. They do
+  not express both an unchanged prefix and independently shifted fields.
+- Copy old objects once: misses retained aliases, nested calls and concurrent
+  native updates. Also cannot duplicate nontrivial ownership safely.
+- Resolve every address successfully: says nothing about the arguments, data
+  layout, private operations or removed behavior expected at that address.
+- Stop on unknown view faults: useful, but raw accessible pointers may never
+  fault. It is not a process-wide safety guarantee or sandbox.
+
+Recommended next gate
+---------------------
+
+Follow-up: E26 now supplies a bounded old-header fake-engine chain, including
+nested frame calls and an adapted opcode table. The broader game/native-lifetime,
+concurrency and withheld-fixture requirements below remain open. See the
+readiness report for the concrete implementation contracts and remaining gates.
+
+Before adding a production loader option, prove one complete shared path:
+
+  old register callback -> old allocation -> typed constructor bridge
+  -> function metadata and pointer-array publication -> native registration
+  -> native invocation -> old callback/GetParameter -> return and teardown.
+
+This is narrower and more informative than another isolated MOV demonstration.
+Use current and historical SDK fixtures, multiple compiler builds, nested
+callbacks, retained aliases, native changes, failure cleanup and a withheld
+fixture. Include class functions and global functions: their publication paths
+are different. A successful chain would justify expanding the supported SDK
+profile; it would still not establish arbitrary-mod compatibility.
+
+Prioritize native Windows exception controls and the matched Wine path before
+backend optimization. Keep the existing P0-P5 integration/gameplay gates. No
+defensible schedule or mod-coverage percentage follows from the current data.
+
+Primary external references, checked 2026-10-24
+----------------------------------------------
+
+S1. Microsoft x64 calling convention:
+    https://learn.microsoft.com/en-us/cpp/build/x64-calling-convention
+S2. Microsoft VirtualProtect, page granularity and shared-heap warning:
+    https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotect
+S3. Microsoft vectored-handler restrictions:
+    https://learn.microsoft.com/en-us/windows/win32/api/winnt/nc-winnt-pvectored_exception_handler
+S4. Microsoft x64 exception handling and generated-code function tables:
+    https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64
+S5. DynamoRIO code manipulation/state translation:
+    https://dynamorio.org/API_BT.html
+S6. Microsoft loader notification ordering/restrictions:
+    https://learn.microsoft.com/en-us/windows/win32/devnotes/ldrdllnotification
+S7. Microsoft guard-page behavior:
+    https://learn.microsoft.com/en-us/windows/win32/memory/creating-guard-pages
+S8. Upstream SDK 2.5 change, cross-checked against local Git objects:
+    https://github.com/wopss/RED4ext.SDK/pull/227
+
+Repository scope
+----------------
+
+Only research documents, laboratory source and evidence records were added or
+updated. The experiments used generated storage under build/compat-mitigation
+and an isolated Wine prefix. No production loader/SDK code, source pins, saved
+patches, game/MO2 files or Git metadata was changed. No game was launched. Native
+Windows, GE/Proton and game integration were not exercised in this follow-up.

@@ -4,6 +4,8 @@ Legacy ABI compatibility: evidence audit
 Date: 2026-10-24
 Scope: shared compatibility for unchanged plugins, not individual DLL patches.
 Companion plan: docs/legacy-plugin-compat-plan.txt
+Limitations follow-up: docs/legacy-plugin-compat-mitigations.txt
+Implementation readiness: docs/legacy-plugin-compat-readiness.txt
 
 Conclusion
 ----------
@@ -88,7 +90,7 @@ For early engine interactions an ABI family must already be selected; no
 generic safe execution of arbitrary Query/DllMain code was demonstrated.
 
 E04. Early module notification exists, with severe callback restrictions.
-Status: documented mechanism; not tested in the laboratory harness.
+Status: initially documentation-only; E22 adds positive isolated platform tests.
 Evidence: Microsoft's LdrRegisterDllNotification documentation specifies
 notification before dynamic linking. Its callback documentation forbids calls
 into other modules. The API is also documented as subject to change/removal.
@@ -215,6 +217,141 @@ No production plugin was admitted by the laboratory code. No game startup,
 gameplay, graphics, save/load or save-compatibility test was performed. A native
 shim also cannot establish compatibility of changed scripts/resources by itself.
 
+Follow-up evidence (same date, separate laboratory bundle)
+---------------------------------------------------------
+
+Entries E16-E21 are in docs/legacy-compat-mitigation-lab/. The original
+laboratory bundle and E07-E13 results remain historical observations. This
+follow-up ran only system Wine 11.20, not GE/Proton or native Windows. The
+guest uses unchanged headers at f9ad5334362a8a0815baf58f47615697485feb52.
+
+E16. Old SDK function creation ignores replacement constructor returns.
+Status: actual historical inline implementation exercised in a fixture DLL.
+Create allocated 0xC0 and retained that address when a fake constructor returned
+a different, larger backing object. The returned guest allocation had stale
+parent data. Source: Scripting/Functions.hpp, CClassStaticFunction::Create.
+Consequence: preserve the original address or mediate its aliases; changing
+the constructor return value alone cannot fix this path.
+
+E17. Precontrolled allocations can be promoted to typed live views.
+Status: restricted positive mechanism test.
+A fake allocator supplied page-isolated storage. At the typed constructor
+boundary the host protected that original address and associated separate
+backing. The DLL read old parent/index offsets through the view; the host mapped
+them to current offsets and converted parent pointers in both directions.
+Null round trips passed. A second same-size allocation remained untyped/writable.
+Limits: fake native constructor/storage and two parent identity tokens, three
+MOV forms, one thread. No engine registration, native vtable, destruction,
+realloc, stack/embedded objects, derived types or production pointer registry.
+
+E18. Unchanged pointer-container layout does not imply safe identity mapping.
+Status: source inspection and negative control.
+CClass::RegisterFunction appends pointers inline with DynArray::PushBack;
+there is no resolved function call at that operation. The actual old PushBack
+was given a writable native-format array with spare capacity and a protected
+guest function pointer. It stored that guest pointer with zero view faults.
+The native host needed the backing pointer. RegisterFunction itself was not
+executed in the fixture; its source uses the tested operation.
+Consequence: follow pointer-bearing fields/containers when assigning policies,
+including types whose own layouts did not change. Test escape in both directions.
+
+E19. Normal SDK execution has useful call boundaries and a stable frame prefix.
+Status: source comparison, not an executed frame bridge.
+The compared Functions-inl.hpp files are identical: public Execute calls native
+engine entry points. The private Execute_ helper constructs a local frame but
+is not used by that normal method. Frame fields through +0x63 retain offsets;
+new ownership state starts at +0x64. A borrowed-prefix or per-call value policy
+is worth investigating. Old frame allocations/copies are not made safe by this.
+Pointer values, nested opcode calls and native tail lifetime remain open.
+
+E20. Single-fault MOV mediation reduces a measured cost but remains expensive.
+Status: five matched isolated trials, same DLL and parent-pointer read.
+20,000 reads, medians: native 0.040 ms; one fault 55.407 ms; two faults 110.843 ms.
+The single-fault path updates the exception context and resumes after the MOV;
+the comparator retries the MOV with a changed base then handles a single step.
+Total checked: 200,007 access violations, 100,000 single steps. This does not
+compare directly with E13's threaded atomic workload or predict frame time.
+Limits: fixed-order microbenchmark, no concurrency/atomic/debugger tests, no
+repeated C++/SEH controls, and no general decoder or instruction emulator.
+
+E21. Allocation promotion does not close raw native alias coverage.
+Status: negative control reproduced with the new host.
+An accessible native pointer still returned stale parent data with zero extra
+faults. E18 additionally shows guest pointers escaping into native containers.
+Consequence: the new mechanisms mitigate particular limits; E12's process-wide
+coverage problem remains. No general admission or fail-closed claim is justified.
+
+Implementation-readiness follow-up
+----------------------------------
+
+Entries E22-E28 use docs/legacy-compat-readiness-lab/, including the separate
+system-Wine and GE-Proton runs described below.
+
+E22. Early notification precedes dependency and parent initialization.
+Status: passed under system Wine and GE-Proton/Steam Runtime 4.
+The readiness platform probe observed notification, C++ initializer and DllMain
+in that order for both DLLs, then Query. Its notification callback uses only
+preallocated storage and local/inlined operations. This supplies the missing
+E04 mechanism test in these environments; native Windows and arbitrary module
+dependency/domain selection remain untested.
+
+E23. Compiled typed adapters and a small generated bridge can unwind correctly.
+Status: passed under both environments.
+Compiled slot adapters preserve a 24-byte aggregate result, mixed integer/double
+arguments, nested domains, new-worker routing and C++ cleanup. A generated
+sub/call/add/ret bridge with registered unwind metadata passes C++ exceptions,
+explicit SEH and a RtlVirtualUnwind model-stack check.
+Consequence: start with compiler-built adapters; a full DBI backend is not a
+prerequisite for call routing. This does not repair E09/E10 or establish arbitrary
+translated-code exception semantics, CFG/CET compatibility or native Windows.
+
+E24. Core layout facts can be extracted from the actual two SDK snapshots.
+Status: 11 types and 33 selected fields measured with the Microsoft x64 ABI.
+Readiness layout-comparison.json records both sizes/alignments and field offsets.
+CClass/CProperty/RefCnt retain sizes; functions, frames and callbacks change.
+Representation policies remain UNREVIEWED because pointer contents, lifetime
+and virtual-call semantics cannot be inferred from equal field offsets.
+
+E25. Native function constructors publish callbacks before class registration.
+Status: established by read-only inspection of the fingerprinted 2.5 executable.
+Class, class-static and global constructors store handlers into native tables
+and increment a shared counter. Native-only container initialization and class
+deleting-destructor allocation size were also inspected. target.json records
+identities and reviewed code-range digests without copying game bytes.
+Consequence: reserve and initialize persistent adapter ownership before calling
+the real constructor. End-of-registration publication is too late as a general
+ownership model. A safe game deregistration/rollback contract remains unknown;
+the first implementation should retain published registrations for the session.
+
+E26. An old-header registration/invocation chain works with explicit boundaries.
+Status: passed in both environments against a fake engine, not CP2077.
+Actual old Callback, Create, RegisterFunction/GetFunction, GetParameter and
+OpcodeHandlers::Get/Run execute through fake native services and adapted table
+entries. The chain retains/releases its callback, separates guest/native class
+arrays, maps function/parent pointers, propagates two parameters, nests frame
+bindings and cleans up three modeled frames including exception unwinding.
+Negative control: a retained metadata mutation stays stale until an explicit
+publication barrier. Fake registry detach is supplied by the test, not discovered
+in the game. No full native registration transaction or lifetime is proved.
+
+E27. Unload requires atomic admission and retained-owner accounting.
+Status: bounded interleaving model, not a runtime concurrency proof.
+A separate alive check and active increment has one unsafe schedule among 15;
+combined atomic admission has none among 10 modeled schedules. An idle domain
+with retained callback slots is still reachable. Reusing a guest address defeats
+generation checks when stale raw pointers carry no generation themselves.
+Consequence: stable control blocks, coupled admission, owner counts and retained
+guest-address tombstones; weak-memory and multithreaded stress remain required.
+
+E28. Native frame ownership and resolved data tables need explicit adapters.
+Status: source/executable inspection plus the bounded E26 table/frame fixture.
+The game CallNative path constructs/destroys a full native frame. Its destructor
+dispatches map cleanup at +0x68. Old frame padding at +0x64 overlaps new state.
+OpcodeHandlers resolves to an indexed data table; it is not one function entry.
+Consequence: preserve the native-owned tail and use per-domain typed table slots.
+The fake frame model does not establish the game's constructor/destructor or
+arbitrary opcode argument semantics.
+
 Decision
 --------
 
@@ -224,9 +361,13 @@ initial design uses cheap typed call adapters and bounded values, with protected
 views as a correctness backend for supported changed live objects. Instruction
 translation remains an independently gated coverage/performance option.
 
-Evidence gaps E04 and E14-E15 cannot honestly be called closed. E09-E10 identify
+E22 supplies the E04 Wine/GE mechanism test; native Windows remains open.
+Evidence gaps E14-E15 cannot honestly be called closed. E09-E10 identify
 failed configurations rather than unexplained compatibility success. E12 is a
 demonstrated safety boundary that the implementation plan must address.
+The E22-E28 sources, reproduction commands, results and checksums are preserved
+in docs/legacy-compat-readiness-lab/. The readiness report separates decisions
+that can now be implemented from G1-G5 integration/coverage/performance gates.
 
 Primary sources
 ---------------

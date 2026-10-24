@@ -1,0 +1,79 @@
+{
+  "old_sdk": "f9ad5334362a8a0815baf58f47615697485feb52",
+  "compiler": "clang version 23.1.3\nTarget: x86_64-pc-windows-msvc\nThread model: posix\nInstalledDir: /usr/bin\n",
+  "sources_lock_sha256": "2d7fba86c3e6ddb4010adb70b96ac4fadf01cddaf86b7c284dc81aef7a0d2348",
+  "sources": {
+    "guest.cpp": "dce4e31bd89940470c1af382b030f63d1c24d763411c480ced83406f4493dc19",
+    "host.cpp": "6e3a728c2ab75373d057acbf2a988858c938848553d427e08d3983caa07a5501"
+  },
+  "builds": [
+    {
+      "name": "guest",
+      "command": [
+        "clang-cl",
+        "-fuse-ld=lld",
+        "/nologo",
+        "/std:c++20",
+        "/EHsc",
+        "/MT",
+        "/O2",
+        "/Gy",
+        "/imsvc<repo>/build/toolchains/xwin/crt/include",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/ucrt",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/shared",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/um",
+        "/I<out>/old-sdk/include",
+        "<repo>/docs/legacy-compat-mitigation-lab/guest.cpp",
+        "/Fo:guest.obj",
+        "/Fe:guest.dll",
+        "/LD",
+        "/clang:-ivfsoverlay",
+        "/clang:<out>/old-sdk-vfs.json",
+        "/link",
+        "/OPT:REF",
+        "/libpath:<repo>/build/toolchains/xwin/crt/lib/x86_64",
+        "/libpath:<repo>/build/toolchains/xwin/sdk/lib/ucrt/x86_64",
+        "/libpath:<repo>/build/toolchains/xwin/sdk/lib/um/x86_64"
+      ],
+      "exit_code": 0,
+      "log": "In file included from <repo>/docs/legacy-compat-mitigation-lab/guest.cpp:4:\nIn file included from <out>/old-sdk/include/RED4ext/Scripting/Functions.hpp:5:\n<out>/old-sdk/include/RED4ext/Containers/DynArray.hpp(512,31): warning: definition of a static variable in a constexpr function is a C++23 extension [-Wc++23-extensions]\n  512 |         static constexpr auto maxSize =\n      |                               ^\nIn file included from <repo>/docs/legacy-compat-mitigation-lab/guest.cpp:4:\nIn file included from <out>/old-sdk/include/RED4ext/Scripting/Functions.hpp:9:\nIn file included from <out>/old-sdk/include/RED4ext/Scripting/Script.hpp:4:\nIn file included from <out>/old-sdk/include/RED4ext/NativeTypes.hpp:17:\nIn file included from <out>/old-sdk/include/RED4ext/RTTISystem.hpp:12:\n<out>/old-sdk/include/RED4ext/RTTITypes.hpp(13,10): warning: non-portable path to file '<RED4ext/RTTI/IType.hpp>'; specified path differs in case from file name on disk [-Wnonportable-include-path]\n   13 | #include <RED4ext/rtti/IType.hpp>\n      |          ^~~~~~~~~~~~~~~~~~~~~~~~\n      |          <RED4ext/RTTI/IType.hpp>\nIn file included from <repo>/docs/legacy-compat-mitigation-lab/guest.cpp:4:\nIn file included from <out>/old-sdk/include/RED4ext/Scripting/Functions.hpp:9:\nIn file included from <out>/old-sdk/include/RED4ext/Scripting/Script.hpp:4:\nIn file included from <out>/old-sdk/include/RED4ext/NativeTypes.hpp:17:\nIn file included from <out>/old-sdk/include/RED4ext/RTTISystem.hpp:12:\nIn file included from <out>/old-sdk/include/RED4ext/RTTITypes.hpp:13:\n<out>/old-sdk/include/RED4ext/RTTI/IType.hpp(7,10): warning: non-portable path to file '<RED4ext/RTTI/ERTTIType.hpp>'; specified path differs in case from file name on disk [-Wnonportable-include-path]\n    7 | #include <RED4ext/rtti/ERTTIType.hpp>\n      |          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~\n      |          <RED4ext/RTTI/ERTTIType.hpp>\n3 warnings generated.\n"
+    },
+    {
+      "name": "host",
+      "command": [
+        "clang-cl",
+        "-fuse-ld=lld",
+        "/nologo",
+        "/std:c++20",
+        "/EHsc",
+        "/MT",
+        "/O2",
+        "/Gy",
+        "/imsvc<repo>/build/toolchains/xwin/crt/include",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/ucrt",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/shared",
+        "/imsvc<repo>/build/toolchains/xwin/sdk/include/um",
+        "/I<repo>/sources/red4ext-sdk/include",
+        "<repo>/docs/legacy-compat-mitigation-lab/host.cpp",
+        "/Fo:host.obj",
+        "/Fe:host.exe",
+        "/link",
+        "/OPT:REF",
+        "/libpath:<repo>/build/toolchains/xwin/crt/lib/x86_64",
+        "/libpath:<repo>/build/toolchains/xwin/sdk/lib/ucrt/x86_64",
+        "/libpath:<repo>/build/toolchains/xwin/sdk/lib/um/x86_64"
+      ],
+      "exit_code": 0,
+      "log": "In file included from <repo>/docs/legacy-compat-mitigation-lab/host.cpp:4:\nIn file included from <repo>/sources/red4ext-sdk/include/RED4ext/Scripting/Functions.hpp:5:\n<repo>/sources/red4ext-sdk/include/RED4ext/Containers/DynArray.hpp(512,31): warning: definition of a static variable in a constexpr function is a C++23 extension [-Wc++23-extensions]\n  512 |         static constexpr auto maxSize =\n      |                               ^\n1 warning generated.\n"
+    }
+  ],
+  "binaries": {
+    "guest.dll": "22e735aaa783c9c2f75451e44f077197ff7de6d879ba235c1d83b6df8ab388b5",
+    "host.exe": "fdaf205e5ec0484df14463b5d967e51aaf36c0df5008a307be189e328d569706"
+  },
+  "wine": "wine-11.20 (Staging)\n",
+  "run": {
+    "returncode": 0,
+    "output": "RETURN_ONLY allocated=0xc0 kept_original=1 replacement_ignored=1 stale_parent=1\nPROMOTION stable_address=1 translated_parent=1 translated_index=1 reverse_pointer=1 null=1 faults=7\nUNTYPED same_size=0xc0 remains_writable=1\nBYPASS raw_native_parent_is_stale=1 additional_faults=0\nARRAY_ESCAPE appended_guest_address=1 native_address_required=1 additional_faults=0\nREAD_BENCH run=0 reads=20000 native_ms=0.040 single_fault_ms=55.318 two_fault_ms=110.843\nREAD_BENCH run=1 reads=20000 native_ms=0.040 single_fault_ms=55.407 two_fault_ms=110.682\nREAD_BENCH run=2 reads=20000 native_ms=0.040 single_fault_ms=55.360 two_fault_ms=110.513\nREAD_BENCH run=3 reads=20000 native_ms=0.040 single_fault_ms=55.633 two_fault_ms=111.061\nREAD_BENCH run=4 reads=20000 native_ms=0.040 single_fault_ms=55.490 two_fault_ms=111.002\nPASS faults=200007 steps=100000 sink=0\n"
+  }
+}

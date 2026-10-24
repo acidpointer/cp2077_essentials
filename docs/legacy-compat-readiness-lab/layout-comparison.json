@@ -1,0 +1,435 @@
+{
+  "old_sdk": "f9ad5334362a8a0815baf58f47615697485feb52",
+  "source_lock_sha256": "2bff0ae581d8a3fe71c0154f4a819c69120b2419bc4dfeb67ee23c6f738df946",
+  "current_sdk_headers_sha256": "7924a145bc90606c5091dc0483f12de15dac99f68b19f149d085191dcbcd3643",
+  "limits": "Selected fields only. Equal offsets/sizes do not establish pointer, ownership, virtual-slot or call compatibility.",
+  "types": {
+    "CBaseFunction": {
+      "old": {
+        "size": 176,
+        "alignment": 8,
+        "fields": {
+          "fullName": {
+            "offset": 8,
+            "size": 8
+          },
+          "returnType": {
+            "offset": 24,
+            "size": 8
+          },
+          "params": {
+            "offset": 40,
+            "size": 16
+          },
+          "bytecode": {
+            "offset": 120,
+            "size": 48
+          },
+          "flags": {
+            "offset": 168,
+            "size": 4
+          },
+          "unkAC": {
+            "offset": 172,
+            "size": 4
+          }
+        }
+      },
+      "current": {
+        "size": 240,
+        "alignment": 8,
+        "fields": {
+          "fullName": {
+            "offset": 8,
+            "size": 8
+          },
+          "returnType": {
+            "offset": 24,
+            "size": 8
+          },
+          "params": {
+            "offset": 40,
+            "size": 16
+          },
+          "bytecode": {
+            "offset": 120,
+            "size": 48
+          },
+          "flags": {
+            "offset": 168,
+            "size": 4
+          },
+          "unkAC": {
+            "offset": 172,
+            "size": 4
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CGlobalFunction": {
+      "old": {
+        "size": 184,
+        "alignment": 8,
+        "fields": {
+          "regIndex": {
+            "offset": 176,
+            "size": 4
+          }
+        }
+      },
+      "current": {
+        "size": 248,
+        "alignment": 8,
+        "fields": {
+          "regIndex": {
+            "offset": 240,
+            "size": 4
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CClassFunction": {
+      "old": {
+        "size": 192,
+        "alignment": 8,
+        "fields": {
+          "parent": {
+            "offset": 176,
+            "size": 8
+          },
+          "regIndex": {
+            "offset": 184,
+            "size": 4
+          }
+        }
+      },
+      "current": {
+        "size": 256,
+        "alignment": 8,
+        "fields": {
+          "parent": {
+            "offset": 240,
+            "size": 8
+          },
+          "regIndex": {
+            "offset": 248,
+            "size": 4
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CClassStaticFunction": {
+      "old": {
+        "size": 192,
+        "alignment": 8,
+        "fields": {}
+      },
+      "current": {
+        "size": 256,
+        "alignment": 8,
+        "fields": {}
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CClass": {
+      "old": {
+        "size": 720,
+        "alignment": 8,
+        "fields": {
+          "parent": {
+            "offset": 16,
+            "size": 8
+          },
+          "props": {
+            "offset": 40,
+            "size": 16
+          },
+          "funcs": {
+            "offset": 72,
+            "size": 16
+          },
+          "staticFuncs": {
+            "offset": 88,
+            "size": 16
+          },
+          "funcsByName": {
+            "offset": 120,
+            "size": 48
+          },
+          "propsByName": {
+            "offset": 232,
+            "size": 48
+          }
+        }
+      },
+      "current": {
+        "size": 720,
+        "alignment": 8,
+        "fields": {
+          "parent": {
+            "offset": 16,
+            "size": 8
+          },
+          "props": {
+            "offset": 40,
+            "size": 16
+          },
+          "funcs": {
+            "offset": 72,
+            "size": 16
+          },
+          "staticFuncs": {
+            "offset": 88,
+            "size": 16
+          },
+          "funcsByName": {
+            "offset": 120,
+            "size": 48
+          },
+          "propsByName": {
+            "offset": 232,
+            "size": 48
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CProperty": {
+      "old": {
+        "size": 48,
+        "alignment": 8,
+        "fields": {
+          "type": {
+            "offset": 0,
+            "size": 8
+          },
+          "parent": {
+            "offset": 24,
+            "size": 8
+          },
+          "valueOffset": {
+            "offset": 32,
+            "size": 4
+          },
+          "flags": {
+            "offset": 40,
+            "size": 8
+          }
+        }
+      },
+      "current": {
+        "size": 48,
+        "alignment": 8,
+        "fields": {
+          "type": {
+            "offset": 0,
+            "size": 8
+          },
+          "parent": {
+            "offset": 24,
+            "size": 8
+          },
+          "valueOffset": {
+            "offset": 32,
+            "size": 4
+          },
+          "flags": {
+            "offset": 40,
+            "size": 8
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CStack": {
+      "old": {
+        "size": 88,
+        "alignment": 8,
+        "fields": {
+          "args": {
+            "offset": 48,
+            "size": 8
+          },
+          "result": {
+            "offset": 64,
+            "size": 8
+          }
+        }
+      },
+      "current": {
+        "size": 88,
+        "alignment": 8,
+        "fields": {
+          "args": {
+            "offset": 48,
+            "size": 8
+          },
+          "result": {
+            "offset": 64,
+            "size": 8
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CStackType": {
+      "old": {
+        "size": 16,
+        "alignment": 8,
+        "fields": {
+          "type": {
+            "offset": 0,
+            "size": 8
+          },
+          "value": {
+            "offset": 8,
+            "size": 8
+          }
+        }
+      },
+      "current": {
+        "size": 16,
+        "alignment": 8,
+        "fields": {
+          "type": {
+            "offset": 0,
+            "size": 8
+          },
+          "value": {
+            "offset": 8,
+            "size": 8
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "CStackFrame": {
+      "old": {
+        "size": 104,
+        "alignment": 8,
+        "fields": {
+          "code": {
+            "offset": 0,
+            "size": 8
+          },
+          "func": {
+            "offset": 8,
+            "size": 8
+          },
+          "data": {
+            "offset": 48,
+            "size": 8
+          },
+          "dataType": {
+            "offset": 56,
+            "size": 8
+          },
+          "parent": {
+            "offset": 72,
+            "size": 8
+          },
+          "currentParam": {
+            "offset": 98,
+            "size": 1
+          },
+          "useDirectData": {
+            "offset": 99,
+            "size": 1
+          }
+        }
+      },
+      "current": {
+        "size": 168,
+        "alignment": 8,
+        "fields": {
+          "code": {
+            "offset": 0,
+            "size": 8
+          },
+          "func": {
+            "offset": 8,
+            "size": 8
+          },
+          "data": {
+            "offset": 48,
+            "size": 8
+          },
+          "dataType": {
+            "offset": 56,
+            "size": 8
+          },
+          "parent": {
+            "offset": 72,
+            "size": 8
+          },
+          "currentParam": {
+            "offset": 98,
+            "size": 1
+          },
+          "useDirectData": {
+            "offset": 99,
+            "size": 1
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "RefCnt": {
+      "old": {
+        "size": 8,
+        "alignment": 4,
+        "fields": {
+          "strongRefs": {
+            "offset": 0,
+            "size": 4
+          },
+          "weakRefs": {
+            "offset": 4,
+            "size": 4
+          }
+        }
+      },
+      "current": {
+        "size": 8,
+        "alignment": 4,
+        "fields": {
+          "strongRefs": {
+            "offset": 0,
+            "size": 4
+          },
+          "weakRefs": {
+            "offset": 4,
+            "size": 4
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    },
+    "Callback": {
+      "old": {
+        "size": 40,
+        "alignment": 8,
+        "fields": {
+          "handler": {
+            "offset": 32,
+            "size": 8
+          }
+        }
+      },
+      "current": {
+        "size": 72,
+        "alignment": 8,
+        "fields": {
+          "handler": {
+            "offset": 64,
+            "size": 8
+          }
+        }
+      },
+      "representation_policy": "UNREVIEWED"
+    }
+  }
+}

@@ -1,0 +1,450 @@
+Legacy ABI shim: implementation readiness investigation
+======================================================
+
+Date: 2026-10-24
+Target: CP2077 2.5 / file version 3.0.88.46235.
+Source ABI examined: the SDK snapshot immediately before the 2.5 update,
+f9ad5334362a8a0815baf58f47615697485feb52, whose runtime list ends at 2.31.
+Follow-up to docs/legacy-plugin-compat-mitigations.txt and evidence E01-E21.
+New reproducible material: docs/legacy-compat-readiness-lab/.
+
+Finding
+-------
+
+A useful implementation can begin without first building a general-purpose
+binary translator. Compiler-built typed adapters, explicit domain ownership,
+bounded frame marshalling and the old callback handler ABI now have positive
+standalone evidence. This addresses several implementation unknowns, rather
+than assuming every call or field access must incur an exception.
+
+The remaining central difficulty is maintaining one coherent object graph
+across two layouts while preserving native ownership. It affects ordinary SDK
+operations, including inline array insertion. It is not chiefly an issue of
+unusual mods. Copies can eliminate faults only where the lifetime and observation
+boundaries justify them. The new negative control demonstrates why that condition
+cannot be omitted.
+
+An important correction: the actual game's native function constructors publish
+callback pointers before class registration. Consequently registration is not
+one reversible transaction ending when the registration callback returns.
+Construction itself crosses an ownership/publication boundary.
+
+The mechanisms below are enough to specify the first isolated runtime core.
+They do not establish production admission, arbitrary native-object coverage,
+acceptable gameplay performance, or native-Windows behavior. The remaining
+gates have concrete experiments and conservative implementation choices; they
+are not being silently relabeled as solved research.
+
+What was measured
+-----------------
+
+The laboratory uses clang-cl, lld-link and the existing Microsoft SDK/STL/CRT.
+It compiles the actual historical headers without editing their bytes; a Clang
+virtual filesystem handles historical include-case differences. Generated files
+and Wine prefixes stay under build/compat-readiness/. No SDK, loader, game or
+MO2 files were changed and the game was not launched.
+
+The platform probe tests notification ordering for a dependency and its parent,
+compiler-generated adapters with aggregate returns and mixed register/stack
+arguments, nested domain restoration, a new worker thread, C++ cleanup, and a
+small generated Win64 bridge with registered unwind information. It exercises
+C++ exceptions, explicit SEH and RtlVirtualUnwind through that generated bridge.
+It does not relocate an existing function or translate its exception scopes.
+
+The old-header chain uses actual Callback, CClassStaticFunction::Create,
+CClass::RegisterFunction/GetFunction, GetParameter and OpcodeHandlers::Get/Run
+code. The host supplies
+fake allocation, constructor, opcode and engine registration services. It checks
+callback retention/destruction, separate guest/native array contents, two
+parameters, nested frame bindings, unwind cleanup and a retained metadata write.
+Three modeled native frames are destroyed; the captured callback payload has
+zero remaining instances after controlled teardown. Native class/frame storage
+is a byte-level ABI fixture, not an invocation of the game's C++ object lifetime.
+
+The layout probe compares 11 actual types and 33 selected fields. The generated
+layout-comparison.json deliberately labels representation policies UNREVIEWED:
+offset equality cannot establish ownership or pointer-content compatibility.
+
+The small lifecycle model enumerates 15 schedules of a separate alive-check and
+active-count increment, finding an unload race. Its combined admission model
+has no unsafe schedule among 10 cases. This is a two-actor sequentially
+consistent model, not a concurrent runtime or weak-memory proof.
+
+Exact runtime versions and outcomes are recorded in the laboratory README and
+results files. All these results are standalone evidence, not playtesting.
+
+1. Schema and address identity: enough to start extraction
+--------------------------------------------------------
+
+Measured old -> current sizes in hexadecimal:
+  CBaseFunction          B0 -> F0
+  CGlobalFunction        B8 -> F8
+  CClassFunction         C0 -> 100
+  CClassStaticFunction   C0 -> 100
+  CClass                2D0 -> 2D0
+  CProperty              30 -> 30
+  CStack                 58 -> 58
+  CStackType             10 -> 10
+  CStackFrame            68 -> A8
+  RefCnt                  8 -> 8
+  Callback               28 -> 48
+
+Function parent/index move B0/B8 -> F0/F8; global index moves B0 -> F0.
+Callback's handler pointer moves 20 -> 40. The relevant frame prefix through
+63 retains its offsets, but old padding at 64..67 overlaps new native state.
+Copying sizeof(old frame) is therefore wrong even though the named old fields
+retain their offsets.
+
+Use compiler-extracted layout facts plus reviewed semantic annotations, with
+separate type and operation IDs. Each pointer needs its pointee type, direction,
+ownership, extent and escape behavior; arrays need element contracts; unions
+need a discriminator; virtual slots need signatures, adjustors and ownership.
+Unknown semantics remain unsupported. AST extraction cannot infer these facts
+from an offset or an opaque void pointer. Schema validation must distinguish
+padding from native-owned state and reject incomplete typed bulk-copy plans.
+
+inspect_target.py inspected the local executable read-only. Its file-version
+candidate is 3.0.88.46235 and its SHA256 is recorded in target.json. All ten
+selected operation hashes had one address-database match. The artifact preserves
+both primary and secondary identities and reviewed code-range hashes. This
+supports this exact target only; the script is an evidence collector, not a
+production resolver or proof that arbitrary matching databases are trustworthy.
+
+Implementation decision: build the operation catalog with checked identities
+and signatures before returning any translated address. A primary hash alone
+does not authorize an operation, and allocation size alone does not identify a
+type. The SDK version string is insufficient to select the historical ABI.
+
+2. Loader entry and domains: preconfigure, then publish bounded state
+------------------------------------------------------------------
+
+The fixture observed, separately for both dependency and parent:
+  load notification -> C++ static initialization -> DllMain -> later Query.
+This closes the basic early-notification mechanism question in the tested
+environments. It does not prove arbitrary dependency selection or all loader
+implementations. Microsoft documents notification before dynamic linking and
+forbids calling functions in other modules from the notification callback [1].
+
+Prepare the ABI profile, adapter slots, module policy, arena and diagnostics
+buffers before LoadLibraryEx. In the callback, use only preallocated records
+and local/inlined operations to publish module ranges. No schema parsing, heap
+work, logging, thread creation or engine calls there. The fixture follows that
+restriction; its initializer logging is a separate later phase.
+
+Select the source ABI before a module's first engine interaction, including
+dependencies. Use a predeclared dependency/domain policy and reconcile actual
+loaded modules; reject conflicting source-ABI assignments to a shared module.
+The notification is not a safe place to guess the ABI or unload a DLL. A failed
+policy must prevent routed engine operations and be reported outside loader
+critical sections. This requires loader integration, not only a VEH.
+
+ResolveAddress has no explicit domain argument. The initial resolver can map
+the caller's code range to the preselected domain. The returned typed entry
+must retain that domain itself: it can later be called from another module,
+another domain or a fresh worker thread. TLS holds a nested active-domain stack;
+it is not the source of persistent callback identity. The fixture tests these
+distinctions. Cached operation pointers make initialization ordering important.
+
+Early notification does not make arbitrary engine calls under loader lock safe.
+Only operations whose initialization dependencies have been reviewed may run
+there. The native RTTI getter includes lazy initialization; it must not be used
+as a supposedly harmless schema-discovery call during notification.
+
+3. Call routing: use compiler-built typed slots first
+---------------------------------------------------
+
+Generate a bounded bank of ordinary compiled functions per reviewed signature.
+Each slot indexes a stable domain/operation record. The compiler supplies the
+Win64 argument placement, hidden aggregate return, stack alignment and unwind
+information. The test covers a 24-byte returned aggregate, mixed integer/double
+arguments, nested routing, a worker entry and exception cleanup.
+
+Do not treat one erased varargs function as a universal adapter. Generate from
+the operation schema, including callback direction and error/exception policy.
+Reserve slots before publication; check capacity before mutating native state.
+Do not reuse slots while any cached engine/plugin pointer can still reach them.
+Finite slot capacity is an explicit resource limit, not a reason to require a
+JIT in the first implementation. Measure code-size and dispatch cost later.
+
+The optional generated bridge also passed after RtlAddFunctionTable registration
+and instruction-cache flushing [2,3]. Its tiny prologue has corresponding unwind
+codes; the fixture unregisters only after execution ends. This answers whether
+small generated adapters are categorically impossible in the tested Wine setup:
+they are not. It does NOT establish that a relocated arbitrary guest function
+inherits correct C++/SEH behavior. Relocated scope tables, handler PCs, fault
+contexts, debugger PCs and saved instruction addresses are a separate problem.
+
+Start with compiled adapters. If generated fast paths are later justified,
+query process mitigation policies, respect dynamic-code restrictions and CFG
+target registration, and test CET behavior on native Windows [4-6]. Do not
+disable mitigations to make a backend appear compatible. Earlier DBI failures
+remain negative evidence about those tested configurations, not proof that
+all generated code fails.
+
+4. Native construction: publication occurs earlier than assumed
+-------------------------------------------------------------
+
+Read-only disassembly of the fingerprinted executable established:
+
+  Class static ctor RVA B48950: base construction, native parent at +F0,
+  callback stored in table at image RVA 3B3BD30, index stored at +F8.
+  Class member ctor RVA 6BECE4: analogous, table at image RVA 3B7BD30.
+  Global ctor RVA B488F8: callback table RVA 3B3BD30, index at +F0.
+  These paths increment the shared counter at image RVA 3BBBD30 and use
+  the prior counter plus FF as the registration index.
+
+These are observations of one executable, not addresses to blindly hardcode.
+The base constructor initializes native-only containers; zero-filling a larger
+buffer is not a substitute. The class scalar deleting destructor at RVA
+2624E28 calls the common destructor and can free a 0x100-byte object. The common
+destructor at 2624C3C destroys property/container state. No direct callback-table
+undo was identified in that reviewed body; this is not proof that no separate
+engine deregistration operation exists. No usable deregistration contract was
+established by this investigation.
+
+Consequences for the construction adapter:
+  a. Reserve the canonical identity, original guest allocation, native backing,
+     persistent callback slot and module ownership before native construction.
+  b. Initialize the callback adapter's reachable state before passing its
+     address to the native constructor. Track partial construction explicitly.
+  c. Call the real native constructor on correctly sized/aligned backing.
+     Preserve the historical allocation address: old Create ignores the
+     constructor's returned replacement pointer (E16/E17).
+  d. Treat constructor publication as an irreversible-to-this-shim event unless
+     a reviewed detach protocol becomes available. Do not decrement the global
+     counter, release a published slot, or FreeLibrary on speculative rollback.
+  e. Publish guest-visible fields through their typed representation policy.
+     Later class-array publication is a second boundary.
+
+A failure before any native publication can release provisional resources.
+After publication, retain reachable code/state and stop the initialization
+attempt under an explicit loader failure policy; continuing with half-created
+metadata is not a safe fallback. The first implementation should reserve all
+bounded resources before calling the native constructor to minimize this case.
+
+The fake chain deliberately models early callback publication and later class
+publication. It explicitly detaches its fake registry at teardown. That detach
+must not be mistaken for a discovered game operation.
+
+5. Persistent graph coherence: use live views unless a boundary is proved
+----------------------------------------------------------------------
+
+CClass::RegisterFunction is inline PushBack into funcs/staticFuncs; GetFunction
+iterates those arrays. Neither supplies an exported registration call to hook.
+An unchanged DynArray layout can still carry incompatible pointer contents.
+The earlier spare-capacity test published a guest pointer into native memory
+without any fault. The current chain succeeds by keeping separate arrays and
+using an explicit publication barrier, then demonstrates a retained guest write
+remaining stale until another barrier. Automatic barrier coverage is unproved.
+
+Choose representation by observation/lifetime, not by apparent simplicity:
+  IDENTITY: verified fields, pointees and ownership are compatible.
+  VALUE: synchronous, bounded, nonescaping state; convert on every boundary.
+  LIVE_VIEW: persistent layout or pointer-content differences; accesses reach
+             authoritative native state through a canonical guest address.
+  CUSTOM: a reviewed semantic operation, including construction/destruction.
+
+For the conservative core, give pointer-bearing class metadata and its array
+storage typed live views. Mediate inline element stores and size/capacity/data
+changes; translate guest function pointers before native publication. Track
+reallocation and element type from the owning field, not the allocation size.
+Unchanged class size is not an IDENTITY exemption. Hash tables and virtual
+tables reachable from that metadata require the same analysis.
+
+CProperty::Create is another distinct case: allocation is pool-based, but its
+placement constructor writes fields inline in plugin code. There is no native
+property-constructor entry that reliably supplies the type annotation. A typed
+pool contract plus a validated owning publication path can classify it; generic
+size-based inference cannot. Its type/parent pointers still need conversion.
+
+Fresh perspective on the copy optimization: a registration mirror can be an
+optional optimization after proving no concurrent native observer, intercepting
+every nested engine call that can observe it, and sealing or mediating retained
+writes afterward. It should not be the correctness foundation. Native callback
+publication in the constructor is already a counterexample to the strongest
+"nothing escapes until registration ends" assumption.
+
+6. Frames and reference counts: retain native ownership
+------------------------------------------------------
+
+For an engine-created frame, keep that native frame as the owner. Build a bounded
+legacy view of reviewed prefix fields; translate func and parent through active
+bindings, and marshal opcode calls back to the original native frame. Preserve
+native state beginning at +64. Nested bindings must preserve canonical parent
+identity, restore the outer binding on return/unwind and propagate allowed
+output fields. The old-header nested GetParameter fixture exercises this path.
+
+OpcodeHandlers is a resolved DATA table, not a callable function entry. Actual
+old Get/Run indexes it inline and calls its four-argument function pointer.
+Return a domain-owned table of typed opcode adapters for that address identity;
+returning either one function thunk or the raw native table breaks the contract.
+The fixture routes actual old Get/Run through two such table entries. This
+generalizes to other returned tables/vtables only after their slots are reviewed.
+
+The game CallNative path at RVA 2624E5C creates a full native frame and calls
+the native frame destructor. Its destructor entry at 263D304 forwards +68 to
+native map cleanup. Do not destroy the borrowed native frame when its temporary
+legacy view expires. For a genuinely guest-owned old frame, a separate adapter
+must create/own the current native tail and destroy it exactly once. The fake
+chain does not validate that constructor/destructor against the game.
+
+Handle/WeakHandle need a second distinction. The measured RefCnt retains its
+8-byte layout and direct atomic counters. A possible representation is a
+translated instance pointer paired with the original native RefCnt pointer.
+This avoids duplicating the counter and can avoid faulting its atomics, subject
+to reviewing the complete counter/weak-release contract. SDK weak release passes
+the handle to a resolved helper, and strong release can call CanBeDestructed;
+zero strong references alone do not establish object destruction.
+
+Bridge destruction-only, scalar-deleting destructor and allocator Free as
+different operations. The SDK Memory::Delete path explicitly destroys then
+frees, whereas a scalar-deleting destructor may already free. Applying both
+deallocation contracts produces a double free. Do not reclaim views merely
+because a reference counter reached zero or a destructor body was entered.
+
+7. Lifetime and concurrency: admission, reachability and reclamation
+------------------------------------------------------------------
+
+Use a stable domain control block whose storage outlives its callable slots.
+Entering a call must atomically couple "still admitting" with the active-call
+increment, using a combined state/CAS or an equivalent correct protocol.
+Separate check-then-increment allows unload in the gap; lifetime_model.py gives
+the exact failing schedule. Define acquire/release ordering in the implementation
+and stress-test it; the model alone does not establish that ordering.
+
+Active calls, retained callback owners, engine-published slots and cached guest
+entries are different forms of reachability. Active == 0 is insufficient for
+unload. Old callbacks must be copied/destroyed through their own handler ABI;
+their code must remain mapped through the final handler call. Module reference
+counts or GetModuleHandleEx pinning can keep code mapped [7], but do not undo a
+plugin's explicit Unload routine destroying its global state. Deny unload while
+live engine references remain; do not call Unload and assume a pin makes it safe.
+
+Until a real deregistration contract exists, published native functions are
+process-lifetime registrations. This is a concrete simplification for the first
+core, with memory/slot budgets checked before publication. Hot unload is not an
+initial requirement. Avoid attempting complex cleanup from process-detach code.
+An inert thunk is safe only when its operation has a reviewed cancellation
+result; there is no universal "return zero" fallback.
+
+Canonical identity includes native address, native lifetime generation, source
+ABI and subobject identity. Native address reuse must create a distinct guest
+address. An internal generation counter cannot distinguish two stale raw guest
+pointers with the same numeric address. Quarantine guest virtual addresses for
+the session unless the ABI supplies a real no-stale-alias guarantee. Memory may
+be decommitted while reserved addresses/tombstones remain; budget address space
+and registry storage explicitly.
+
+For handler lookup, use preallocated stable records and a publish-once/read-mostly
+range index. Keep records alive through active faults; do not free or mutate a
+reader-visible table in place. An immutable snapshot/epoch scheme is a candidate,
+but the exception path needs a preinitialized reader slot and bounded nesting.
+No arbitrary mutex, allocation or logging inside VEH. Stress tests must include
+native mutation, nested exceptions, concurrent retirement and address reuse.
+
+8. Instruction mediation and performance: separate the two gates
+---------------------------------------------------------------
+
+A no-access view is an interception mechanism, not an emulator. Its simplest
+useful backend can handle a deliberately reviewed instruction subset and retain
+native execution for instructions whose address-only remap preserves semantics.
+Zydis is a suitable decoder candidate: its official project documents no dynamic
+allocation and exposes operand/flag metadata [8]. Decode outside critical paths
+where possible, pin/version/license the actual dependency before integration,
+and store bounded immutable plans. No dependency was added in this research.
+
+A decoded instruction is not an execution specification. Before enabling a form,
+compare native and mediated register/flag/memory results for: 8/16/32/64-bit MOV,
+sign/zero extension and high-byte registers; base/destination overlap; indexed
+and RIP-relative operands; pointer loads/stores; alignment and page boundaries;
+LOCK RMW; conditional updates; SIMD; REP/string partial progress. For unsupported
+forms, retain normal fault semantics and a preallocated diagnostic record.
+Do not resume at the next instruction after a guessed update.
+
+Do not temporarily unprotect a shared view page to let one thread execute: other
+threads can then bypass mediation. Address remap plus single-step avoids that
+particular race, but pending contexts, nested faults, debugger trap flags and
+asynchronous exception delivery need their own recovery tests. Atomic pointer
+operations need canonical representation at the linearization point, not a
+non-atomic read/translate/write sequence.
+
+Raw native aliases are still a coverage gate. An unrecognized native pointer can
+be dereferenced without a view fault. A VEH cannot diagnose all such bypasses.
+Trace pointer-producing API results, virtual calls, tables, containers and
+callbacks through the supported ABI graph. Reject unknown boundary contracts;
+do not market fault-on-unsupported-instruction as proof of complete coverage.
+
+The measured exception costs in E20 remain relevant. One-fault MOV is cheaper
+than AV plus single-step, yet unsuitable to assume inexpensive on hot paths.
+Ordinary compiled adapters avoid that exception path entirely; copying reviewed
+bounded values can also avoid it. Neither has a measured game-wide cost here.
+
+The performance upgrade path is tiered: count accesses outside critical paths,
+keep verified IDENTITY/RefCnt paths direct, use VALUE where justified, then
+optimize proven hot instruction plans. A generated cache needs both correct
+architectural effects and correct original-PC exception behavior. Merely adding
+unwind metadata to a generated helper solves neither arbitrary relocation nor
+access coverage. Full-process DBI is therefore an optional later backend, not
+the prerequisite for every part of the shim.
+
+Implementation sequence and remaining evidence gates
+---------------------------------------------------
+
+Ready to implement in an isolated core:
+  1. Versioned schema validation and semantic operation catalog; generated
+     assertions from the measured layouts, with unknown fields rejected.
+  2. Preconfigured module/domain registry, compiled typed slot banks and callback
+     ownership; bounded diagnostics and lifecycle admission state.
+  3. Canonical object/view registry, allocation promotion and typed container
+     contracts; no generic transaction rollback after constructor publication.
+  4. Field-wise frame adapters and conservative instruction plans; keep all
+     fake-engine controls and negative tests independent of implementation.
+
+Evidence still required before real plugin admission:
+  G1. Real native construction/destruction and registration observation timing.
+      Trace a minimal controlled registration on the exact target, including
+      failure after ctor, nested callbacks and teardown. Static inspection
+      already rules out late-only publication; it cannot prove all readers.
+  G2. Complete pointer and ownership coverage for that core ABI graph, including
+      inline property creation, array reallocation and virtual/destructor paths.
+      A deliberately withheld old-header fixture must exercise those paths.
+  G3. Instruction differential tests plus multithreaded native updates, nested
+      exceptions and retirement stress. No general emulator was built here.
+  G4. Native Windows runs, including relevant mitigation configurations; Wine
+      and GE success cannot stand in for Windows unwind/loader/CFG/CET evidence.
+  G5. Runtime access frequencies and controlled game performance/lifetime tests.
+      There is no game CPU/frame-time measurement or save/load evidence here.
+
+These gates do not prevent implementing and testing the core. They prevent
+claiming that the complete production compatibility problem has been solved.
+Mirrors, hot unload and general JIT can remain disabled while that core is built.
+Actual target tracing/launching is a separate requested action; it was not done
+as an incidental part of this research.
+
+Primary references
+------------------
+
+[1] DLL notification contract:
+https://learn.microsoft.com/en-us/windows/win32/devnotes/ldrdllnotification
+[2] x64 exception/unwind model:
+https://learn.microsoft.com/en-us/cpp/build/exception-handling-x64
+[3] Dynamic function tables and virtual unwind:
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtladdfunctiontable
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/nf-winnt-rtlvirtualunwind
+[4] Process mitigation queries:
+https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocessmitigationpolicy
+[5] Dynamic code policy:
+https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-process_mitigation_dynamic_code_policy
+[6] CFG valid-call-target registration:
+https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-setprocessvalidcalltargets
+[7] Module references/pinning:
+https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandleexw
+[8] Decoder properties/API (candidate, not an integrated dependency):
+https://github.com/zyantific/zydis
+https://doc.zydis.re/v4.1.1/html/Decoder_8h_source
+
+Local primary sources: sources/red4ext-sdk/include/RED4ext/{Callback.hpp,
+RTTITypes-inl.hpp,Handle.hpp,Memory/SharedPtr.hpp,Memory/Allocators.hpp,
+Scripting/Functions-inl.hpp,Scripting/Stack-inl.hpp,Scripting/CProperty-inl.hpp};
+historical headers at the commit above; sources/red4ext/src/dll/Systems/
+PluginSystem.cpp; selected executable/address evidence in the laboratory.

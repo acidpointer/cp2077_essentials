@@ -1,0 +1,137 @@
+{
+  "exe_sha256": "d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4",
+  "address_db_sha256": "eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4",
+  "version_resource_candidates": [
+    [
+      3,
+      0,
+      88,
+      46235
+    ]
+  ],
+  "image_base": "0x140000000",
+  "selected": {
+    "CClassFunction_ctor": [
+      {
+        "primary": 1613572595,
+        "secondary": "f8eabd0a2a125a15dac8e5406aa8ca1c7fd93cd45ea3313609f7709e8ee7d514",
+        "rva": "0x6bece4",
+        "symbol": "rtti::NativeMemberFunction::NativeMemberFunction"
+      }
+    ],
+    "CClassStaticFunction_ctor": [
+      {
+        "primary": 2920426135,
+        "secondary": "2beb917bfec394b2b1de6ff4cb4b9a8059db55415b65c23b69eae924c8322621",
+        "rva": "0xb48950",
+        "symbol": null
+      }
+    ],
+    "CGlobalFunction_ctor": [
+      {
+        "primary": 4201325776,
+        "secondary": "ef27063a5960d18f8556000adbb4a18a603793e404155679b9240cd3ecdaaa92",
+        "rva": "0xb488f8",
+        "symbol": "rtti::NativeGlobalFunction::NativeGlobalFunction"
+      }
+    ],
+    "CStackFrame_dtor": [
+      {
+        "primary": 2502822355,
+        "secondary": "38c07c58d356c33cf3ccc6e332aee05e4f586fabf8e975e81d296129c4713a3a",
+        "rva": "0x263d304",
+        "symbol": null
+      }
+    ],
+    "CRTTISystem_Get": [
+      {
+        "primary": 1247874916,
+        "secondary": "a15fa31a13e6606cbc5344b6b481eb7909589ea7b37e34ebe376eafcd6e21900",
+        "rva": "0x281474",
+        "symbol": null
+      }
+    ],
+    "Memory_Vault_Alloc": [
+      {
+        "primary": 2418676960,
+        "secondary": "3ac84f5ddb21c5843971094721376d1d489049aec85fc75667cd52efcacb33ff",
+        "rva": "0x27261c",
+        "symbol": "red::memory::DefaultAllocator::Allocate"
+      }
+    ],
+    "Memory_Vault_Free": [
+      {
+        "primary": 859968306,
+        "secondary": "26ba9bcd57653ca31ee7bbeee718c31539eb902391bf426a4affa37f73a595c4",
+        "rva": "0x275124",
+        "symbol": "red::memory::DefaultAllocator::Free"
+      }
+    ],
+    "CBaseFunction_ExecuteNative": [
+      {
+        "primary": 3778157291,
+        "secondary": "d0648b838ad7762e060642420aace5bada09089ac20e77301051caf3cf7ea712",
+        "rva": "0x2624e5c",
+        "symbol": "rtti::Function::CallNative"
+      }
+    ],
+    "CBaseFunction_ExecuteScripted": [
+      {
+        "primary": 3791200470,
+        "secondary": "57fb04a7885f92e3afd7954d8c63c226c4cb5fb01f07f99553bc16ecd48d224a",
+        "rva": "0x276e24",
+        "symbol": "rtti::Function::InternalCall"
+      }
+    ],
+    "OpcodeHandlers": [
+      {
+        "primary": 961751128,
+        "secondary": "20091dab1c83e661c4efc71a243360f03d3ad4a80d7859b087691ba9e054480d",
+        "rva": "0x3b3bd30",
+        "symbol": null
+      }
+    ]
+  },
+  "reviewed_code_ranges": {
+    "class_static_ctor": {
+      "rva_begin": "0xb48950",
+      "rva_end": "0xb489c3",
+      "sha256": "2f4f75088a1da1eea2ea97d66d3161bac4240d799946524be1cdeeeff2b853b7"
+    },
+    "class_ctor": {
+      "rva_begin": "0x6bece4",
+      "rva_end": "0x6bed57",
+      "sha256": "e65c777b0b838b9d820b0b14a9c98740efe48cc4c844bfcaab872778056f6ff0"
+    },
+    "global_ctor": {
+      "rva_begin": "0xb488f8",
+      "rva_end": "0xb48950",
+      "sha256": "ac2d35ceff02fa4e5b082ffdc34b0773a9541646e44155448455a64e7b853a09"
+    },
+    "base_ctor": {
+      "rva_begin": "0x6bd564",
+      "rva_end": "0x6bd64a",
+      "sha256": "9bea070a480a5a610e21a128c464a5667cc6eec61b549f667e782dd5feb809ee"
+    },
+    "function_dtor": {
+      "rva_begin": "0x2624c3c",
+      "rva_end": "0x2624d68",
+      "sha256": "6b944a52adcdb30b1735ddedd0a309e4690a7224788539424e01350c1d2d2765"
+    },
+    "class_deleting_dtor": {
+      "rva_begin": "0x2624e28",
+      "rva_end": "0x2624e5c",
+      "sha256": "17850d41374cbb5031cf1b9ffd13b9ad33ea65309632184828205c078fb01043"
+    },
+    "frame_dtor_entry": {
+      "rva_begin": "0x263d304",
+      "rva_end": "0x263d30d",
+      "sha256": "7dc08e08bf493d866b30475bf53c5e9e2f0cd01de30093d30698294b70da176f"
+    },
+    "call_native": {
+      "rva_begin": "0x2624e5c",
+      "rva_end": "0x2624f3c",
+      "sha256": "a0f6f57265c49c101e609be10a2de4baf411bf0972155d27be467485a90c13a4"
+    }
+  }
+}

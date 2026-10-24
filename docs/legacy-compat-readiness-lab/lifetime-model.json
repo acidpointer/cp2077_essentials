@@ -1,0 +1,17 @@
+{
+  "naive_schedules": 15,
+  "naive_unsafe": 1,
+  "counterexample": [
+    "check",
+    "close",
+    "unmap_if_idle",
+    "increment",
+    "invoke",
+    "leave"
+  ],
+  "atomic_enter_schedules": 10,
+  "atomic_enter_unsafe": 0,
+  "retained_callback_blocks_unload": true,
+  "native_address_reuse_requires_distinct_guest_address": true,
+  "limits": "Two actors, one active caller, no weak-memory model; reclamation liveness and runtime atomics untested"
+}
