@@ -19,9 +19,9 @@ def prepare(tag):
     manifest = json.loads((source / 'manifest.json').read_text())
     expected = set(c.NAMES) - {'red4ext-sdk'}
     if manifest.get('config') != 'Release' or set(manifest.get('projects', {})) != expected:
-        raise ValueError('A GitHub release requires all five Release packages.')
+        raise ValueError('A GitHub release requires all six Release packages.')
     for project, record in manifest['projects'].items():
-        kinds = {'runtime', 'symbols', 'standard'} if project == 'red4ext' else {'runtime', 'symbols'}
+        kinds = {'runtime', 'symbols', 'standard'} if project in c.ROOT_LAYOUT else {'runtime', 'symbols'}
         if set(record['files']) != kinds:
             raise ValueError(f'{project}: incomplete release archive set.')
     verification.distribution(source)
@@ -65,18 +65,23 @@ def prepare(tag):
 | --- | --- |
 {versions}
 
-Install the five runtime ZIPs with MO2. For RED4ext, choose either
+Install the six runtime ZIPs with MO2. For RED4ext and Cyber Engine Tweaks, choose either
 `*-mo2-rootbuilder.zip` (requires Root Builder) or `*-game-root.zip` (manual
-game-root installation), never both. `*-symbols.zip` files are optional PDBs.
+game-root installation), never both variants of the same mod. `*-symbols.zip` files are optional PDBs.
 
-Disable older versions of these five mods. On Proton, preserve the native
+Disable older versions of these six mods. On Proton, preserve the native
 `winmm` override. All DLLs are compiled from pinned official Git submodules
 with this repository's saved patches and shared SDK. The manifest retains
-source revisions and patch checksums; SHA256SUMS covers all eleven archives.
+source revisions and patch checksums; SHA256SUMS covers all fourteen archives.
 ArchiveXL's unchanged packed resource is from the pinned official release.
+CET's two TweakDB metadata files are from its checksum-pinned official release;
+its bundled ASI and loader DLL are never reused. CET loads as a RED4ext plugin,
+while Lua mods stay at `bin/x64/plugins/cyber_engine_tweaks/mods/`.
+Remove the older CET ASI, version.dll and global.ini when replacing an old CET
+installation, unless another mod independently requires that ASI loader.
 
 Release builds and static package checks pass. The previous local essentials
-set started the game; Input Loader and these CI-built binaries have not been
+set started the game; CET, Input Loader and these CI-built binaries have not been
 playtested. Gameplay, save/load and save compatibility remain untested.
 Input Loader may warn that vanilla 2.5 input XML hashes are unknown.
 ArchiveXL journal indexing and resource hot reload are disabled; cooked

@@ -2,10 +2,26 @@
 """Initialize recorded submodules, apply patches, and prepare pinned dependencies."""
 import argparse
 import pathlib
+import tarfile
 import urllib.request
 
 import common as c
 import patches
+
+
+def asset(item):
+    path = c.ROOT / item['path']
+    if not path.exists():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = path.with_suffix('.download')
+        with urllib.request.urlopen(item['url'], timeout=120) as response:
+            temporary.write_bytes(response.read())
+        if c.sha(temporary) != item['sha256']:
+            raise ValueError(f'{path.name}: resource checksum mismatch')
+        temporary.replace(path)
+    if c.sha(path) != item['sha256']:
+        raise ValueError(f'{path.name}: resource checksum mismatch')
+    return path
 
 
 def sources():
@@ -28,7 +44,7 @@ def dependencies():
         path = c.ROOT / item['path']
         if not (path / '.git').exists():
             path.parent.mkdir(parents=True, exist_ok=True)
-            c.run(['git', 'clone', item['url'], path])
+            c.run(['git', 'clone', '--no-checkout', item['url'], path])
             if c.git(path, 'cat-file', '-e', item['commit'] + '^{commit}', check=False).returncode:
                 c.git(path, 'fetch', 'origin', item['commit'])
             c.git(path, 'checkout', '--detach', item['commit'])
@@ -61,18 +77,18 @@ def dependencies():
         c.git(source, 'submodule', 'update', '--init', '--', nested_path)
     if c.git(nested, 'rev-parse', 'HEAD').stdout.decode().strip() != pin or c.git(nested, 'status', '--porcelain').stdout:
         raise ValueError(f'{nested}: local dependency changes exist; no checkout/reset was attempted.')
-    asset = lock['archivexl_assets']
-    path = c.ROOT / asset['path']
-    if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix('.download')
-        with urllib.request.urlopen(asset['url'], timeout=120) as response:
-            temporary.write_bytes(response.read())
-        if c.sha(temporary) != asset['sha256']:
-            raise ValueError('ArchiveXL resource bundle checksum mismatch')
-        temporary.replace(path)
-    if c.sha(path) != asset['sha256']:
-        raise ValueError('ArchiveXL resource bundle checksum mismatch')
+    asset(lock['archivexl_assets'])
+    asset(lock['cet_assets'])
+    sqlite = lock['sqlite_asset']
+    with tarfile.open(asset(sqlite), 'r:gz') as archive:
+        for name in ['sqlite3.c', 'sqlite3.h']:
+            member = archive.getmember('sqlite-autoconf-3460100/' + name)
+            data = archive.extractfile(member).read()
+            path = c.ROOT / sqlite['directory'] / name
+            if path.exists() and path.read_bytes() != data:
+                raise ValueError(f'{path}: local dependency edits; no overwrite was attempted.')
+            if not path.exists():
+                c.atomic_bytes(path, data)
     print('Pinned dependencies ready.')
 
 

@@ -41,6 +41,8 @@ def distribution(folder):
     for project, record in manifest['projects'].items():
         if record['source'] != patches.identity(project) or record['sdk'] != sdk:
             raise ValueError(f'{project}: stale artifact provenance; rebuild it.')
+        if project == 'cyber-engine-tweaks' and record.get('dependencies') != package.cet_dependencies():
+            raise ValueError('Cyber Engine Tweaks: stale dependency/resource provenance; rebuild it.')
         config = manifest['config'].lower()
         build = c.ROOT / 'build' / ('red4ext' if project == 'red4ext' else 'plugins') / config
         source = c.ROOT / c.config()['projects'][project]['path']
@@ -79,6 +81,14 @@ def distribution(folder):
                     for value in expected:
                         if archive.read(prefix + value) != (build / 'install' / value).read_bytes():
                             raise ValueError(f'{path}: installed content differs')
+                elif project == 'cyber-engine-tweaks':
+                    prefix = 'Root/' if kind == 'runtime' else ''
+                    expected = {prefix + name: data for name, data in package.cet_payload(source, build).items()}
+                    if set(names) != set(expected):
+                        raise ValueError(f'{path}: wrong CET runtime payload')
+                    for name, data in expected.items():
+                        if archive.read(name) != data:
+                            raise ValueError(f'{path}: CET payload differs: {name}')
                 elif project == 'input-loader':
                     expected = package.input_loader_payload(source, build)
                     if set(names) != set(expected):
@@ -123,9 +133,10 @@ def distribution(folder):
 
 def addresses(path):
     counts = collections.Counter(int(value) for value in re.findall(rb'"hash":\s*"(\d+)"', pathlib.Path(path).read_bytes()))
-    for name in ['codeware', 'tweak-xl', 'archive-xl']:
+    for name in ['codeware', 'tweak-xl', 'archive-xl', 'cyber-engine-tweaks']:
         source = c.ROOT / c.config()['projects'][name]['path']
-        values = re.findall(r'constexpr uint32_t (\w+)\s*=\s*(\d+)\s*;', (source / 'src/Red/Addresses/Library.hpp').read_text())
+        library = 'src/reverse/Addresses.h' if name == 'cyber-engine-tweaks' else 'src/Red/Addresses/Library.hpp'
+        values = re.findall(r'constexpr uint32_t (\w+)\s*=\s*(\d+)(?:UL)?\s*;', (source / library).read_text())
         missing = {key for key, value in values if counts[int(value)] != 1}
         allowed = {'JournalTree_ProcessJournalIndex', 'ResourceLoader_OnUpdate'} if name == 'archive-xl' else set()
         if missing != allowed:

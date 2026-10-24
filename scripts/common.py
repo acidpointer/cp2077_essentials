@@ -7,8 +7,10 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(os.environ.get('CP2077_ROOT', pathlib.Path(__file__).resolve().parents[1])).resolve()
-ALIASES = {'archivexl': 'archive-xl', 'tweakxl': 'tweak-xl', 'inputloader': 'input-loader'}
-NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK', 'input-loader': 'InputLoader'}
+ALIASES = {'archivexl': 'archive-xl', 'tweakxl': 'tweak-xl', 'inputloader': 'input-loader',
+           'cet': 'cyber-engine-tweaks', 'cyberenginetweaks': 'cyber-engine-tweaks'}
+NAMES = {'red4ext': 'RED4ext', 'archive-xl': 'ArchiveXL', 'codeware': 'Codeware', 'tweak-xl': 'TweakXL', 'red4ext-sdk': 'RED4ext.SDK', 'input-loader': 'InputLoader', 'cyber-engine-tweaks': 'CyberEngineTweaks'}
+ROOT_LAYOUT = {'red4ext', 'cyber-engine-tweaks'}
 
 
 def binary_name(project):

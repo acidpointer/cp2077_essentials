@@ -17,7 +17,7 @@ jobs:
     name: Build and publish essentials
     runs-on: ubuntu-24.04
     container: archlinux:base-devel
-    timeout-minutes: 120
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
@@ -56,7 +56,7 @@ jobs:
       - name: Test patch and release tooling
         run: python3 -m unittest discover -s tests -v
 
-      - name: Build all Release packages
+      - name: Build all six Release packages (including CET)
         run: ./build-linux.sh --config Release --jobs 2
 
       - name: Test patched Input Loader XML behavior
@@ -64,7 +64,7 @@ jobs:
           CP2077_REQUIRE_INPUT_TESTS: '1'
         run: python3 -m unittest discover -s tests -p test_input_loader.py -v
 
-      - name: Prepare verified release assets
+      - name: Prepare fourteen verified release archives
         run: |
           python3 scripts/check-sources.py
           python3 scripts/release.py "$GITHUB_REF_NAME"

@@ -14,7 +14,7 @@ INPUT_LOADER_NEUTRAL_INI = (
 )
 
 def original_version(project, source, build):
-    if project == 'input-loader':
+    if project in ['input-loader', 'cyber-engine-tweaks']:
         return c.config()['projects'][project]['version']
     if project == 'red4ext':
         text = (build / 'src/loader/Resource.rc').read_text()
@@ -33,9 +33,9 @@ def archive_name(project, version, config, kind):
         raise ValueError(f'{project}: invalid original mod version {version!r}.')
     if config not in ['Release', 'Debug']:
         raise ValueError(f'Unsupported package configuration: {config}')
-    suffixes = {'runtime': '-mo2-rootbuilder' if project == 'red4ext' else '',
+    suffixes = {'runtime': '-mo2-rootbuilder' if project in c.ROOT_LAYOUT else '',
                 'symbols': '-symbols'}
-    if project == 'red4ext':
+    if project in c.ROOT_LAYOUT:
         suffixes['standard'] = '-game-root'
     if kind not in suffixes:
         raise ValueError(f'{project}: unsupported archive kind {kind}.')
@@ -59,6 +59,47 @@ def input_loader_payload(source, build):
     return payload
 
 
+def cet_dependencies():
+    lock = c.config()
+    names = [name for name in lock['dependencies'] if name.startswith('cet-')]
+    names += ['tiltedcore', 'mimalloc', 'minhook', 'hopscotch-map', 'spdlog']
+    return {'sources': {name: lock['dependencies'][name] for name in names},
+            'sqlite': lock['sqlite_asset'], 'assets': lock['cet_assets']}
+
+
+def cet_payload(source, build):
+    """Keep upstream Lua mod paths, with the native plugin loaded by RED4ext."""
+    data_prefix = 'bin/x64/plugins/cyber_engine_tweaks/'
+    plugin_prefix = 'red4ext/plugins/CyberEngineTweaks/'
+    runtime = {plugin_prefix + 'CyberEngineTweaks.dll': (build / 'bin/CyberEngineTweaks.dll').read_bytes(),
+               plugin_prefix + 'LICENSE': (source / 'LICENSE').read_bytes(),
+               data_prefix + 'ThirdParty_LICENSES': (source / 'ThirdParty_LICENSES').read_bytes()}
+    for directory in ['scripts', 'fonts']:
+        for path in sorted((source / directory).rglob('*')):
+            if path.is_file():
+                runtime[data_prefix + path.relative_to(source).as_posix()] = path.read_bytes()
+    asset = c.config()['cet_assets']
+    packed = c.ROOT / asset['path']
+    if c.sha(packed) != asset['sha256']:
+        raise ValueError('CET resource bundle checksum mismatch')
+    with zipfile.ZipFile(packed) as archive:
+        for name in ['tweakdb/usedhashes.kark', 'tweakdb/tweakdbstr.kark']:
+            runtime[data_prefix + name] = archive.read(data_prefix + name)
+    # Upstream's third-party notices cover fonts and embedded bindings. Include
+    # the exact dependency notices too, notably FreeType's additional license.
+    notices = {'cet-json': ['LICENSE.MIT'], 'cet-mem': ['LICENSE.txt'],
+               'cet-sol2': ['LICENSE.txt'], 'cet-luajit': ['COPYRIGHT'],
+               'cet-imgui': ['LICENSE.txt'], 'cet-xbyak': ['COPYRIGHT'],
+               'cet-stb': ['LICENSE'], 'cet-freetype': ['docs/FTL.TXT', 'docs/GPLv2.TXT'],
+               'tiltedcore': ['LICENSE'], 'mimalloc': ['LICENSE'], 'minhook': ['LICENSE.txt'],
+               'hopscotch-map': ['LICENSE'], 'spdlog': ['LICENSE']}
+    for name, paths in notices.items():
+        dependency = c.ROOT / c.config()['dependencies'][name]['path']
+        for path in paths:
+            runtime[plugin_prefix + 'licenses/' + name + '/' + pathlib.PurePosixPath(path).name] = (dependency / path).read_bytes()
+    return runtime
+
+
 def create(project, config):
     root = c.ROOT
     name = c.NAMES[project]
@@ -78,6 +119,10 @@ def create(project, config):
         runtime = input_loader_payload(source, build)
         symbols = {'red4ext/plugins/input_loader/input_loader.pdb':
                    (build / 'bin/input_loader.pdb').read_bytes()}
+    elif project == 'cyber-engine-tweaks':
+        runtime = cet_payload(source, build)
+        symbols = {'red4ext/plugins/CyberEngineTweaks/CyberEngineTweaks.pdb':
+                   (build / 'bin/CyberEngineTweaks.pdb').read_bytes()}
     else:
         prefix = f'red4ext/plugins/{name}/'
         runtime = {}
@@ -137,12 +182,14 @@ def create(project, config):
                     include(path, 'r6/config/redsUserHints/' + path.name)
         pdb = build / 'bin' / f'{name}.pdb'
         symbols = {prefix + pdb.name: pdb.read_bytes()}
-    groups = [('runtime', runtime, 'Root/' if project == 'red4ext' else ''),
+    groups = [('runtime', runtime, 'Root/' if project in c.ROOT_LAYOUT else ''),
               ('symbols', symbols, '')]
-    if project == 'red4ext':
+    if project in c.ROOT_LAYOUT:
         groups += [('standard', runtime, '')]
     record = {'project': name, 'version': version, 'config': config,
               'source': identity, 'sdk': sdk, 'files': {}}
+    if project == 'cyber-engine-tweaks':
+        record['dependencies'] = cet_dependencies()
     for kind, contents, root_prefix in groups:
         dest = out / archive_name(project, version, config, kind)
         with zipfile.ZipFile(dest, 'w', zipfile.ZIP_DEFLATED) as archive:

@@ -45,19 +45,20 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', choices=['Release', 'Debug'], default='Release')
     parser.add_argument('--jobs', type=positive, default=int(os.environ.get('RED4EXT_JOBS', '8')))
-    parser.add_argument('--only', choices=['all', 'red4ext', 'codeware', 'archivexl', 'tweakxl', 'archive-xl', 'tweak-xl', 'inputloader', 'input-loader'], default='all')
+    parser.add_argument('--only', choices=['all', *[name for name in c.NAMES if name != 'red4ext-sdk'], *c.ALIASES], default='all')
     parser.add_argument('--dist-dir', help='Alternative distribution directory inside build/ or dist/')
     args = parser.parse_args()
     bootstrap.sources()
     bootstrap.dependencies()
     xwin = toolchain.ensure()
-    selected = ['red4ext', 'codeware', 'tweak-xl', 'archive-xl', 'input-loader'] if args.only == 'all' else c.select(args.only)
+    selected = [name for name in c.NAMES if name != 'red4ext-sdk'] if args.only == 'all' else c.select(args.only)
     lock = c.config()
     logs = c.ROOT / 'build/logs'
     logs.mkdir(parents=True, exist_ok=True)
     for name in selected:
         before = patches.identity(name, require_saved=True)
         sdk = patches.identity('red4ext-sdk', require_saved=True)
+        dependencies = package.cet_dependencies() if name == 'cyber-engine-tweaks' else None
         print(f'Building {c.NAMES[name]} ({args.config})...', flush=True)
         build = c.ROOT / 'build' / ('red4ext' if name == 'red4ext' else 'plugins') / args.config.lower()
         with (logs / f'{name}-{args.config.lower()}.log').open('w') as log:
@@ -80,6 +81,8 @@ def main():
                         '--prefix', build / 'install'], log)
         if patches.identity(name, require_saved=True) != before or patches.identity('red4ext-sdk', require_saved=True) != sdk:
             raise ValueError('Sources changed during the build; packages were not created.')
+        if dependencies is not None and package.cet_dependencies() != dependencies:
+            raise ValueError('CET dependencies changed during the build; packages were not created.')
         package.create(name, args.config)
     destination = distribution.collect(args.config, selected, args.dist_dir)
     print(f'Runtime packages are listed in {destination / "manifest.json"}')

@@ -1,0 +1,217 @@
+diff --git a/src/d3d12/D3D12.h b/src/d3d12/D3D12.h
+index 3689f3be8bf88b20770081cd0443e6542f4f9925..110ea2b12f7ab5fb707926184184ee3fb534b12e 100644
+--- a/src/d3d12/D3D12.h
++++ b/src/d3d12/D3D12.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include "common/D3D12Downlevel.h"
+-#include "window/Window.h"
++#include "window/window.h"
+ 
+ using TCRenderNode_Present_InternalPresent = void*(int32_t*, uint8_t, UINT);
+ using TCRenderGlobal_Resize = void*(uint32_t a1, uint32_t a2, uint32_t a3, uint8_t a4, int32_t* a5);
+diff --git a/src/dllmain.cpp b/src/dllmain.cpp
+index f338914cd340b54ffd0f840805493491680313e7..b305a933c280c198b409ef10b597009e528dafa2 100644
+--- a/src/dllmain.cpp
++++ b/src/dllmain.cpp
+@@ -3,6 +3,8 @@
+ #include "CET.h"
+ 
+ #include "Options.h"
++#include "config/CETVersion.h"
++#include <RED4ext/RED4ext.hpp>
+ 
+ void OptionsInitHook();
+ void DisableVignettePatch();
+@@ -12,7 +14,7 @@ static HANDLE s_modInstanceMutex = nullptr;
+ 
+ using namespace std::chrono_literals;
+ 
+-static void Initialize()
++static bool Initialize()
+ {
+     try
+     {
+@@ -25,7 +27,7 @@ static void Initialize()
+         // single instance check
+         s_modInstanceMutex = CreateMutex(nullptr, TRUE, TEXT("Cyber Engine Tweaks Module Instance"));
+         if (s_modInstanceMutex == nullptr)
+-            return;
++            throw std::runtime_error("Could not create CET instance mutex");
+ 
+         // initialize patches
+ 
+@@ -37,10 +39,23 @@ static void Initialize()
+ 
+         OptionsInitHook();
+ 
+-        MH_EnableHook(nullptr);
++        if (MH_EnableHook(nullptr) != MH_OK)
++            throw std::runtime_error("Could not enable CET hooks");
++        return true;
+     }
+     catch (...)
+     {
++        OutputDebugStringA("Cyber Engine Tweaks: initialization failed\n");
++        MH_DisableHook(nullptr);
++        MH_Uninitialize();
++        CET::Shutdown();
++        if (s_modInstanceMutex)
++        {
++            ReleaseMutex(s_modInstanceMutex);
++            CloseHandle(s_modInstanceMutex);
++            s_modInstanceMutex = nullptr;
++        }
++        return false;
+     }
+ }
+ 
+@@ -58,6 +73,8 @@ static void Shutdown()
+         CET::Shutdown();
+ 
+         ReleaseMutex(s_modInstanceMutex);
++        CloseHandle(s_modInstanceMutex);
++        s_modInstanceMutex = nullptr;
+     }
+ 
+     if (inGameProcess)
+@@ -68,17 +85,27 @@ static void Shutdown()
+     }
+ }
+ 
+-BOOL APIENTRY DllMain(HMODULE mod, DWORD ul_reason_for_call, LPVOID)
+-{
+-    // Not safe to do this, the DLL uses thread_local storage
+-    //DisableThreadLibraryCalls(mod);
++// RED4ext loads this plugin before game initialization. Keep loader-lock work
++// out of DllMain; CET still installs its upstream initialization hooks.
++BOOL APIENTRY DllMain(HMODULE, DWORD, LPVOID) { return TRUE; }
+ 
+-    switch (ul_reason_for_call)
+-    {
+-    case DLL_PROCESS_ATTACH: Initialize(); break;
+-    case DLL_PROCESS_DETACH: Shutdown(); break;
+-    default: break;
+-    }
++RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle,
++    RED4ext::v1::EMainReason aReason, const RED4ext::v1::Sdk*)
++{
++    if (aReason == RED4ext::v1::EMainReason::Load)
++        return Initialize();
++    if (aReason == RED4ext::v1::EMainReason::Unload)
++        Shutdown();
++    return true;
++}
+ 
+-    return TRUE;
++RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
++{
++    aInfo->name = L"Cyber Engine Tweaks";
++    aInfo->author = L"yamashi and contributors";
++    aInfo->version = RED4EXT_V1_SEMVER(CET_VERSION_MAJOR, CET_VERSION_MINOR, CET_VERSION_PATCH);
++    aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_2_50;
++    aInfo->sdk = RED4EXT_V1_SDK_VERSION_1_0_0_COMPAT_0_5_0;
+ }
++
++RED4EXT_C_EXPORT uint32_t RED4EXT_CALL Supports() { return RED4EXT_API_VERSION_1_COMPAT_0; }
+diff --git a/src/reverse/Relocation.h b/src/reverse/Relocation.h
+index 865d8bac6dcb1aa1a4c134728f8627823de26214..ba4b559b54780a2285a8d9ab1fff85dcc567cbeb 100644
+--- a/src/reverse/Relocation.h
++++ b/src/reverse/Relocation.h
+@@ -1,68 +1,5 @@
+ #pragma once
+ 
+-#include <filesystem>
+-#include <mutex>
+-#include <sstream>
+-
+-#include <Windows.h>
+-
++// Use the shared SDK resolver provided by the loaded RED4ext.dll.
+ #include <RED4ext/Common.hpp>
+ #include <RED4ext/Detail/Memory.hpp>
+-
+-template<>
+-struct RED4ext::Detail::AddressResolverOverride<uint32_t> : std::true_type
+-{
+-    inline static uintptr_t Resolve(uint32_t aHash)
+-    {
+-        using functionType = void* (*)(uint32_t);
+-        static functionType resolveFunc = nullptr;
+-
+-        static std::once_flag flag;
+-        std::call_once(flag,
+-           []()
+-           {
+-               char exePath[4096];
+-               GetModuleFileNameA(GetModuleHandle(nullptr), exePath, 4096);
+-
+-               std::filesystem::path exe = exePath;
+-
+-               auto dllName = exe.parent_path() / "version.dll";
+-               constexpr auto functionName = "ResolveAddress";
+-
+-               auto handle = LoadLibraryA(dllName.string().c_str());
+-               if (!handle)
+-               {
+-                   std::stringstream stream;
+-                   stream << "Failed to get '" << dllName
+-                          << "' handle.\nProcess will now close.\n\nLast error: " << GetLastError();
+-
+-                   MessageBoxA(nullptr, stream.str().c_str(), "Cyber Engine Tweaks", MB_ICONERROR | MB_OK);
+-                   TerminateProcess(GetCurrentProcess(), 1);
+-                   return; // Disable stupid warning
+-               }
+-
+-               resolveFunc = reinterpret_cast<functionType>(GetProcAddress(handle, functionName));
+-               if (resolveFunc == nullptr)
+-               {
+-                   std::stringstream stream;
+-                   stream << "Failed to get '" << functionName
+-                          << "' address.\nProcess will now close.\n\nLast error: " << GetLastError();
+-
+-                   MessageBoxA(nullptr, stream.str().c_str(), "Cyber Engine Tweaks", MB_ICONERROR | MB_OK);
+-                   TerminateProcess(GetCurrentProcess(), 1);
+-               }
+-           });
+-
+-        auto address = resolveFunc(aHash);
+-        if (address == nullptr)
+-        {
+-            std::stringstream stream;
+-            stream << "Failed to resolve address for hash " << std::hex << std::showbase << aHash << ".\nProcess will now close.";
+-
+-            MessageBoxA(nullptr, stream.str().c_str(), "Cyber Engine Tweaks", MB_ICONERROR | MB_OK);
+-            TerminateProcess(GetCurrentProcess(), 1);
+-        }
+-
+-        return reinterpret_cast<uintptr_t>(address);
+-    }
+-};
+diff --git a/src/stdafx.h b/src/stdafx.h
+index d3ebed7d1e9630344a6ccf7985689af00e2313bb..eb30ae570cc2aca25ae83fca5e8684a88737b248 100644
+--- a/src/stdafx.h
++++ b/src/stdafx.h
+@@ -44,7 +44,7 @@
+ #include <d3dcompiler.h>
+ #include <DbgHelp.h>
+ #include <dxgi1_4.h>
+-#include <SDKDDKVer.h>
++#include <sdkddkver.h>
+ #include <Windows.h>
+ #include <wrl.h>
+ 
+diff --git a/src/xmake/Resource.rc.in b/src/xmake/Resource.rc.in
+index 8c301ea25ed428d8a6b9fd41f60564e17cb4f418..fe266b4a79de51c28c4bf9dbced4ef6974a268bf 100644
+--- a/src/xmake/Resource.rc.in
++++ b/src/xmake/Resource.rc.in
+@@ -18,7 +18,7 @@ BEGIN
+             VALUE "CompanyName",        "${CET_GROUP_NAME}"
+             VALUE "FileDescription",    "${CET_PRODUCT_NAME}"
+             VALUE "FileVersion",        "${CET_VERSION_SIMPLE}"
+-            VALUE "LegalCopyright",     "© 2020-${CET_CURRENT_YEAR} ${CET_GROUP_NAME}. All Rights Reserved"
++            VALUE "LegalCopyright",     "(c) 2020-${CET_CURRENT_YEAR} ${CET_GROUP_NAME}. All Rights Reserved"
+             VALUE "OriginalFilename",   "${CET_FILE_NAME}"
+             VALUE "ProductName",        "${CET_PRODUCT_NAME}"
+             VALUE "ProductVersion",     "${CET_VERSION_FULL}"

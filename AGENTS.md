@@ -60,7 +60,8 @@ absent or has no matching material, continue with other available sources.
 | Initialize missing sources/dependencies | `scripts/bootstrap.py` |
 | Root orchestration / per-project build flags | `build-linux.sh`, `scripts/build.py` |
 | Native LLVM / Microsoft SDK bootstrap | `scripts/toolchain.py`, `cmake/toolchains/clang-cl-linux.cmake` |
-| Plugin targets, generated headers and link libs | `cmake/Plugins.cmake` |
+| Plugin targets, generated headers and link libs | `cmake/Plugins.cmake`, `cmake/CyberEngineTweaks.cmake` |
+| CET LuaJIT Windows VM generation / package regressions | `scripts/luajit_codegen.py`, `tests/test_cet.py` |
 | Allocator/native dependencies | `cmake/Dependencies.cmake` |
 | Loader header-only dependency integration | `cmake/LoaderDependencies.cmake` |
 | Required ABI assertions | `cmake/AbiChecks.cpp` |
@@ -76,7 +77,8 @@ absent or has no matching material, continue with other available sources.
 | Original startup-crash evidence | `docs/PATCH_2_5.md` |
 
 Source projects: `sources/red4ext`, `sources/archive-xl`, `sources/codeware`,
-`sources/tweak-xl`, `sources/input-loader`, `sources/red4ext-sdk`. These are
+`sources/tweak-xl`, `sources/input-loader`, `sources/cyber-engine-tweaks`,
+`sources/red4ext-sdk`. These are
 official upstream submodules. Their patched working contents are expected to be modified;
 their HEADs must stay at the commits recorded by the root Gitlinks.
 
@@ -153,12 +155,13 @@ Never use `submodule update --remote` as a build step.
 ./build-linux.sh --only tweakxl --jobs 8
 ./build-linux.sh --only archivexl --jobs 8
 ./build-linux.sh --only input-loader --jobs 8
+./build-linux.sh --only cet --jobs 8
 ```
 
 `--only` accepts `tweakxl/archivexl/inputloader` and
-`tweak-xl/archive-xl/input-loader`. Per-project wrappers are
-`scripts/build-<red4ext|codeware|tweakxl|archivexl|inputloader>.sh`.
-Use Release for installation. Shared SDK changes require all five builds.
+`tweak-xl/archive-xl/input-loader` and `cet/cyberenginetweaks/cyber-engine-tweaks`. Per-project wrappers are
+`scripts/build-<red4ext|codeware|tweakxl|archivexl|inputloader|cet>.sh`.
+Use Release for installation. Shared SDK changes require all six builds.
 Do not repeat unchanged native builds after documentation-only edits.
 
 | Output | Path |
@@ -248,6 +251,17 @@ legacy Add ABI alongside TryAdd/Remove. Read the packaged readme for cancellatio
 recovery and Root Builder cleanup rules. Generation paths and first-launch input
 behavior still need an actual 2.5 game test. No address hooks are used.
 
+CET is pinned to official v1.38.0 (2.5 support) and loads through RED4ext.
+Keep its Lua mod paths under `bin/x64/plugins/cyber_engine_tweaks/`; runtime
+ZIPs use Root Builder or a separate standard game-root layout. Do not ship its
+upstream prebuilt ASI, version.dll or global.ini. Reuse only the checksum-pinned
+CET release’s two TweakDB metadata files. Fonts/scripts come from source.
+LuaJIT generators run natively on Linux and emit a Windows x64 GC64 VM object;
+all runtime C/C++ uses clang-cl and the Microsoft CRT. Keep ImGui docking,
+32-bit wchar support, FreeType, sol2 safeties and dependency license notices.
+CET dependency/resource pins are part of its package provenance. Overlay, Lua
+mods, hook timing and shutdown still need a real 2.5 game test.
+
 ArchiveXL still lacks `JournalTree_ProcessJournalIndex` and
 `ResourceLoader_OnUpdate`: journal indexing and resource hot reload remain
 disabled. Cooked instanced-mesh/collision-node element edits remain limited.
@@ -271,7 +285,7 @@ Do not alter upstream ignore files, reset source edits or use assume-unchanged
 or skip-worktree flags to hide this expected patch state.
 
 Only when explicitly asked to stage or create an initial commit, stage root
-files and the six `sources/*` Gitlinks. Check
+files and the seven `sources/*` Gitlinks. Check
 `git --no-optional-locks diff --cached --check` and inspect
 `git --no-optional-locks diff --cached --stat`.
 No upstream files, build caches or distribution ZIPs belong in that commit.
@@ -294,8 +308,8 @@ python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyb
 Expected unique hash matches: Codeware 107/107, TweakXL 11/11, ArchiveXL 132/134
 with only the two disabled-feature hashes missing.
 
-A release uses the five runtime ZIPs, SHA256SUMS and manifest.json. Standard
-RED4ext layout and symbols are separate optional extras. The collector verifies
+A release uses the six runtime ZIPs, SHA256SUMS and manifest.json. Standard
+RED4ext and CET layouts and symbols are separate optional extras. The collector verifies
 a candidate before replacing the old distribution and rejects mixed provenance.
 Release archive names contain original mod versions and meaningful layout
 suffixes only; provenance belongs in manifests. Do not add commit, fingerprint,
@@ -303,7 +317,7 @@ timestamp or `dirty` suffixes. Debug archives retain `-debug` for clarity.
 `SHA256SUMS` covers runtime, standard-layout and symbol archives.
 
 The tag workflow checks official source boundaries, tests and builds the full
-Release set in an Arch container, then publishes eleven ZIPs and checksums using
+Release set in an Arch container, then publishes fourteen ZIPs and checksums using
 the repository token. Stable tags use `vX.Y.Z`; RC tags produce prereleases.
 Publication creates absent releases or uploads prepared filenames with
 `--clobber` to existing mutable releases. Preserve existing title/notes and

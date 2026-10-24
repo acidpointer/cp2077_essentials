@@ -22,3 +22,7 @@
 	path = sources/input-loader
 	ignore = dirty
 	url = https://github.com/jackhumbert/cyberpunk2077-input-loader.git
+[submodule "sources/cyber-engine-tweaks"]
+	path = sources/cyber-engine-tweaks
+	url = https://github.com/maximegmd/CyberEngineTweaks.git
+	ignore = dirty

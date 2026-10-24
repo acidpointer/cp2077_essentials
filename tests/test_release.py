@@ -30,6 +30,10 @@ class ArchiveNames(unittest.TestCase):
                          'TweakXL-1.11.5-game2.5-debug.zip')
         self.assertEqual(package.archive_name('input-loader', '0.2.3', 'Release', 'runtime'),
                          'InputLoader-0.2.3-game2.5.zip')
+        self.assertEqual(package.archive_name('cyber-engine-tweaks', '1.38.0', 'Release', 'runtime'),
+                         'CyberEngineTweaks-1.38.0-game2.5-mo2-rootbuilder.zip')
+        self.assertEqual(package.archive_name('cyber-engine-tweaks', '1.38.0', 'Release', 'standard'),
+                         'CyberEngineTweaks-1.38.0-game2.5-game-root.zip')
 
     def test_version_suffixes_cannot_leak_into_names(self):
         with self.assertRaises(ValueError):
@@ -178,10 +182,10 @@ class ReleaseAssets(unittest.TestCase):
         self.source = self.root / 'dist/release'
         self.source.mkdir(parents=True)
         self.manifest = {'schema': 2, 'config': 'Release', 'projects': {}}
-        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5', 'input-loader': '0.2.3'}
+        versions = {'red4ext': '1.30.0', 'codeware': '1.20.6', 'tweak-xl': '1.11.5', 'archive-xl': '1.27.5', 'input-loader': '0.2.3', 'cyber-engine-tweaks': '1.38.0'}
         for project, version in versions.items():
             record = {'project': c.NAMES[project], 'version': version, 'files': {}}
-            for kind in ['runtime', 'symbols'] + (['standard'] if project == 'red4ext' else []):
+            for kind in ['runtime', 'symbols'] + (['standard'] if project in c.ROOT_LAYOUT else []):
                 group = '' if kind == 'runtime' else kind
                 path = self.source / group / package.archive_name(project, version, 'Release', kind)
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,11 +205,11 @@ class ReleaseAssets(unittest.TestCase):
         destination = release.prepare('v1.0.0')
         self.verify.assert_called_once_with(self.source)
         assets = (destination / 'assets.txt').read_text().splitlines()
-        self.assertEqual(len(assets), 24)  # Eleven ZIPs, eleven sidecars, manifest and SHA256SUMS.
+        self.assertEqual(len(assets), 30)  # Fourteen ZIPs, fourteen sidecars, manifest and SHA256SUMS.
         self.assertTrue(all((self.root / name).is_file() for name in assets))
         manifest = json.loads((destination / 'manifest.json').read_text())
         self.assertEqual(manifest['essentials_release'], 'v1.0.0')
-        self.assertEqual(len(list(destination.glob('*.zip'))), 11)
+        self.assertEqual(len(list(destination.glob('*.zip'))), 14)
         for record in manifest['projects'].values():
             for item in record['files'].values():
                 self.assertNotIn('/', item['file'])
@@ -216,7 +220,7 @@ class ReleaseAssets(unittest.TestCase):
     def test_missing_project_or_symbols_refuses_release(self):
         self.manifest['projects'].pop('codeware')
         self.save()
-        with self.assertRaisesRegex(ValueError, 'all five'):
+        with self.assertRaisesRegex(ValueError, 'all six'):
             release.prepare('v1.0.0')
         self.manifest['projects']['codeware'] = {'files': {}}
         self.save()

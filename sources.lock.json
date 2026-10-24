@@ -131,6 +131,21 @@
           "notes": "Independently reimplemented defensive XML/file/initialization behavior observed with radare2/r2mcp; preserves newer upstream startup, cache and action/id fixes."
         }
       }
+    },
+    "cyber-engine-tweaks": {
+      "path": "sources/cyber-engine-tweaks",
+      "version": "1.38.0",
+      "patches": [
+        {
+          "path": "patches/cyber-engine-tweaks/001-essentials.patch",
+          "sha256": "6c74c34a03fc53c441f6ae89e21355f2b12fad46337d0b6fb8ff089a923857e4"
+        }
+      ],
+      "provenance": {
+        "upstream": "https://github.com/maximegmd/CyberEngineTweaks",
+        "version_tag": "v1.38.0",
+        "notes": "Official 2.5 support; local RED4ext plugin integration and shared SDK/Clang adaptations. No in-game validation."
+      }
     }
   },
   "dependencies": {
@@ -193,6 +208,54 @@
       "path": "build/deps/red4ext-wil",
       "url": "https://github.com/microsoft/wil.git",
       "commit": "3ecba603d9789435b0661be7b7154d45c195ef98"
+    },
+    "cet-json": {
+      "path": "build/deps/cet-json",
+      "url": "https://github.com/nlohmann/json.git",
+      "commit": "9cca280a4d0ccf0c08f47a99aa71d1b0e52f8d03",
+      "version": "v3.11.3"
+    },
+    "cet-mem": {
+      "path": "build/deps/cet-mem",
+      "url": "https://github.com/0x1F9F1/mem.git",
+      "commit": "4aa75a74266b9ad3dab542afb5c88adc7d1c0616",
+      "version": "1.0.0"
+    },
+    "cet-sol2": {
+      "path": "build/deps/cet-sol2",
+      "url": "https://github.com/ThePhD/sol2.git",
+      "commit": "9190880c593dfb018ccf5cc9729ab87739709862",
+      "version": "v3.5.0"
+    },
+    "cet-luajit": {
+      "path": "build/deps/cet-luajit",
+      "url": "https://github.com/openresty/luajit2.git",
+      "commit": "2cf5186418b1f51b6d2e8d5f6ca486e568c06398",
+      "version": "v2.1-20230119"
+    },
+    "cet-imgui": {
+      "path": "build/deps/cet-imgui",
+      "url": "https://github.com/ocornut/imgui.git",
+      "commit": "f63c95a076a401721ceaf21f30d4f12e8c40cb2c",
+      "version": "v1.91.1-docking"
+    },
+    "cet-freetype": {
+      "path": "build/deps/cet-freetype",
+      "url": "https://github.com/freetype/freetype.git",
+      "commit": "42608f77f20749dd6ddc9e0536788eaad70ea4b5",
+      "version": "VER-2-13-3"
+    },
+    "cet-xbyak": {
+      "path": "build/deps/cet-xbyak",
+      "url": "https://github.com/herumi/xbyak.git",
+      "commit": "fc183427e852a70fb98add1ba640020a53034bb0",
+      "version": "v7.06"
+    },
+    "cet-stb": {
+      "path": "build/deps/cet-stb",
+      "url": "https://github.com/nothings/stb.git",
+      "commit": "003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5",
+      "version": "HEAD"
     }
   },
   "archivexl_assets": {
@@ -208,5 +271,18 @@
     "SPDLOG": "spdlog",
     "TOML11": "toml11",
     "WIL": "red4ext-wil"
+  },
+  "cet_assets": {
+    "path": "build/CET-1.38.0-assets.zip",
+    "url": "https://github.com/maximegmd/CyberEngineTweaks/releases/download/v1.38.0/cet_1_38_0.zip",
+    "sha256": "6da2e91b07d5ea9dd4aa32145b2c2920a976abee481854976e2ae82169b612e1",
+    "notes": "Reuse only tweakdb/usedhashes.kark and tweakdb/tweakdbstr.kark; never the bundled ASI or loader DLL."
+  },
+  "sqlite_asset": {
+    "path": "build/deps/sqlite-autoconf-3460100.tar.gz",
+    "url": "https://sqlite.org/2024/sqlite-autoconf-3460100.tar.gz",
+    "sha256": "67d3fe6d268e6eaddcae3727fce58fcc8e9c53869bdd07a0c61e38ddf2965071",
+    "directory": "build/deps/cet-sqlite",
+    "version": "3.46.1"
   }
 }

@@ -1,7 +1,7 @@
 # Cyberpunk 2077 Essentials · Patch 2.5
 
 **Unofficial, vibe-coded compatibility builds of RED4ext, ArchiveXL, Codeware,
-TweakXL and Input Loader for Cyberpunk 2077 2.5.**
+TweakXL, Input Loader and Cyber Engine Tweaks for Cyberpunk 2077 2.5.**
 
 This project combines community 2.5 ports, local AI-assisted fixes and a native
 Linux build pipeline. “Vibe-coded” describes our compatibility work and tooling,
@@ -14,9 +14,9 @@ and build tools**. It does not vendor the upstream source trees.
 | Target / check | Status |
 | --- | --- |
 | Game | **2.5**, executable **3.0.88.46235** |
-| Release builds | All five build successfully with the shared patched SDK |
+| Release builds | All six pass in the [isolated integration check](docs/cet-2.5-integration.txt) with the saved shared SDK |
 | Static checks | ABI assertions, DLL exports, matching symbols, payloads and checksums pass |
-| Runtime | The previous four-mod essentials set starts the game; rebuilt packages and Input Loader need a startup test |
+| Runtime | The previous four-mod essentials set starts the game; rebuilt packages, Input Loader and CET need a startup test |
 | Gameplay / save compatibility | **Not playtested** |
 
 ## Included projects
@@ -28,6 +28,7 @@ and build tools**. It does not vendor the upstream source trees.
 | Codeware | [psiberx/cp2077-codeware](https://github.com/psiberx/cp2077-codeware) | [Community 2.5 port](https://github.com/psiberx/cp2077-codeware/pull/63), explicit handle conversion |
 | TweakXL | [psiberx/cp2077-tweak-xl](https://github.com/psiberx/cp2077-tweak-xl) | [Community 2.5 port](https://github.com/psiberx/cp2077-tweak-xl/pull/22) |
 | Input Loader | [jackhumbert/cyberpunk2077-input-loader](https://github.com/jackhumbert/cyberpunk2077-input-loader) | Shared SDK; audited input/cache fixes; game untested |
+| Cyber Engine Tweaks | [maximegmd/CyberEngineTweaks](https://github.com/maximegmd/CyberEngineTweaks) | Official v1.38.0 2.5 support; shared SDK and RED4ext plugin integration; game untested |
 | Shared SDK | [wopss/RED4ext.SDK](https://github.com/wopss/RED4ext.SDK) | [Retail layout fixes](https://github.com/wopss/RED4ext.SDK/pull/228), [archive scope fix](https://github.com/wopss/RED4ext.SDK/pull/229), include casing |
 
 The Gitlinks record exact official upstream commits. Compatibility changes are
@@ -37,12 +38,12 @@ stored in [patches/](patches/README.md), with provenance in
 
 ## Install with Mod Organizer 2
 
-Install the five runtime ZIPs listed in `dist/release/manifest.json` or supplied
-with a release. Disable the older versions of these five mods first.
+Install the six runtime ZIPs listed in `dist/release/manifest.json` or supplied
+with a release. Disable the older versions of these six mods first.
 
-- Use `*-mo2-rootbuilder.zip` for RED4ext with Root Builder; keep its top-level
+- Use `*-mo2-rootbuilder.zip` for RED4ext and CET with Root Builder; keep its top-level
   `Root/`. The alternative ZIP under `standard/` uses game-root paths.
-  Install only one RED4ext variant.
+  Install only one variant of each mod.
 - Keep ArchiveXL, Codeware and TweakXL in their supplied
   `red4ext/plugins/<name>/` layout. Their scripts, metadata and assets are
   required alongside the DLLs.
@@ -52,6 +53,12 @@ with a release. Disable the older versions of these five mods first.
   its selector; no vanilla XMLs are shipped. When disabling after a successful
   run, close the game and remove the managed selector as well as the DLL.
   Check Root Builder/MO2's generated output when changing profiles.
+- CET loads from `red4ext/plugins/CyberEngineTweaks/CyberEngineTweaks.dll`.
+  Preserve its fonts, scripts and TweakDB metadata under
+  `bin/x64/plugins/cyber_engine_tweaks/`; install Lua mods in that directory’s
+  `mods/` subdirectory as usual. Remove an older CET ASI and its `version.dll` /
+  `global.ini` loader unless another mod requires that loader. This package
+  uses RED4ext and does not ship a second ASI loader.
 - On Proton, preserve the native `winmm` override and launch through MO2.
 - Use Release builds and a disposable save for testing. PDB archives are optional.
 
@@ -78,7 +85,7 @@ revisions. An x86_64 Linux host is supported out of the box.
 
 Install CMake 3.26+, a recent Clang/LLVM toolchain, Git, Python 3.9+, curl, tar,
 coreutils, and Ninja or GNU Make. LLVM must supply `clang-cl`, `lld-link`,
-`llvm-lib`, `llvm-mt`, `llvm-rc`, `llvm-ml`, `llvm-readobj` and
+`clang`, `llvm-lib`, `llvm-mt`, `llvm-rc`, `llvm-ml`, `llvm-readobj` and
 `llvm-pdbutil`. The tested toolchain is LLVM 23.1.3 with CMake 4.4.4.
 
 ```bash
@@ -101,7 +108,11 @@ plugins are not initialized by our scripts. Other required nested dependencies
 are initialized selectively, including Input Loader's pinned `deps/pugixml`.
 Its private SDK, Detours, spdlog and CMake helper submodules remain unused;
 the root target uses our pinned spdlog in header-only mode with wide-character
-support. Input Loader retains version 0.2.3 from its latest upstream tag;
+support. CET uses pinned LuaJIT (Windows x64 GC64), ImGui docking with
+FreeType, sol2, SQLite and its other native dependencies. Linux host generators
+emit LuaJIT’s Windows VM object; its runtime is compiled with clang-cl and the
+Microsoft CRT. CET’s private SDK and bundled ASI loader are unused.
+Input Loader retains version 0.2.3 from its latest upstream tag;
 its Gitlink pins the subsequent upstream startup and XML merge fixes.
 
 ```bash
@@ -110,12 +121,15 @@ its Gitlink pins the subsequent upstream startup and XML merge fixes.
 ./scripts/build-tweakxl.sh --jobs 8
 ./scripts/build-red4ext.sh --jobs 8
 ./scripts/build-inputloader.sh --jobs 8
+./scripts/build-cet.sh --jobs 8
+./build-linux.sh --only cyber-engine-tweaks --jobs 8
 ./build-linux.sh --only input-loader --jobs 8
 ./build-linux.sh --config Debug --jobs 8
 ```
 
-The complete Release set is validated; a complete Debug set is not a recorded
-validation. Logs, toolchains, native build trees and per-project packages stay
+A full six-mod Release distribution and fourteen prepared release archives passed
+the [isolated integration check](docs/cet-2.5-integration.txt). Concurrent changes
+from another task are outside that validation. A complete Debug set is untested. Logs, toolchains, native build trees and per-project packages stay
 under `build/`. Builds do not modify the game or MO2 installation.
 
 ## Edit → export patch → build → commit
@@ -195,8 +209,8 @@ base require a deliberate port; they are not automatically resolved.
 
 ## Packages and release checks
 
-`dist/release/` contains the five runtime ZIPs, individual checksums,
-`SHA256SUMS` and `manifest.json`. Alternative RED4ext layout and PDBs are under
+`dist/release/` contains the six runtime ZIPs, individual checksums,
+`SHA256SUMS` and `manifest.json`. Alternative RED4ext/CET layouts and PDBs are under
 `standard/` and `symbols/`.
 
 Archive names contain the original mod version, target game version and any
@@ -211,25 +225,30 @@ timestamp or `dirty` suffix:
 | `Codeware-1.20.6-game2.5.zip` | Codeware runtime |
 | `TweakXL-1.11.5-game2.5.zip` | TweakXL runtime |
 | `InputLoader-0.2.3-game2.5.zip` | Input Loader runtime |
+| `CyberEngineTweaks-1.38.0-game2.5-mo2-rootbuilder.zip` | CET with Root Builder |
+| `CyberEngineTweaks-1.38.0-game2.5-game-root.zip` | CET manual game-root installation |
 | `<mod>-<version>-game2.5-symbols.zip` | Optional debugging symbols |
 
 Debug builds additionally include `-debug` to distinguish them from installable
 Release packages. Exact upstream revisions, patch checksums and shared SDK
 identity remain in the manifest. A distribution is verified before it replaces
 the previous one; packages with incompatible provenance cannot be mixed.
-`SHA256SUMS` covers all eleven archives, including standard layout and symbols.
+`SHA256SUMS` covers all fourteen archives, including standard layout and symbols.
 After updating older tooling, run the full build once to refresh package names
 and metadata; old cached package records are rejected.
 
 ```bash
 python3 scripts/verify-build.py
 (cd dist/release && sha256sum --check SHA256SUMS)
+# Also checks CET’s declared address hashes against the supplied database.
 python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyberpunk2077_addresses.json'
 python3 -m unittest discover -s tests -v
 ```
 
 ArchiveXL's unchanged packed resource comes from checksum-pinned official
-ArchiveXL 1.27.5. Every DLL is compiled locally. Upload only the runtime ZIPs,
+ArchiveXL 1.27.5. CET reuses only the two TweakDB metadata files from its checksum-pinned
+official v1.38.0 release. Its prebuilt ASI and loader DLL are excluded.
+Every DLL is compiled locally. Upload only the runtime ZIPs,
 checksums and manifest for a release; standard-layout and symbol archives are
 optional extras. Preserve the startup-only test status and known limitations.
 
@@ -241,16 +260,16 @@ The essentials tag identifies the complete set; archive filenames retain each
 mod's original version.
 
 On an Ubuntu-hosted runner, an Arch Linux container installs LLVM, CMake and
-the other Linux dependencies, then checks out the root and its six official
+the other Linux dependencies, then checks out the root and its seven official
 submodules at the recorded commits. It runs the source audit and regression
-tests, applies our saved patches and builds all five Release packages. Nested
+tests, applies our saved patches and builds all six Release packages. Nested
 dependencies are initialized selectively by the existing bootstrap; no copied
 upstream trees or prebuilt plugin DLLs are committed or used as build inputs.
-The unchanged, checksum-pinned ArchiveXL resource asset is the documented
-exception for packaged resources.
+The only prebuilt resources reused are the checksum-pinned ArchiveXL resource
+asset and CET’s two TweakDB metadata files. Fonts and scripts come from its official source Gitlink.
 
 Only after verification succeeds does the workflow publish a GitHub release
-with eleven ZIPs, their individual checksums, `SHA256SUMS` and `manifest.json`.
+with fourteen ZIPs, their individual checksums, `SHA256SUMS` and `manifest.json`.
 GitHub assets are flat: the release manifest uses matching flat filenames,
 while local `dist/release/` retains its `standard/` and `symbols/` directories.
 The automatically generated release notes include installation choices,

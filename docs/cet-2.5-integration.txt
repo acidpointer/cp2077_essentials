@@ -1,0 +1,96 @@
+Cyber Engine Tweaks integration for CP2077 2.5
+Recorded: 2026-10-24
+
+Source and scope
+
+Official repository: https://github.com/maximegmd/CyberEngineTweaks
+Tag: v1.38.0
+Root Gitlink: ed706fb8518712ffedf6b566e52873b257bc49fb
+The official tag already includes game 2.5 support. No matching CET source or
+build was found in the optional .research directory.
+
+The saved 001-essentials.patch adapts CET to the existing RED4ext loader:
+- Main/Query/Supports expose the shared SDK v1 plugin interface.
+- Initialization runs from Main(Load), retaining CET's upstream game hooks.
+- The default shared-SDK address resolver uses loaded RED4ext.dll.
+- Header casing and the version-resource copyright literal work on Linux.
+The upstream bundled version.dll resolver and ASI payload are excluded.
+CET's hook implementation, address hashes and Lua mod paths are retained.
+
+Build
+
+./build-linux.sh --only cet --jobs 8
+./scripts/build-cet.sh --jobs 8
+python3 scripts/patches.py export cet
+
+CMake uses the single patched sources/red4ext-sdk and Microsoft STL/CRT.
+New dependencies are pinned in sources.lock.json. LuaJIT follows the
+OpenResty version used by upstream's xmake package recipe. Its native Linux
+minilua/buildvm tools emit a Windows x64 GC64 COFF VM object and tables; the
+runtime C sources are compiled with clang-cl. No Wine or MinGW runtime is used.
+ImGui uses v1.91.1-docking, wchar32 and FreeType. sol2 v3.5.0 avoids the Clang
+optional-reference compile error in v3.3.1. CET uses header-only spdlog with
+wide-character support, plus the existing TiltedCore/mimalloc 2.2.4 pins.
+Generated files stay below build/.
+
+Payload
+
+red4ext/plugins/CyberEngineTweaks/CyberEngineTweaks.dll
+bin/x64/plugins/cyber_engine_tweaks/{scripts,fonts,tweakdb}/...
+
+Scripts/fonts come from the Gitlink. Only tweakdbstr.kark and usedhashes.kark
+are reused from the checksum-pinned official cet_1_38_0.zip release asset.
+Its ASI and loader DLL are never used. Dependency notices, including FreeType
+and the upstream font/script notices, are retained. PDBs have a separate ZIP.
+Runtime archives offer Root Builder (Root/ prefix) and standard game-root
+layouts. Choose one variant per mod. Lua mods still belong under
+bin/x64/plugins/cyber_engine_tweaks/mods/. An old CET ASI must be disabled;
+remove its version.dll/global.ini only if no other mod needs that loader.
+The existing native winmm override is sufficient for the RED4ext loader.
+
+Release automation
+
+The official-source audit now requires seven source Gitlinks. The default
+build selects six runtime projects. Release preparation requires all six,
+with six symbol ZIPs and standard-layout alternatives for RED4ext and CET:
+fourteen archives in total. The tag workflow builds this set and retains its
+existing checksum verification, retryable publication and failure artifacts.
+No live GitHub publication or tag creation was performed during validation.
+
+Validation scope
+
+Another task was actively editing the shared SDK and other plugins during
+integration. Its work was preserved. Native/package validation uses the
+saved patch stacks in build/cet-validation/workspace, with isolated source
+Git metadata and generated output. The main dist/release was not replaced.
+The SDK baseline for this validation is tree
+cb1390c0d3b20fa39792f0ed4fb56e49d008a9ed (001-essentials.patch plus
+002-dynarray-lifetime.patch). Changes from the other task are outside this
+validation. The main checkout needs its usual combined export/build checks
+once that task finishes.
+
+CET's Release build, ABI assertions, Windows AMD64 DLL/import/export checks,
+matching PDB, exact runtime/symbol payloads and checksums passed. All seven
+saved patch stacks passed independent reconstruction. The tooling suite ran
+64 tests successfully, with 15 optional runtime checks skipped. The ten
+CI-required portable Input Loader checks also passed with their required flag.
+CET tests cover both installation layouts, rejected extra loaders/missing metadata, stale
+pins, corrupt resource assets and missing dependency notices. The optional
+--addresses verifier now checks CET hash declarations too; synthetic tests
+reject missing or colliding UL-suffixed hashes. No game address database was
+used for this integration check.
+
+The full six-project Release build and distribution checks passed. Local
+release preparation (validation tag string v0.0.0-rc.1; no Git tag created)
+produced fourteen ZIPs, all passing SHA256SUMS. Results are under
+build/cet-validation/workspace/dist/release/ and its build/github-release/.
+Logs: build/cet-validation/full-release.log, final-validation.log,
+patch-check.log and input-tests.log. Reconfiguring CMake leaves an unchanged
+CET version header intact, avoiding needless recompilation of Lua bindings.
+
+Runtime limits
+
+No game or MO2 files were changed. CET startup, overlay/key binding, Lua/FFI
+and SQLite behavior, game-hook timing, shutdown and save compatibility have
+not been tested in the actual game. Native builds and static package checks
+do not establish these behaviors. Existing ArchiveXL limits still apply.

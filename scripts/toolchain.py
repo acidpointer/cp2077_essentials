@@ -9,7 +9,7 @@ import common as c
 
 
 def ensure():
-    for tool in ['cmake', 'clang-cl', 'lld-link', 'llvm-lib', 'llvm-mt', 'llvm-rc', 'llvm-ml', 'llvm-readobj', 'llvm-pdbutil']:
+    for tool in ['cmake', 'clang', 'clang-cl', 'lld-link', 'llvm-lib', 'llvm-mt', 'llvm-rc', 'llvm-ml', 'llvm-readobj', 'llvm-pdbutil']:
         if not shutil.which(tool):
             raise ValueError(f'Missing tool: {tool}; see README.md')
     if platform.system() != 'Linux':
