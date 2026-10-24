@@ -1,0 +1,340 @@
+Cyberpunk 2077 2.5 loading freeze: revised change plan
+Researched 2026-10-24; target game version 3.0.88.46235.
+
+Implementation status, 2026-10-24: completed and exported as separate 003 layers.
+All five native tests passed in an isolated Wine prefix, including old-header
+and old-locking negative controls. All six current runtime projects built in
+Release; patch reconstruction, repository tests, package/source/SDK verification,
+address checks and distribution checksums passed. The concurrent CET integration
+adds the sixth SDK consumer. Packages: build/validation/load-freeze-dist/.
+Game/MO2 installation and playtesting were not performed.
+
+Decision
+--------
+Fix the shared transaction-system ABI and ArchiveXL's attachment locking and
+listener lifetime together. A single boolean guard around the originally
+identified LockedUpdate function is incomplete: three independently verified
+paths reach suffix evaluation while holding the same attachment-slot lock.
+
+This plan supersedes the proposed implementation in load-freeze-investigation.txt.
+That report retains the runtime logs, installed/local artifact identities,
+original deadlock chain and external references. The additional findings below
+come from the local source and the same installed game executable. Research
+establishes real defects, but no stack from the reported frozen session exists;
+it does not prove that all save-loading and new-game hangs share one cause.
+
+Confirmed additional evidence
+-----------------------------
+All numeric code addresses here are image RVAs. The game's preferred base is
+0x140000000. Address-table 0001 offsets need +0x1000 to become image RVAs.
+Executable SHA256:
+  d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4
+
+1. Several named SDK methods dispatch to the wrong engine functions.
+
+The transaction-system vtable begins at RVA 0x30DC058. This is independently
+anchored by the vptr write at 0xC9571C, not inferred only from one known slot.
+The relevant declarations are in:
+  sources/red4ext-sdk/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp
+
+Method                       Current SDK slot   Verified retail slot / RVA
+FindSlotData                 0x448              0x448 / 0x75A4E0
+FindSlotData without locking  unnamed sub_450   0x450 / 0x138AD28
+RegisterSlotListener         0x490              0x498 / 0x300DA0
+UnregisterSlotListener       0x498              0x4A0 / 0x300D64
+MatchVisualTagByItemID        0x4D0              0x4D8 / 0x758A48
+MatchVisualTag(item handle)   0x4D8              0x4E0 / 0x2A9F444
+
+These are byte offsets within the vtable, not address hashes. Do not shift all
+methods by eight bytes: FindSlotData is already in the correct position.
+
+The 0x450 method resolves the owner's attachment component and directly calls
+the predicate search at 0x75A554 without acquiring slots+0x100. The 0x448
+method takes that lock first. The game's own Partial suffix implementation
+calls 0x450 at 0x219EC2B and its item-ID tag method at 0x4D8 at 0x219ECF8.
+
+The body at 0x758A48 treats its second argument as ItemID data, takes an owner
+handle reference as its third argument and a CName as its fourth. The body at
+0x2A9F444 instead dereferences an item handle and takes CName/bool arguments.
+Consequently the current ArchiveXL MatchVisualTag call reaches the item-ID
+method with an incompatible argument interpretation. Slot 0x4D0 instead points
+to 0xC95C30, which operates on another transaction-system member under its lock.
+
+Registration at 0x498 appends the listener Handle to the attachment component's
+array at +0xC0 under its separate lock at +0x101. Unregistration at 0x4A0 removes
+the matching listener. The current SDK's UnregisterSlotListener therefore calls
+the register implementation. Slot 0x490 operates on a different registration
+path. These are behavioral ABI defects, not harmless stale method comments.
+
+2. One LockedUpdate hook does not cover all demonstrated callers.
+
+Every row below holds attachment-component lock +0x100 exclusively while the
+inner appearance update can reach the suffix override:
+
+Outer function   Address hash   Acquire call   Route to inner 0x89BFC0
+0x89BF5C         2050568765     0x89BF86       direct at 0x89BF9F
+0x1209C80        3617594883     0x1209CB6      direct at 0x1209F6C
+0x2B4C3A0        1014897455     0x2B4C3C4      via 0x2B4B81C
+
+All acquisition calls target 0x1FFAD60. The first releases the lock at
+0x89BFB3. The second calls the release helper 0x19417F0 at 0x1209FA7, after
+the inner call; that helper exchanges the lock byte to zero. The third calls
+0x2B4B81C at 0x2B4C3D2 and releases at 0x2B4C3E8. The intermediate function
+calls the inner update at 0x2B4B99B. A direct-call scan located these three
+inner callsites; it does not prove absence of indirect or future callers.
+The inner function's fifth-argument shortcut is conditional on a further
+engine-state check at 0x89C0B5; passing true does not unconditionally skip the
+suffix path. These routes establish possible reachability, not a claim that
+every invocation evaluates this suffix.
+
+The original published workaround wraps only the first row. The additional
+two paths are independent findings in this investigation, not claims made by
+the reference author.
+
+3. PuppetState's detach handler uses an invalidated reference.
+
+In sources/archive-xl/src/App/Extensions/PuppetState/Extension.cpp, OnDetachPuppet
+binds auto& handler = it.value(), erases that map entry, then passes handler to
+UnregisterSlotListener. The reference is invalid after erase regardless of
+whether another Handle keeps the underlying listener object alive. Correcting
+the SDK method alone does not fix this C++ lifetime bug.
+
+Implementation order
+--------------------
+A. Correct the shared SDK's transaction-system declarations.
+
+* Name slot 0x450 FindSlotDataUnlocked, with the same owner/predicate/result ABI
+  as FindSlotData. Document the caller-owned synchronization requirement.
+* Put a placeholder at 0x490, move register/unregister to 0x498/0x4A0, put a
+  placeholder at 0x4D0 and move the two tag methods to 0x4D8/0x4E0. Reuse the
+  existing placeholder positions so unrelated methods retain their offsets.
+* Preserve existing public method names and argument types where the binary
+  confirms them. Preserve all existing size/layout assertions and SDK patches.
+* Add a native test using the actual SDK declaration and a synthetic retail
+  vtable with independently fixed slots. Calls through ITransactionSystem must
+  reach sentinel functions at the verified offsets and preserve the owner,
+  ItemID, CName, bool, predicate and return values. Include Handle by-value
+  ownership for register/unregister. The old header must fail this test.
+  A mock class derived from the same erroneous header would not detect this
+  defect; sizeof(ITransactionSystem) cannot detect virtual slot mistakes either.
+
+B. Make ArchiveXL's slot queries aware of same-thread ownership.
+
+Primary files under sources/archive-xl:
+  src/Red/Addresses/Library.hpp
+  src/Red/AttachmentSlots.hpp
+  src/App/Extensions/Attachment/Extension.hpp
+  src/App/Extensions/Attachment/Extension.cpp
+  src/App/Extensions/PuppetState/Handler.cpp
+Add a small shared slot-query/scope helper if required to avoid separate
+ownership rules in Attachment and PuppetState.
+
+* Establish owner-specific, thread-local RAII scopes around the three verified
+  locked entry points above. Store attachment component and owner identity in
+  an allocation-free linked scope stack, restoring the previous scope on exit.
+  Search active scopes for the queried owner; nested A -> B -> A and recursive
+  suffix calls must remain correct. A process-wide flag or a single unqualified
+  thread-local boolean would incorrectly affect another owner's queries.
+* Derive each hook's exact x64 argument and return convention from its callers
+  and body before declaring its RawFunc. Do not reuse the reference port's
+  four-void-pointer/uintptr_t declaration for all three functions. The first
+  and third forward a boolean result; the second has a different event-shaped
+  argument list. Retain opaque pointer types only for unneeded pointee layouts.
+* For an owner whose slot lock is established as held by this thread, call the
+  verified 0x450 API. Otherwise retain the ordinary locking 0x448 API. Do not
+  infer ownership from a lock byte being 0xFF: another thread may own it.
+  Never use the unlocked method globally or remove/patch the engine lock.
+* Prefer preserving the custom hide_T1part and extra-slot behavior using this
+  routing. Keep MatchVisualTag's current false argument, which selects the
+  current appearance, after correcting its SDK slot. Do not enable the
+  currently commented spawning-item/appearance-item branches as part of this
+  fix; their recursion and behavior require separate work.
+* Copy the relevant extra-slot IDs under s_slotsMutex, then release that mutex
+  before engine calls. Review OnAttachTPP and PuppetState queries with the same
+  rule. This reduces lock-order risk; a separate s_slotsMutex deadlock has not
+  been established. Retain owning Handles for item objects used after lookup;
+  do not cache raw AttachmentSlotData pointers beyond the protected operation.
+* Keep a narrow containment alternative: forward a matching locked-owner suffix
+  call to the original game function if custom lookup safety cannot be verified.
+  That avoids the demonstrated reacquisition but may lose extra-slot clothing
+  semantics. It is a fallback to test and describe, not a silent parity claim.
+
+Required coverage check before enabling this behavior: inspect notification
+contexts for OnItemEquippedComplete/OnItemUnequippedComplete and their
+FinalizeAppearanceChange queries. Restoring correct listener registration can
+activate callbacks that the faulty ABI previously misrouted. Verify callback
+virtual slots and whether slots+0x100 or listener lock +0x101 is held, including
+appearance refresh reentrancy. Extend owner scopes to any additional proven
+locked entry point, or defer unsafe refresh work to an established unlocked
+game phase. Do not mark arbitrary callbacks as lock-owned without evidence.
+This notification audit was an implementation prerequisite; its completed
+targeted findings are recorded below. The three verified routes are not a claim
+that the entire engine call graph was audited.
+
+C. Preserve listener lifetime and make hook failure safe.
+
+* In PuppetState/Extension.cpp, copy or move the owning listener Handle out of
+  the map before erasing the entry. Keep that Handle alive through the native
+  unregister call. Verify that repeated detach is a no-op and attach/detach
+  unregisters the exact instance originally registered.
+* Review native calls made while PuppetState's s_mutex is held. If they can
+  reenter state queries, move them outside the lock with explicit registration
+  state/order so concurrent attach and detach cannot orphan a listener. Do not
+  simply unlock around register and introduce a registration/removal race.
+* Install all required scope hooks before the suffix override. On startup hook
+  failure, keep the override inactive and unwind installed hooks. Use OrThrow
+  and the existing extension-loader exception cleanup: Load() returning false
+  alone is insufficient because ExtensionLoader currently ignores that result.
+* Remove the suffix override before removing protection hooks. Handle a failed
+  detach without leaving an active override unprotected. Test partial startup
+  failures. This does not add support for hot unload during concurrent gameplay.
+
+D. Add focused regressions, then rebuild the whole essentials set.
+
+Suggested native fixtures:
+  tests/native/sdk_transaction_system_abi.cpp
+  tests/native/archive_attachment_locking.cpp
+  tests/native/archive_puppet_listener_lifetime.cpp
+Use the actual modified headers and production routing/lifetime code, with fake
+engine services. Add a small runner appropriate to the existing test layout.
+
+Required cases:
+* Old SDK dispatch fails, corrected SDK dispatch passes at every named slot.
+* The three locked entry paths select the non-locking query for the same owner.
+  A fake locking query fails immediately if called while exclusively owned;
+  any deliberate old-behavior deadlock reproduction runs in a child process
+  with a bounded timeout so the test runner itself cannot hang.
+* Unlocked queries and unrelated-owner queries still take the ordinary path;
+  independent threads do not inherit another thread's scope.
+* Nested scopes, early returns and C++ unwinding restore state, and hook wrappers
+  forward arguments, return values and suffix output unchanged where required.
+* Base and extra-slot matches, missing/empty items and original-function
+  fallback behave as specified. Callback reentry cannot reacquire its own lock.
+* A listener survives map erase until unregister finishes, is removed exactly
+  once, and is not registered again by detach. Exercise the owning container
+  used by production, not a reference whose lifetime remains valid by accident.
+* Protection-hook and suffix-hook installation failures preserve a safe state.
+
+Run the Windows ABI fixtures with clang-cl/Microsoft STL; use an isolated Wine
+prefix when available for execution. Existing portable tests can cover the
+platform-independent scope logic. Report compilation separately from execution.
+
+Append SDK 003-transaction-system-abi.patch and ArchiveXL
+003-attachment-lock-reentrancy.patch (including the coordinated listener fix),
+preserving the bytes of their existing 001/002 layers. Record provenance in
+patches/README.md and sources.lock.json via the established exporter. Export
+and patch checks require separately authorized Git metadata mutations under
+AGENTS.md; this research request does not authorize running those helpers.
+
+Because the shared SDK changes, rebuild all runtime projects in Release, not
+just ArchiveXL (six with the subsequent CET integration). Run patch reconstruction,
+the applicable regression suite, existing
+ABI checks, complete payload/provenance verification and address verification.
+If the three outer hooks are added as distinct address constants, ArchiveXL's
+expected unique matches become 132/134, with only the same two intentionally
+disabled journal/hot-reload addresses missing. Adjust the documented count to
+the actual final hook set rather than weakening missing-address checks.
+
+Update docs/PATCH_2_5.md with these defects, evidence, regression results and
+the remaining runtime status. Preserve input-loader generation guarantees,
+DynArray lifetime fixes, Unicode checks, scripts/assets/licenses and the existing
+ArchiveXL limitations. Fixing this loading issue does not validate game exit.
+
+E. Validate the actual freeze separately from code correctness.
+
+When installation/profile changes are requested, use a disposable profile and
+backed-up saves. Record effective loaded DLL paths and hashes through MO2/Root
+Builder; a successful build or a ZIP name is not installed-version evidence.
+
+1. Establish a vanilla new-game baseline on this same game installation.
+2. Add the coherent rebuilt essentials and required scripting dependencies,
+   then Equipment-EX. Test save loading, repeated reloads, character creation,
+   first manual save/autosave and reload, outfit changes, sleeves and footwear.
+   Keep required dependencies when testing a modded save; use a disposable save
+   for reduced profiles and never overwrite the original save during isolation.
+3. Add CET 1.38.0 separately, repeat new-game/first-save tests, then add UltraTool
+   and remaining mods one change at a time. The reference maintainer's separate
+   CET job-wait report is a lead, not a locally confirmed cause or a CET fix.
+4. If a freeze remains, capture all thread stacks and loaded module identities
+   before termination, with repeated samples. A reader spinning at game+0x22CA420
+   under the ArchiveXL query and a locked update frame supports this deadlock.
+   A stable job-dispatcher wait without that chain requires a separate analysis.
+
+Release acceptance requires a reproduced failing case to pass with the changed
+build, existing-save and new-game progression into gameplay, first save/reload,
+and the stated clothing/lifecycle checks. Native regression success alone is
+not game playtesting or proof of save compatibility.
+
+Research artifacts and boundaries
+--------------------------------
+Local extracts: build/research/load-freeze-20261024/followup-disassembly.txt
+and transaction-system-evidence.json, alongside inner-update-control-flow.txt
+and the original evidence.json.
+Binary evidence is tied to the executable hash above; it is not a portable
+address specification for another game version.
+
+Primary external lead:
+https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware/releases/tag/r1
+Original port provenance:
+https://github.com/psiberx/cp2077-archive-xl/pull/31
+
+The research phase changed documents and ignored evidence extracts only. The
+subsequent implementation is authorized separately; its current status is at
+the top of this document. Other concurrent working changes are preserved.
+
+Implementation details and reproducible tests
+--------------------------------------------
+The notification audit is complete for the inspected update-stage dispatch:
+RVA 0x2E49D0 copies pending events and the +0xC0 listener array under lock +0x101,
+releases that lock at 0x2E4A5D, then invokes completion slots 0x120/0x148 at
+0x2E4B45/0x2E4D2D. Its caller 0x2E499C acquires no +0x100 slot lock. No extra
+callback ownership scope or delayed refresh was introduced. Retained evidence:
+build/research/load-freeze-20261024/callback-audit.txt.
+
+The SDK correction is exercised by a synthetic retail vtable using independent
+fixed offsets. Production SlotScope.hpp, SlotQuery.hpp, HookProtection.hpp and
+ListenerRegistry.hpp are exercised directly. Callback registry state readers
+can reenter while native registration/removal is serialized; the map lock is
+not held during engine queries. Item ownership is captured in the slot-search
+predicate, not after FindSlotData releases its lock. The custom suffix and
+extra-slot logic remain enabled; the vanilla fallback alternative was not needed.
+
+Build the native fixtures (set XWIN_ROOT to the existing local toolchain cache):
+  cmake -S tests/native/load-freeze -B build/tests/load-freeze-make \
+    -G "Unix Makefiles" \
+    -DCMAKE_TOOLCHAIN_FILE=../../../cmake/toolchains/clang-cl-linux.cmake \
+    -DXWIN_ROOT="$XWIN_ROOT" -DCMAKE_BUILD_TYPE=Release
+  cmake --build build/tests/load-freeze-make --parallel 4
+
+Optional OLD_SDK_OVERLAY is an include directory containing the previous
+RED4ext/Scripting/Natives/gameITransactionSystem.hpp only. It builds a negative
+control without checking out or modifying any source revision.
+
+Run with CP2077_FREEZE_TEST_DIR=build/tests/load-freeze-make and, on Linux,
+CP2077_FREEZE_RUNNER=wine plus an isolated WINEPREFIX:
+  python3 -m unittest discover -s tests -p test_load_freeze.py -v
+Each executable has a 45-second timeout. Wine is optional, not a build dependency.
+Retained local build/runtime logs are under build/tests/load-freeze-make/.
+
+Completed validation:
+* Native fixtures: 5 tests passed, including four previous-header dispatch
+  failures and the old lock-reacquisition control. No game DLLs were loaded.
+* Repository suite: 63 tests ran, 15 optional tests skipped, remaining tests
+  passed. The five native tests were run separately with their explicit runner.
+* patches.py check all: independent reconstruction passed for all seven source
+  projects (six runtime projects plus SDK). Existing SDK/ArchiveXL 001/002 bytes
+  remain unchanged.
+* All six Release builds and packages passed through build-linux.sh with
+  --dist-dir build/validation/load-freeze-dist. The distribution contains six
+  runtime ZIPs, six symbols ZIPs and two optional standard-layout ZIPs.
+* verify-build.py --dist-dir build/validation/load-freeze-dist --addresses ...:
+  complete payload, Microsoft ABI, exports, PDB, source/SDK provenance and SHA256
+  checks passed. Address results: Codeware 107/107, TweakXL 11/11, ArchiveXL
+  132/134 (the two documented disabled features), CET 32/32.
+* sha256sum --check SHA256SUMS passed for all fourteen archives.
+
+No root/source staging, commits, refs, upstream pins, game or MO2 installation
+were changed by this implementation. Patch export/validation used the separately
+authorized temporary Git indexes and object writes. Runtime acceptance remains
+the in-game load/new-game/save/clothing sequence above, including CET isolation
+and a hang-stack capture if the freeze persists.

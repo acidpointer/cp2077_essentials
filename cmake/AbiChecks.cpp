@@ -3,6 +3,7 @@
 #include <RED4ext/GameEngine.hpp>
 #include <RED4ext/ResourceDepot.hpp>
 #include <RED4ext/Scripting/Stack.hpp>
+#include <RED4ext/Scripting/Natives/Generated/game/AttachmentSlots.hpp>
 
 // Explicit checks: the SDK's general offset macro is disabled under Clang.
 using FixedCallback = RED4ext::Callback<void (*)()>;
@@ -16,6 +17,8 @@ static_assert(sizeof(RED4ext::CGameEngine) == 0x390);
 #pragma clang diagnostic ignored "-Winvalid-offsetof"
 #endif
 static_assert(offsetof(RED4ext::CGameEngine, framework) == 0x348);
+// The attachment lock scopes identify the owner through this retail field.
+static_assert(offsetof(RED4ext::game::AttachmentSlots, owner) == 0x50);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #endif

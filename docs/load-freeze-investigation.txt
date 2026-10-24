@@ -1,0 +1,182 @@
+Cyberpunk 2077 2.5 loading freeze: investigation and fix plan
+Investigated 2026-10-24; game file version 3.0.88.46235.
+
+Finding
+-------
+A concrete self-deadlock exists in ArchiveXL's EntityAttachment extension.
+The same unsafe path is present in the checked-out source, the local Release
+DLL and the ArchiveXL DLL installed in the active MO2 profile. The game can
+hold its attachment-slot lock exclusively while requesting appearance suffixes.
+ArchiveXL's inner-sleeves suffix override calls back into FindSlotData, which
+tries to acquire that same non-recursive lock for reading on the same thread.
+The owner cannot release its exclusive lock until the nested call returns.
+
+This is the strongest explanation for the reported save-loading freeze. Its
+reachability and locking mechanism were checked against the installed game
+executable, not inferred solely from address hashes or a successful build.
+There is no captured thread stack from the reported 15:26 session, so this is
+not proof that every reported freeze stopped at this instruction. No game was
+launched, modified or playtested during this investigation.
+
+The user reports that only Cyberpunk stops responding; Alt-Tab still works,
+and the pointer stops while the game is in the foreground. This is consistent
+with a blocked game process but does not identify a particular lock by itself.
+
+Local runtime evidence
+----------------------
+Paths below are relative to the game root or MO2 root, as labelled.
+
+* Game: red4ext/logs/red4ext-2026-10-24-15-26-34.log
+  RED4ext reports 2.50 / 3.0.88.46235, completes initialization, loads ArchiveXL,
+  Codeware, Input Loader, TweakXL and UltraTool, and successfully invokes scc.
+  The modded script blob is selected at 15:26:38.916.
+* MO2: overwrite/red4ext/plugins/ArchiveXL/ArchiveXL-2026-10-24-15-26-35.log
+  Archive extensions and localization complete. At 15:26:50.266 the factory
+  index initializes and reports no factories to load. The earlier missing
+  Journal hash 837162664 is the documented disabled feature, not new proof of
+  this freeze's cause.
+* MO2: overwrite/red4ext/plugins/TweakXL/TweakXL-2026-10-24-15-26-35.log
+  EquipmentEx scriptable tweaks finish at 15:26:49.803. A General Vehicle Fixes
+  ambiguous-definition error precedes successful import completion; it does
+  not establish the cause of the later stall.
+* MO2: overwrite/red4ext/logs/ultratool-2026-10-24-15-26-35.log
+  World attach and subsequent resource activity appear through 15:26:54.758.
+  Thus the session progressed past plugin startup into world loading.
+* MO2: profiles/Default/modlist.txt enables Equipment-EX, CET 1.38.0, Ultra Plus
+  with UltraTool, and the five essentials packages. It is not an essentials-only
+  isolation test. Equipment-EX is relevant to attachment/appearance behavior,
+  but it is not proven to be required to trigger this defect.
+* The retained Proton log ends at 02:30, before this session. A 03:07 report in
+  another launch context lists CET/RED4ext but no ArchiveXL; it cannot establish
+  the ArchiveXL explanation for that separate run. No game process was alive
+  when inspected, so a live hang stack could not be collected.
+
+Source evidence
+---------------
+sources/archive-xl/src/App/Extensions/Attachment/Extension.cpp:
+  line 40: installs the GetSuffixValue wrapper.
+  lines 248-262: for itemsFactoryAppearanceSuffix.Partial, calls IsVisualTagActive
+  for AttachmentSlots.Torso and hide_T1part, with no locked-update guard.
+  lines 294-303: IsVisualTagActive calls ITransactionSystem::FindSlotData.
+
+sources/red4ext-sdk/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp:
+  line 104: FindSlotData occupies virtual-table byte offset 0x448.
+
+sources/archive-xl/src/App/Extensions/Attachment/Extension.hpp:
+  line 47 already declares thread_local s_skipVisualTagCheck, but the local
+  source never reads or sets it. Its declaration alone provides no protection.
+
+sources/archive-xl/src/Red/Addresses/Library.hpp and AttachmentSlots.hpp contain
+  no LockedUpdate hook. The saved 001 compatibility patch changes the suffix
+  argument to const TweakDBID&, but does not add the reentrancy protection.
+
+The GarmentOverride extension also holds its own mutex across some engine calls.
+Those sites were examined as leads, but this investigation does not establish
+a deadlock involving that mutex. The demonstrated cycle uses the engine's
+attachment-slot lock, not GarmentExtension::s_mutex.
+
+Independent binary evidence
+---------------------------
+Game executable SHA256:
+  d36e74c47592e9c656ae250078cb40b2be63c782af5bfbeff2280d43e653fab4
+Address-table SHA256:
+  eab304f38074145ab5ef53e2aa741576ba00674138761fafff23252005948fd4
+
+IMPORTANT: the JSON's 0001 offsets are relative to .text. Add its code constant
+offset 0x1000 to obtain image RVAs. The preferred image base is 0x140000000.
+The following addresses are image RVAs, not raw JSON offsets.
+
+1. Hash 2050568765 resolves to .text+0x89AF5C = image RVA 0x89BF5C.
+   At 0x89BF74 the function computes slots+0x100; at 0x89BF86 it calls the
+   exclusive-lock wrapper at 0x1FFAD60. The wrapper calls 0x22CA300, which
+   atomically changes lock state 0 to 0xFF. The lock is released only after
+   the inner call at 0x89BF9F returns (release at 0x89BFB3).
+2. That inner function, 0x89BFC0, can call 0x89B6F0 at 0x89C261. This reaches
+   the transaction-system virtual method at byte offset 0x1E0 (0x89B9E1).
+   The table at image RVA 0x30DC058 maps that slot to 0x89BB50.
+3. 0x89BB50 calls 0x757828 at 0x89BBCF; that thunk calls GetSuffixes at
+   0x756808 (hash 63057648). GetSuffixes calls GetSuffixValue at 0x219EB00
+   at instruction 0x756AA9. The latter is hash 3294244838, hooked by ArchiveXL.
+4. The installed ArchiveXL suffix hook starts at DLL RVA 0x4C850. It checks
+   the suffix TweakDBID (CRC 0x167F263B, length 0x24) and directly calls its
+   visual-tag helper at 0x4D210, with no guard before the call.
+   At DLL RVA 0x4D26A the helper calls transaction-system vtable slot 0x448.
+5. That slot in the same game vtable maps to FindSlotData, image RVA 0x75A4E0
+   (hash 3681039489). It resolves the owner's attachment slots, computes
+   slots+0x100 at 0x75A50B, and calls the shared-lock wrapper at 0x75A517.
+   The wrapper at 0x1FFADA0 calls 0x22CA420. That reader-lock routine rejects
+   0xFF and retries: the current thread is waiting for its own exclusive lock.
+
+Resulting cycle:
+  exclusive slot lock -> appearance suffix -> ArchiveXL visual-tag query
+  -> FindSlotData -> shared acquisition of the same slot lock -> never returns
+
+The local Release PDB identifies OnGetSuffixValue at DLL RVA 0x4C890 and
+IsVisualTagActive at 0x4D250. Disassembly shows the same unguarded path.
+
+Installed/local artifact identity
+--------------------------------
+The installed ArchiveXL SHA256 is
+  91a09b0e722a726956bfbd34881cda82f1e7b1d2f2f05cdb6da97716f8fb3463
+The local Release ArchiveXL SHA256 is
+  210a664dfacb433c075a2b3bee9f12b8c749bbc4a398c917fbcb8c6156dd000a
+
+Codeware and TweakXL also differ between MO2 and dist/release. Input Loader and
+RED4ext match. ArchiveXL's debug record identifies a CI build location; the
+local DLL identifies the local build. Different hashes do NOT establish older
+source or incompatible SDK versions. The downloaded manifest does not match
+the downloaded ZIP checksums, so it cannot authenticate their provenance.
+Direct inspection confirms the deadlock path in both ArchiveXL builds anyway.
+Merely installing the current local ZIP will not remove this path.
+
+External corroboration and separate new-game lead
+------------------------------------------------
+[1] ArchiveXL 2.5 port PR used by this repository:
+https://github.com/psiberx/cp2077-archive-xl/pull/31
+
+[2] Another port maintainer reports fixing save-load freezes in the attachment
+code and publishes the fix and research notes:
+https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware
+https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware/releases/tag/r1
+
+The NOTES-FOR-MODDERS-source-and-tools-2.5-unofficial.zip asset has SHA256
+  d57d4694b1a35d60dc74c06435d9dba21391a5ff84d3602d159ecd4b838ec44a
+which matched the published digest. Notes lines 127-132 describe the same slot
+lock cycle; the Attachment changes in ArchiveXL-2.5-port.diff add a LockedUpdate
+wrapper and bypass the custom suffix lookup while inside that wrapper.
+Reference source was read, not executed or applied. Local research extracts and
+artifact hashes are under build/research/load-freeze-20261024/.
+
+The same maintainer separately reports a CET 1.38.0 new-game/first-autosave hang,
+including an experiment with no Lua mods and a job-dispatcher wait. Their notes
+narrow it to exEntitySpawnerSystem singleton registration without resolving the
+underlying defect. This is a separate candidate for the user's new-game symptom,
+not a locally established diagnosis. CET 1.38.0 is enabled in this profile.
+Do not assume fixing ArchiveXL will fix that independent path.
+
+Revised implementation plan
+---------------------------
+See docs/load-freeze-change-plan.txt for the current change sequence. Follow-up
+binary/source research superseded the initial single-hook containment proposal:
+
+* Three verified exclusive-lock paths can reach the suffix override, not only
+  the published LockedUpdate wrapper.
+* The retail engine exposes a non-locking slot lookup at vtable offset 0x450
+  and uses it in its own Partial suffix implementation.
+* The shared SDK's listener registration and visual-tag methods have incorrect
+  vtable slots. They must be corrected alongside the locking fix.
+* PuppetState's detach handler keeps a reference to a map value after erasing
+  it; an owning Handle must survive through the corrected unregister call.
+
+The revised plan specifies owner-matched lock scopes, conditional use of the
+non-locking API, listener lifetime fixes, failure handling and focused native
+regressions. It also identifies callback lock-context research still required
+before implementation is accepted. A shared SDK change requires all consumers'
+Release builds and coherent package provenance.
+
+Runtime validation still requires isolated save-load/new-game/first-save tests,
+clothing checks, CET isolation and captured thread stacks if a freeze remains.
+Address matches and native regression success do not establish game compatibility.
+
+Changes made by this investigation: research documents and ignored extracts.
+No native source, saved patch, lockfile, Git state, game or MO2 file was changed.

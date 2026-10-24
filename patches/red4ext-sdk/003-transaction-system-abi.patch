@@ -1,0 +1,40 @@
+diff --git a/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp b/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp
+index 7396d68f3e7902c537aaf8b2d7a8cca92724297f..5a583499cd491731f15a018c52eacc400b34c1bd 100644
+--- a/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp
++++ b/include/RED4ext/Scripting/Natives/gameITransactionSystem.hpp
+@@ -102,7 +102,9 @@ struct ITransactionSystem : IGameSystem
+     virtual void GetSlotDataList(IScriptable* aOwner, DynArray<AttachmentSlotData>& aList) = 0;                  // 438
+     virtual void sub_440() = 0;                                                                                  // 440
+     virtual AttachmentSlotData* FindSlotData(IScriptable* aOwner, AttachmentSlotDataPredicate&& aPredicate) = 0; // 448
+-    virtual void sub_450() = 0;                                                                                  // 450
++    // The caller must already own the owner's attachment-slot lock on this thread.
++    virtual AttachmentSlotData* FindSlotDataUnlocked(IScriptable* aOwner,
++                                                    AttachmentSlotDataPredicate&& aPredicate) = 0;             // 450
+     virtual void sub_458() = 0;                                                                                  // 458
+     virtual void sub_460() = 0;                                                                                  // 460
+     virtual void sub_468() = 0;                                                                                  // 468
+@@ -110,18 +112,18 @@ struct ITransactionSystem : IGameSystem
+     virtual void sub_478() = 0;                                                                                  // 478
+     virtual void sub_480() = 0;                                                                                  // 480
+     virtual void sub_488() = 0;                                                                                  // 488
+-    virtual void RegisterSlotListener(IScriptable* aOwner, Handle<IAttachmentSlotsListener> aListener) = 0;      // 490
+-    virtual void UnregisterSlotListener(IScriptable* aOwner, Handle<IAttachmentSlotsListener> aListener) = 0;    // 498
+-    virtual void sub_4A0() = 0;                                                                                  // 4A0
++    virtual void sub_490() = 0;                                                                                  // 490
++    virtual void RegisterSlotListener(IScriptable* aOwner, Handle<IAttachmentSlotsListener> aListener) = 0;      // 498
++    virtual void UnregisterSlotListener(IScriptable* aOwner, Handle<IAttachmentSlotsListener> aListener) = 0;    // 4A0
+     virtual void sub_4A8() = 0;                                                                                  // 4A8
+     virtual void sub_4B0() = 0;                                                                                  // 4B0
+     virtual void sub_4B8() = 0;                                                                                  // 4B8
+     virtual void sub_4C0() = 0;                                                                                  // 4C0
+     virtual void sub_4C8() = 0;                                                                                  // 4C8
++    virtual void sub_4D0() = 0;                                                                                // 4D0
+     virtual bool MatchVisualTagByItemID(const ItemID& aItemID, const Handle<IScriptable>& aOwner,
+-                                        CName aTag) = 0;                                                       // 4D0
+-    virtual bool MatchVisualTag(const Handle<IScriptable>& aItem, CName aTag, bool aUseDefaultAppearance) = 0; // 4D8
+-    virtual void sub_4E0() = 0;                                                                                // 4E0
++                                        CName aTag) = 0;                                                       // 4D8
++    virtual bool MatchVisualTag(const Handle<IScriptable>& aItem, CName aTag, bool aUseDefaultAppearance) = 0; // 4E0
+     virtual void sub_4E8() = 0;                                                                                // 4E8
+ };
+ RED4EXT_ASSERT_SIZE(ITransactionSystem, 0x48);

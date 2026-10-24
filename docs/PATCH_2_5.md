@@ -153,3 +153,56 @@ This establishes the SDK defect and correction; it does not establish that
 this defect caused the reported game exit crash or that the game now exits.
 No diagnostic game build, exception interception, force-exit path, null-vtable
 skip or feature disablement is part of this change.
+
+### Save/new-game loading investigation (2026-10-24)
+
+Static inspection of the installed game and ArchiveXL found an attachment-slot
+self-deadlock: a suffix override called the locking `FindSlotData` while its
+thread already held the same slot lock exclusively. Three retail writer paths
+can reach this override. The shared SDK also placed listener registration and
+visual-tag methods at incorrect vtable slots; ArchiveXL's detach path kept a
+reference to a map value after erasing it. Full evidence and addresses are in
+[the investigation](load-freeze-investigation.txt) and
+[the change plan](load-freeze-change-plan.txt).
+
+The new SDK layer corrects those methods and exposes the retail non-locking
+lookup at `0x450`. ArchiveXL tracks the owner in thread-local scopes around all
+three verified writers and uses that lookup only for a matching owned lock.
+Ordinary and other-owner queries retain the locking API. Item handles are copied
+inside the search predicate before the engine releases its lock. Extra-slot
+maps are snapshotted before engine calls. Listener registration/removal is
+serialized independently of state readers, and an owning handle survives erase
+until native removal finishes. Hook rollback retains protection if a consumer
+hook cannot be detached.
+
+The callback audit found the completion notifications at retail RVAs `0x2E4B45`
+and `0x2E4D2D`, with virtual slots `0x120` and `0x148`. The notifier copies its
+listener list and releases lock `+0x101` before invoking them. Its update-stage
+caller takes no attachment lock; normal callback queries therefore keep the
+locking API. The owner scopes still cover reentrant queries within the three
+verified writer paths. This is targeted static coverage, not a proof about every
+possible indirect engine caller.
+
+The five optional `tests/test_load_freeze.py` tests passed in an isolated Wine
+prefix using clang-cl/Microsoft-ABI fixtures. They cover actual SDK dispatch,
+by-value handle ownership, the production slot-query/scope code, three hook
+argument shapes, nested owners, thread isolation, unwinding, protected snapshots,
+hook failures, and the production listener registry with `Core::Map`. All four
+incorrect method calls fail with exit 42 against the previous SDK header; a
+separate old-path control rejects same-owner lock reacquisition. The fixtures
+load no game/mod DLLs. They do not validate clothing appearance in-game.
+
+The working tree, including the separate concurrent CET integration, built all
+six runtime projects in Release. Independent patch reconstruction and the
+repository suite passed (63 tests, 15 optional skips;
+the five native tests ran separately). Packages in
+`build/validation/load-freeze-dist/` passed source/SDK and payload verification,
+Microsoft ABI/import checks, exports/PDB matching, and checksums for all fourteen
+archives. Address checks passed: ArchiveXL 132/134 with only its two documented
+disabled-feature hashes absent, Codeware 107/107, TweakXL 11/11 and CET 32/32.
+
+The source-level defects and regressions are established. No thread stack was
+captured from the reported frozen session, and this change has not been tested
+in the game. Save loading, new game, first save/reload, clothing and shutdown
+remain runtime validation tasks. The separate CET 1.38.0 first-autosave job-wait
+report remains an isolation lead, not a demonstrated consequence of these fixes.

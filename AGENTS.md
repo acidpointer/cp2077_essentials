@@ -291,7 +291,7 @@ python3 scripts/verify-build.py
 python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyberpunk2077_addresses.json'
 ```
 
-Expected unique hash matches: Codeware 107/107, TweakXL 11/11, ArchiveXL 129/131
+Expected unique hash matches: Codeware 107/107, TweakXL 11/11, ArchiveXL 132/134
 with only the two disabled-feature hashes missing.
 
 A release uses the five runtime ZIPs, SHA256SUMS and manifest.json. Standard

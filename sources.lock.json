@@ -24,11 +24,20 @@
         {
           "path": "patches/archive-xl/002-sdk-api-cleanup.patch",
           "sha256": "8aa219e84d51537fc3c5d2c1a64fba11b5ea76c207331ca2d6a7140e812e00de"
+        },
+        {
+          "path": "patches/archive-xl/003-attachment-lock-reentrancy.patch",
+          "sha256": "717218d3b33155ddf87357e9fa8a4c8d1d7c1491e9c2eddc2f82856539b41be1"
         }
       ],
       "provenance": {
         "port": "https://github.com/psiberx/cp2077-archive-xl/pull/31",
-        "commit": "5f7dc88292ba010d871c6d24797591359f243a11"
+        "commit": "5f7dc88292ba010d871c6d24797591359f243a11",
+        "attachment_lock_fix": {
+          "reference": "https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware/releases/tag/r1",
+          "research": "docs/load-freeze-change-plan.txt",
+          "notes": "Published save-load deadlock lead; independently verified three writer routes, implemented owner-scoped query routing and protected snapshots, and corrected listener lifetime and hook rollback. Native regressions passed; in-game validation remains outstanding."
+        }
       }
     },
     "codeware": {
@@ -75,12 +84,21 @@
         {
           "path": "patches/red4ext-sdk/002-dynarray-lifetime.patch",
           "sha256": "bf7fbe6fe9817d71653ba99d9aaf4e34932b8ed966a2e0b8eb5ec78415a39685"
+        },
+        {
+          "path": "patches/red4ext-sdk/003-transaction-system-abi.patch",
+          "sha256": "2cc62d2c46f7c783cb86b800e799462bf1d2111a11465e6acfd6d21952f0c3bb"
         }
       ],
       "provenance": {
         "port": "https://github.com/wopss/RED4ext.SDK/pull/228",
         "commit": "12e0c33337f8612850854fb9ed5ad9628796afca",
-        "additional_port": "https://github.com/wopss/RED4ext.SDK/pull/229"
+        "additional_port": "https://github.com/wopss/RED4ext.SDK/pull/229",
+        "transaction_system_abi": {
+          "research": "docs/load-freeze-change-plan.txt",
+          "game_version": "3.0.88.46235",
+          "notes": "Independently verified retail transaction-system vtable slots and caller-owned-lock lookup; native dispatch regressions include the previous-header negative control."
+        }
       }
     },
     "input-loader": {

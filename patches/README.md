@@ -37,3 +37,15 @@ The plugins' community vendor-SDK gitlink bumps are deliberately excluded:
 all builds use the separate patched official SDK submodule. Build scripts,
 toolchains and documentation belong to the root repository rather than being
 injected into upstream source patches.
+
+The SDK's `003-transaction-system-abi.patch` corrects the retail transaction
+system's listener and visual-tag vtable slots and names its already-locked slot
+lookup. ArchiveXL's `003-attachment-lock-reentrancy.patch` uses owner-specific
+scopes around three verified slot writers, copies item handles under the slot
+lock, and fixes listener ownership across removal. The save-load deadlock lead
+was corroborated by [Selentia-IX's published port notes](https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware/releases/tag/r1).
+The extra writer paths, SDK corrections and listener lifetime fix were checked
+independently against this repository and the retail executable. See the
+[investigation](../docs/load-freeze-investigation.txt) and
+[change plan and validation](../docs/load-freeze-change-plan.txt). Native tests
+establish the corrected ABI and lock/lifetime behavior, not game playtesting.

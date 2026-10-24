@@ -1,0 +1,628 @@
+diff --git a/src/App/Extensions/Attachment/Extension.cpp b/src/App/Extensions/Attachment/Extension.cpp
+index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2dffb764236 100644
+--- a/src/App/Extensions/Attachment/Extension.cpp
++++ b/src/App/Extensions/Attachment/Extension.cpp
+@@ -1,4 +1,5 @@
+ #include "Extension.hpp"
++#include "SlotQuery.hpp"
+ #include "App/Extensions/Garment/Extension.hpp"
+ #include "Red/ItemObject.hpp"
+ #include "Red/TweakDB.hpp"
+@@ -30,14 +31,7 @@ std::string_view App::AttachmentExtension::GetName()
+ 
+ bool App::AttachmentExtension::Load()
+ {
+-    HookAfter<Raw::AttachmentSlots::InitializeSlots>(&OnInitializeSlots).OrThrow();
+-    Hook<Raw::AttachmentSlots::IsSlotSpawning>(&OnSlotSpawningCheck).OrThrow();
+-    HookAfter<Raw::TPPRepresentationComponent::OnAttach>(&OnAttachTPP).OrThrow();
+-    HookAfter<Raw::TPPRepresentationComponent::IsAffectedSlot>(&OnSlotCheckTPP).OrThrow();
+-    HookAfter<Raw::CharacterCustomizationHairstyleController::CheckState>(&OnCheckHairState).OrThrow();
+-    //HookAfter<Raw::CharacterCustomizationGenitalsController::CheckState>(&OnCheckBodyState).OrThrow();
+-    HookAfter<Raw::CharacterCustomizationFeetController::CheckState>(&OnCheckFeetState).OrThrow();
+-    HookWrap<Raw::AppearanceChanger::GetSuffixValue>(&OnGetSuffixValue).OrThrow();
++    GetHooks().Attach();
+ 
+     {
+         std::unique_lock _(s_slotsMutex);
+@@ -50,16 +44,57 @@ bool App::AttachmentExtension::Load()
+ 
+ bool App::AttachmentExtension::Unload()
+ {
+-    Unhook<Raw::AttachmentSlots::InitializeSlots>();
+-    Unhook<Raw::AttachmentSlots::IsSlotSpawning>();
+-    Unhook<Raw::TPPRepresentationComponent::OnAttach>();
+-    Unhook<Raw::TPPRepresentationComponent::IsAffectedSlot>();
+-    Unhook<Raw::CharacterCustomizationHairstyleController::CheckState>();
+-    // Unhook<Raw::CharacterCustomizationGenitalsController::CheckState>();
+-    Unhook<Raw::CharacterCustomizationFeetController::CheckState>();
+-    Unhook<Raw::AppearanceChanger::GetSuffixValue>();
++    return GetHooks().Detach();
++}
+ 
+-    return true;
++const App::HookProtection<3, 7>& App::AttachmentExtension::GetHooks()
++{
++    // Consumers are detached in reverse order, starting with the suffix hook.
++    static const HookProtection<3, 7> hooks{{{
++        {[] { HookWrap<Raw::AttachmentSlots::LockedUpdate>(&OnLockedUpdate).OrThrow(); },
++         [] { return !IsHooked<Raw::AttachmentSlots::LockedUpdate>() || Unhook<Raw::AttachmentSlots::LockedUpdate>(); }},
++        {[] { HookWrap<Raw::AttachmentSlots::LockedUpdateFromEvent>(&OnLockedUpdateFromEvent).OrThrow(); },
++         [] { return !IsHooked<Raw::AttachmentSlots::LockedUpdateFromEvent>() || Unhook<Raw::AttachmentSlots::LockedUpdateFromEvent>(); }},
++        {[] { HookWrap<Raw::AttachmentSlots::LockedUpdateSlot>(&OnLockedUpdateSlot).OrThrow(); },
++         [] { return !IsHooked<Raw::AttachmentSlots::LockedUpdateSlot>() || Unhook<Raw::AttachmentSlots::LockedUpdateSlot>(); }},
++    }}, {{
++        {[] { HookAfter<Raw::AttachmentSlots::InitializeSlots>(&OnInitializeSlots).OrThrow(); },
++         [] { return !IsHooked<Raw::AttachmentSlots::InitializeSlots>() || Unhook<Raw::AttachmentSlots::InitializeSlots>(); }},
++        {[] { Hook<Raw::AttachmentSlots::IsSlotSpawning>(&OnSlotSpawningCheck).OrThrow(); },
++         [] { return !IsHooked<Raw::AttachmentSlots::IsSlotSpawning>() || Unhook<Raw::AttachmentSlots::IsSlotSpawning>(); }},
++        {[] { HookAfter<Raw::TPPRepresentationComponent::OnAttach>(&OnAttachTPP).OrThrow(); },
++         [] { return !IsHooked<Raw::TPPRepresentationComponent::OnAttach>() || Unhook<Raw::TPPRepresentationComponent::OnAttach>(); }},
++        {[] { HookAfter<Raw::TPPRepresentationComponent::IsAffectedSlot>(&OnSlotCheckTPP).OrThrow(); },
++         [] { return !IsHooked<Raw::TPPRepresentationComponent::IsAffectedSlot>() || Unhook<Raw::TPPRepresentationComponent::IsAffectedSlot>(); }},
++        {[] { HookAfter<Raw::CharacterCustomizationHairstyleController::CheckState>(&OnCheckHairState).OrThrow(); },
++         [] { return !IsHooked<Raw::CharacterCustomizationHairstyleController::CheckState>() || Unhook<Raw::CharacterCustomizationHairstyleController::CheckState>(); }},
++        {[] { HookAfter<Raw::CharacterCustomizationFeetController::CheckState>(&OnCheckFeetState).OrThrow(); },
++         [] { return !IsHooked<Raw::CharacterCustomizationFeetController::CheckState>() || Unhook<Raw::CharacterCustomizationFeetController::CheckState>(); }},
++        {[] { HookWrap<Raw::AppearanceChanger::GetSuffixValue>(&OnGetSuffixValue).OrThrow(); },
++         [] { return !IsHooked<Raw::AppearanceChanger::GetSuffixValue>() || Unhook<Raw::AppearanceChanger::GetSuffixValue>(); }},
++    }}};
++    return hooks;
++}
++
++bool App::AttachmentExtension::OnLockedUpdate(decltype(Raw::AttachmentSlots::LockedUpdate)::Callable aOriginal,
++                                              Red::game::AttachmentSlots* aComponent, void* aRequest,
++                                              void* aItem, void* aResult)
++{
++    return SlotLockScope::Invoke(aComponent, aOriginal, aRequest, aItem, aResult);
++}
++
++void App::AttachmentExtension::OnLockedUpdateFromEvent(
++    decltype(Raw::AttachmentSlots::LockedUpdateFromEvent)::Callable aOriginal,
++    Red::game::AttachmentSlots* aComponent, void* aEvent)
++{
++    SlotLockScope::Invoke(aComponent, aOriginal, aEvent);
++}
++
++bool App::AttachmentExtension::OnLockedUpdateSlot(decltype(Raw::AttachmentSlots::LockedUpdateSlot)::Callable aOriginal,
++                                                  Red::game::AttachmentSlots* aComponent,
++                                                  Red::TweakDBID aSlotID, bool aFlag)
++{
++    return SlotLockScope::Invoke(aComponent, aOriginal, aSlotID, aFlag);
+ }
+ 
+ void App::AttachmentExtension::OnInitializeSlots(Red::game::AttachmentSlots* aComponent,
+@@ -145,39 +180,30 @@ void App::AttachmentExtension::OnAttachTPP(Red::game::TPPRepresentationComponent
+ 
+     auto transactionSystem = Red::GetGameSystem<Red::ITransactionSystem>();
+ 
+-    std::shared_lock _(s_slotsMutex);
+-
+     for (const auto slotID : TPPAffectedSlots)
+     {
+-        const auto& subSlots = s_extraSlots.find(slotID);
+-        if (subSlots != s_extraSlots.end())
++        const auto subSlots = GetExtraSlots(slotID);
++        for (const auto& subSlotID : subSlots)
+         {
+-            for (const auto& subSlotID : subSlots->second)
++            if (!aComponent->affectedAppearanceSlots.Contains(subSlotID))
+             {
+-                if (!aComponent->affectedAppearanceSlots.Contains(subSlotID))
+-                {
+-                    aComponent->affectedAppearanceSlots.PushBack(subSlotID);
+-                }
++                aComponent->affectedAppearanceSlots.PushBack(subSlotID);
++            }
+ 
+-                if (aComponent->owner)
+-                {
++            if (aComponent->owner)
++            {
+ #ifndef NDEBUG
+-                    auto debugSlotName = Red::ToStringDebug(subSlotID);
++                auto debugSlotName = Red::ToStringDebug(subSlotID);
+ #endif
+ 
+-                    auto slotData = transactionSystem->FindSlotData(aComponent->owner,
+-                                                                   [subSlotID](const Red::AttachmentSlotData& aSlotData)
+-                                                                   {
+-                                                                       return aSlotData.slotID == subSlotID;
+-                                                                   });
+-                    if (slotData && slotData->itemObject)
+-                    {
+-                        const auto& itemID = Raw::ItemObject::ItemID::Ref(slotData->itemObject).tdbid;
++                auto slot = ReadAttachmentSlot(transactionSystem, aComponent->owner, subSlotID);
++                if (slot.itemObject)
++                {
++                    const auto itemID = Raw::ItemObject::ItemID::Ref(slot.itemObject).tdbid;
+ #ifndef NDEBUG
+-                        auto debugItemName = Red::ToStringDebug(itemID);
++                    auto debugItemName = Red::ToStringDebug(itemID);
+ #endif
+-                        Raw::TPPRepresentationComponent::RegisterAffectedItem(aComponent, itemID, slotData->itemObject);
+-                    }
++                    Raw::TPPRepresentationComponent::RegisterAffectedItem(aComponent, itemID, slot.itemObject);
+                 }
+             }
+         }
+@@ -272,19 +298,12 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::Handle<Red::Entity>& aOwne
+     {
+         return true;
+     }
+-    else
++    const auto subSlots = GetExtraSlots(aBaseSlotID);
++    for (const auto& subSlotID : subSlots)
+     {
+-        std::shared_lock _(s_slotsMutex);
+-        const auto& subSlots = s_extraSlots.find(aBaseSlotID);
+-        if (subSlots != s_extraSlots.end())
++        if (IsVisualTagActive(transactionSystem, aOwner, subSlotID, aVisualTag, aEquippedItemID))
+         {
+-            for (const auto& subSlotID : subSlots->second)
+-            {
+-                if (IsVisualTagActive(transactionSystem, aOwner, subSlotID, aVisualTag, aEquippedItemID))
+-                {
+-                    return true;
+-                }
+-            }
++            return true;
+         }
+     }
+ 
+@@ -296,25 +315,18 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::ITransactionSystem* aTrans
+                                                  Red::TweakDBID aSlotID, Red::CName aVisualTag,
+                                                  Red::TweakDBID aEquippedItemID)
+ {
+-    auto slotData = aTransactionSystem->FindSlotData(aOwner,
+-                                                     [aSlotID](const Red::AttachmentSlotData& aSlotData)
+-                                                     {
+-                                                         return aSlotData.slotID == aSlotID;
+-                                                     });
+-    if (slotData)
++    auto slot = ReadAttachmentSlot(aTransactionSystem, aOwner, aSlotID);
++    if (slot.itemObject)
+     {
+ #ifndef NDEBUG
+         auto debugSlotName = Red::ToStringDebug(aSlotID);
+ #endif
+ 
+-        if (slotData->itemObject)
+-        {
+-            Red::CName itemAppearance;
+-            Raw::ItemObject::GetAppearanceName(slotData->itemObject, itemAppearance);
++        Red::CName itemAppearance;
++        Raw::ItemObject::GetAppearanceName(slot.itemObject, itemAppearance);
+ 
+-            return itemAppearance && itemAppearance != EmptyAppearanceName &&
+-                   aTransactionSystem->MatchVisualTag(slotData->itemObject, aVisualTag, false);
+-        }
++        return itemAppearance && itemAppearance != EmptyAppearanceName &&
++               aTransactionSystem->MatchVisualTag(slot.itemObject, aVisualTag, false);
+ 
+ //         if (slotData->spawningItemID && slotData->spawningItemID.tdbid != aEquippedItemID)
+ //         {
+diff --git a/src/App/Extensions/Attachment/Extension.hpp b/src/App/Extensions/Attachment/Extension.hpp
+index 5e06d6012ac6f1c363e3377b4200d80e06a063cc..323eb547569fa8dd35d822f26bd3c05a5c24af37 100644
+--- a/src/App/Extensions/Attachment/Extension.hpp
++++ b/src/App/Extensions/Attachment/Extension.hpp
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include "App/Extensions/ExtensionBase.hpp"
++#include "HookProtection.hpp"
+ #include "Red/AppearanceChanger.hpp"
+ #include "Red/AttachmentSlots.hpp"
+ #include "Red/CharacterCustomization.hpp"
+@@ -20,6 +21,13 @@ public:
+     static Core::Set<Red::TweakDBID> GetDependentSlots(Red::TweakDBID aBaseSlotID);
+ 
+ private:
++    static const HookProtection<3, 7>& GetHooks();
++    static bool OnLockedUpdate(decltype(Raw::AttachmentSlots::LockedUpdate)::Callable aOriginal,
++                               Red::game::AttachmentSlots* aComponent, void* aRequest, void* aItem, void* aResult);
++    static void OnLockedUpdateFromEvent(decltype(Raw::AttachmentSlots::LockedUpdateFromEvent)::Callable aOriginal,
++                                        Red::game::AttachmentSlots* aComponent, void* aEvent);
++    static bool OnLockedUpdateSlot(decltype(Raw::AttachmentSlots::LockedUpdateSlot)::Callable aOriginal,
++                                   Red::game::AttachmentSlots* aComponent, Red::TweakDBID aSlotID, bool aFlag);
+     static void OnInitializeSlots(Red::game::AttachmentSlots* aComponent, Red::DynArray<Red::TweakDBID>& aSlotIDs);
+     static bool OnSlotSpawningCheck(Red::game::AttachmentSlots* aComponent, Red::TweakDBID aSlotID);
+     static void OnAttachTPP(Red::game::TPPRepresentationComponent* aComponent, uintptr_t);
+@@ -44,7 +52,6 @@ private:
+     static bool IsVisualTagActive(Red::ITransactionSystem* aTransactionSystem, Red::Handle<Red::Entity>& aOwner,
+                                   Red::TweakDBID aSlotID, Red::CName aVisualTag, Red::TweakDBID aEquippedItemID);
+ 
+-    static inline thread_local bool s_skipVisualTagCheck = false;
+     static inline Core::Map<Red::TweakDBID, Core::Set<Red::TweakDBID>> s_dependentSlots;
+     static inline Core::Map<Red::TweakDBID, Core::Set<Red::TweakDBID>> s_extraSlots;
+     static inline Core::Map<Red::TweakDBID, Red::TweakDBID> s_baseSlots;
+diff --git a/src/App/Extensions/Attachment/HookProtection.hpp b/src/App/Extensions/Attachment/HookProtection.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..9c7ca9472de8d118c589d4effbd9b5e53567093e
+--- /dev/null
++++ b/src/App/Extensions/Attachment/HookProtection.hpp
+@@ -0,0 +1,52 @@
++#pragma once
++
++#include <array>
++#include <cstddef>
++
++namespace App
++{
++struct ProtectedHook
++{
++    void (*attach)(); // Throws on failure.
++    bool (*detach)(); // An already detached hook counts as success.
++};
++
++// Startup/shutdown only. This does not make unloading code during callbacks safe.
++template<std::size_t TGuards, std::size_t TConsumers>
++struct HookProtection
++{
++    std::array<ProtectedHook, TGuards> guards;
++    std::array<ProtectedHook, TConsumers> consumers;
++
++    void Attach() const
++    {
++        try
++        {
++            for (const auto& hook : guards)
++                hook.attach();
++            for (const auto& hook : consumers)
++                hook.attach();
++        }
++        catch (...)
++        {
++            Detach();
++            throw;
++        }
++    }
++
++    bool Detach() const
++    {
++        bool detached = true;
++        for (auto it = consumers.rbegin(); it != consumers.rend(); ++it)
++            detached = it->detach() && detached;
++
++        // Keep every guard if any protected callback could still run.
++        if (!detached)
++            return false;
++
++        for (auto it = guards.rbegin(); it != guards.rend(); ++it)
++            detached = it->detach() && detached;
++        return detached;
++    }
++};
++}
+diff --git a/src/App/Extensions/Attachment/SlotQuery.hpp b/src/App/Extensions/Attachment/SlotQuery.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..a0fd729d699fef17608e3b3f1bad4a6374a5d278
+--- /dev/null
++++ b/src/App/Extensions/Attachment/SlotQuery.hpp
+@@ -0,0 +1,37 @@
++#pragma once
++
++#include "SlotScope.hpp"
++#include <RED4ext/Scripting/Natives/gameITransactionSystem.hpp>
++
++namespace App
++{
++struct AttachmentSlotState
++{
++    RED4ext::Handle<RED4ext::game::ItemObject> itemObject;
++    bool spawning = false;
++};
++
++inline AttachmentSlotState ReadAttachmentSlot(RED4ext::game::ITransactionSystem* aSystem,
++                                             RED4ext::IScriptable* aOwner, RED4ext::TweakDBID aSlotID)
++{
++    AttachmentSlotState result;
++    // Copy the owning handle inside the predicate, while the engine lock still
++    // protects the slot. FindSlotData's returned pointer outlives its read lock.
++    RED4ext::game::AttachmentSlotDataPredicate predicate = [&](const RED4ext::game::AttachmentSlotData& aSlot)
++    {
++        if (aSlot.slotID != aSlotID)
++            return false;
++
++        result.itemObject = aSlot.itemObject;
++        result.spawning = aSlot.spawningItemID.IsValid();
++        return true;
++    };
++
++    if (SlotLockScope::Owns(aOwner))
++        aSystem->FindSlotDataUnlocked(aOwner, std::move(predicate));
++    else
++        aSystem->FindSlotData(aOwner, std::move(predicate));
++
++    return result;
++}
++}
+diff --git a/src/App/Extensions/Attachment/SlotScope.hpp b/src/App/Extensions/Attachment/SlotScope.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..6c37744959c05d4564b087030871546604bd1193
+--- /dev/null
++++ b/src/App/Extensions/Attachment/SlotScope.hpp
+@@ -0,0 +1,48 @@
++#pragma once
++
++#include <utility>
++
++namespace App
++{
++// Enter only around a verified engine entry point whose callbacks run while
++// holding this component's slot lock. A lock byte alone cannot prove ownership.
++class SlotLockScope
++{
++public:
++    SlotLockScope(const void* aComponent, const void* aOwner) noexcept
++        : m_component(aComponent), m_owner(aOwner), m_previous(s_current)
++    {
++        s_current = this;
++    }
++
++    ~SlotLockScope() { s_current = m_previous; }
++    SlotLockScope(const SlotLockScope&) = delete;
++    SlotLockScope& operator=(const SlotLockScope&) = delete;
++
++    static bool Owns(const void* aOwner) noexcept
++    {
++        if (!aOwner)
++            return false;
++
++        for (auto scope = s_current; scope; scope = scope->m_previous)
++        {
++            if (scope->m_component && scope->m_owner == aOwner)
++                return true;
++        }
++        return false;
++    }
++
++    template<class TComponent, class TFunction, class... TArgs>
++    static decltype(auto) Invoke(TComponent* aComponent, TFunction aOriginal, TArgs&&... aArgs)
++    {
++        SlotLockScope scope(aComponent, aComponent ? aComponent->owner : nullptr);
++        return aOriginal(aComponent, std::forward<TArgs>(aArgs)...);
++    }
++
++private:
++    const void* m_component;
++    const void* m_owner;
++    const SlotLockScope* m_previous;
++    inline static thread_local const SlotLockScope* s_current = nullptr;
++};
++}
+diff --git a/src/App/Extensions/PuppetState/Extension.cpp b/src/App/Extensions/PuppetState/Extension.cpp
+index 92214e0af5f0ebe3fcb9f578309e7c7d74383f97..524ecf36c9853eeafbf4c86980a2e39d68b234ec 100644
+--- a/src/App/Extensions/PuppetState/Extension.cpp
++++ b/src/App/Extensions/PuppetState/Extension.cpp
+@@ -81,19 +81,11 @@ void App::PuppetStateExtension::OnAttachPuppet(Red::gameuiCharacterCustomization
+     LogDebug("[{}] [event=AttachPuppet ent={}]", ExtensionName, aComponent->owner->entityID.hash);
+ #endif
+ 
+-    std::unique_lock _(s_mutex);
+-
+     auto owner = aComponent->owner;
+-
+-    auto it = s_handlers.find(owner);
+-    if (it != s_handlers.end())
+-        return;
+-
+-    auto handler = Red::MakeHandle<PuppetStateHandler>(owner);
+-    s_handlers.insert({owner, handler});
+-
+     auto transactionSystem = Red::GetGameSystem<Red::ITransactionSystem>();
+-    transactionSystem->RegisterSlotListener(owner, handler);
++    s_handlers.Attach(owner,
++        [owner] { return Red::MakeHandle<PuppetStateHandler>(owner); },
++        [owner, transactionSystem](const auto& handler) { transactionSystem->RegisterSlotListener(owner, handler); });
+ }
+ 
+ void App::PuppetStateExtension::OnDetachPuppet(Red::gameuiCharacterCustomizationHairstyleController* aComponent, uintptr_t)
+@@ -102,41 +94,22 @@ void App::PuppetStateExtension::OnDetachPuppet(Red::gameuiCharacterCustomization
+     LogDebug("[{}] [event=DetachPuppet ent={}]", ExtensionName, aComponent->owner->entityID.hash);
+ #endif
+ 
+-    std::unique_lock _(s_mutex);
+-
+     auto owner = aComponent->owner;
+-
+-    auto it = s_handlers.find(owner);
+-    if (it == s_handlers.end())
+-        return;
+-
+-    auto& handler = it.value();
+-    s_handlers.erase(owner);
+-
+     auto transactionSystem = Red::GetGameSystem<Red::ITransactionSystem>();
+-    transactionSystem->UnregisterSlotListener(owner, handler);
++    s_handlers.Detach(owner,
++        [owner, transactionSystem](const auto& handler) { transactionSystem->UnregisterSlotListener(owner, handler); });
+ }
+ 
+ App::PuppetArmsState App::PuppetStateExtension::GetArmsState(const Red::WeakHandle<Red::GameObject>& aPuppet)
+ {
+-    std::shared_lock _(s_mutex);
+-
+-    auto it = s_handlers.find(aPuppet.instance);
+-    if (it == s_handlers.end())
+-        return PuppetArmsState::BaseArms;
+-
+-    return it.value()->GetArmsState();
++    auto handler = s_handlers.Find(aPuppet.instance);
++    return handler ? handler->GetArmsState() : PuppetArmsState::BaseArms;
+ }
+ 
+ App::PuppetFeetState App::PuppetStateExtension::GetFeetState(const Red::WeakHandle<Red::GameObject>& aPuppet)
+ {
+-    std::shared_lock _(s_mutex);
+-
+-    auto it = s_handlers.find(aPuppet.instance);
+-    if (it == s_handlers.end())
+-        return PuppetFeetState::None;
+-
+-    return it.value()->GetFeetState();
++    auto handler = s_handlers.Find(aPuppet.instance);
++    return handler ? handler->GetFeetState() : PuppetFeetState::None;
+ }
+ 
+ Red::CName App::PuppetStateExtension::GetBodyType(const Red::WeakHandle<Red::GameObject>& aPuppet)
+diff --git a/src/App/Extensions/PuppetState/Extension.hpp b/src/App/Extensions/PuppetState/Extension.hpp
+index 3773dc2469e234e34269dd318cde63726bd9a2e0..1560b327bab2e06183d7af338f2cf31e780e81bd 100644
+--- a/src/App/Extensions/PuppetState/Extension.hpp
++++ b/src/App/Extensions/PuppetState/Extension.hpp
+@@ -4,6 +4,7 @@
+ #include "App/Extensions/PuppetState/Handler.hpp"
+ #include "App/Extensions/PuppetState/System.hpp"
+ #include "App/Extensions/PuppetState/Config.hpp"
++#include "App/Extensions/PuppetState/ListenerRegistry.hpp"
+ #include "Red/CharacterCustomization.hpp"
+ 
+ namespace App
+@@ -42,7 +43,6 @@ private:
+     inline static Red::CName s_baseBodyType;
+     inline static Core::Set<Red::CName> s_bodyTypes;
+     inline static Core::Map<Red::CName, Red::CName> s_bodyTags;
+-    inline static Core::Map<Red::Entity*, Red::Handle<PuppetStateHandler>> s_handlers;
+-    static inline Red::SharedSpinLock s_mutex;
++    inline static ListenerRegistry<Core::Map<Red::Entity*, Red::Handle<PuppetStateHandler>>> s_handlers;
+ };
+ }
+diff --git a/src/App/Extensions/PuppetState/Handler.cpp b/src/App/Extensions/PuppetState/Handler.cpp
+index c7e69a5ce3d21c35fad574e24d308ef94e181ada..1164c111acab5a4a9c67d28e16785b31c1daae1c 100644
+--- a/src/App/Extensions/PuppetState/Handler.cpp
++++ b/src/App/Extensions/PuppetState/Handler.cpp
+@@ -1,5 +1,6 @@
+ #include "Handler.hpp"
+ #include "App/Extensions/Attachment/Extension.hpp"
++#include "App/Extensions/Attachment/SlotQuery.hpp"
+ #include "App/Extensions/Garment/Extension.hpp"
+ #include "App/Extensions/PuppetState/Extension.hpp"
+ #include "Core/Facades/Log.hpp"
+@@ -341,16 +342,8 @@ bool App::PuppetStateHandler::IsFlatSole(const Red::Handle<Red::ItemObject>& aIt
+ App::PuppetStateHandler::SlotState App::PuppetStateHandler::GetItemInSlot(const Red::Handle<Red::Entity>& aPuppet,
+                                                                           Red::TweakDBID aSlotID)
+ {
+-    auto slotData = m_transactionSystem->FindSlotData(aPuppet,
+-                                                      [aSlotID](const Red::AttachmentSlotData& aSlotData)
+-                                                      {
+-                                                          return aSlotData.slotID == aSlotID;
+-                                                      });
+-
+-    if (!slotData)
+-        return {};
+-
+-    return {slotData->itemObject, slotData->spawningItemID.IsValid()};
++    auto slot = ReadAttachmentSlot(m_transactionSystem, aPuppet, aSlotID);
++    return {std::move(slot.itemObject), slot.spawning};
+ }
+ 
+ bool App::PuppetStateHandler::IsVisible(const Red::Handle<Red::ItemObject>& aItemObject)
+diff --git a/src/App/Extensions/PuppetState/ListenerRegistry.hpp b/src/App/Extensions/PuppetState/ListenerRegistry.hpp
+new file mode 100644
+index 0000000000000000000000000000000000000000..ede23434b23aa5142c5d2d64669bd3677e322e6c
+--- /dev/null
++++ b/src/App/Extensions/PuppetState/ListenerRegistry.hpp
+@@ -0,0 +1,64 @@
++#pragma once
++
++#include <mutex>
++#include <utility>
++
++namespace App
++{
++// Serialize native registration/removal independently of state readers. The
++// engine's register/unregister routines do not call listeners; notifications
++// use a separate snapshot after releasing the listener-list lock.
++template<class TMap>
++class ListenerRegistry
++{
++public:
++    using Owner = typename TMap::key_type;
++    using Handler = typename TMap::mapped_type;
++
++    template<class TCreate, class TRegister>
++    void Attach(Owner aOwner, TCreate&& aCreate, TRegister&& aRegister)
++    {
++        std::lock_guard lifecycle(m_lifecycleMutex);
++        if (Find(aOwner))
++            return;
++
++        // Construction can query appearances and reenter state readers.
++        auto handler = aCreate();
++        {
++            std::lock_guard state(m_stateMutex);
++            m_handlers.insert({aOwner, handler});
++        }
++        aRegister(handler);
++    }
++
++    template<class TUnregister>
++    void Detach(Owner aOwner, TUnregister&& aUnregister)
++    {
++        std::lock_guard lifecycle(m_lifecycleMutex);
++        Handler handler;
++        {
++            std::lock_guard state(m_stateMutex);
++            auto it = m_handlers.find(aOwner);
++            if (it == m_handlers.end())
++                return;
++
++            handler = std::move(it.value());
++            m_handlers.erase(it);
++        }
++        // Own the listener across the native call, even after the map erases it.
++        aUnregister(handler);
++    }
++
++    Handler Find(Owner aOwner) const
++    {
++        std::lock_guard state(m_stateMutex);
++        auto it = m_handlers.find(aOwner);
++        return it == m_handlers.end() ? Handler{} : it.value();
++    }
++
++private:
++    TMap m_handlers;
++    std::mutex m_lifecycleMutex;
++    mutable std::mutex m_stateMutex;
++};
++}
+diff --git a/src/Red/Addresses/Library.hpp b/src/Red/Addresses/Library.hpp
+index b2deba4ee4531efe077493a5b316635ea175ff7a..6a7ccf95a9ec83d4a1723af72d49889bca4a7005 100644
+--- a/src/Red/Addresses/Library.hpp
++++ b/src/Red/Addresses/Library.hpp
+@@ -2,6 +2,10 @@
+ 
+ namespace Red::AddressLib
+ {
++// 2.5 attachment-slot writers; see docs/load-freeze-change-plan.txt in essentials.
++constexpr uint32_t AttachmentSlots_LockedUpdate = 2050568765;
++constexpr uint32_t AttachmentSlots_LockedUpdateFromEvent = 3617594883;
++constexpr uint32_t AttachmentSlots_LockedUpdateSlot = 1014897455;
+ constexpr uint32_t Main = 240386859;
+ 
+ constexpr uint32_t AISpotPersistentDataArray_Reserve = 3842971216;
+diff --git a/src/Red/AttachmentSlots.hpp b/src/Red/AttachmentSlots.hpp
+index 9159e92d99ac2f0997af4e0d49ec187a907c499f..fc214229238bb8847ca8cb5c703ebc2538b0f954 100644
+--- a/src/Red/AttachmentSlots.hpp
++++ b/src/Red/AttachmentSlots.hpp
+@@ -2,6 +2,20 @@
+ 
+ namespace Raw::AttachmentSlots
+ {
++// The opaque request/result/event storage is forwarded untouched. The x64 ABI
++// and lock lifetime are verified against retail 3.0.88.46235.
++constexpr auto LockedUpdate = Core::RawFunc<
++    Red::AddressLib::AttachmentSlots_LockedUpdate,
++    bool (*)(Red::game::AttachmentSlots*, void*, void*, void*)>();
++
++constexpr auto LockedUpdateFromEvent = Core::RawFunc<
++    Red::AddressLib::AttachmentSlots_LockedUpdateFromEvent,
++    void (*)(Red::game::AttachmentSlots*, void*)>();
++
++constexpr auto LockedUpdateSlot = Core::RawFunc<
++    Red::AddressLib::AttachmentSlots_LockedUpdateSlot,
++    bool (*)(Red::game::AttachmentSlots*, Red::TweakDBID, bool)>();
++
+ constexpr auto InitializeSlots = Core::RawFunc<
+     /* addr = */ Red::AddressLib::AttachmentSlots_InitializeSlots,
+     /* type = */ void (*)(Red::game::AttachmentSlots*, Red::DynArray<Red::TweakDBID>&)>();
