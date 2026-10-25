@@ -1,5 +1,5 @@
 diff --git a/src/App/Extensions/Attachment/Extension.cpp b/src/App/Extensions/Attachment/Extension.cpp
-index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2dffb764236 100644
+index 7d55329ecbe8c3e42912bba21e914225edfa7d4d..3fb72891d374347d67b7b4771b70e2dffb764236 100644
 --- a/src/App/Extensions/Attachment/Extension.cpp
 +++ b/src/App/Extensions/Attachment/Extension.cpp
 @@ -1,4 +1,5 @@
@@ -8,7 +8,7 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
  #include "App/Extensions/Garment/Extension.hpp"
  #include "Red/ItemObject.hpp"
  #include "Red/TweakDB.hpp"
-@@ -30,14 +31,7 @@ std::string_view App::AttachmentExtension::GetName()
+@@ -30,15 +31,7 @@ std::string_view App::AttachmentExtension::GetName()
  
  bool App::AttachmentExtension::Load()
  {
@@ -20,11 +20,12 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
 -    //HookAfter<Raw::CharacterCustomizationGenitalsController::CheckState>(&OnCheckBodyState).OrThrow();
 -    HookAfter<Raw::CharacterCustomizationFeetController::CheckState>(&OnCheckFeetState).OrThrow();
 -    HookWrap<Raw::AppearanceChanger::GetSuffixValue>(&OnGetSuffixValue).OrThrow();
+-    Hook<Raw::AttachmentSlots::UpdateWithExclusiveLock>(&OnUpdateWithExclusiveLock).OrThrow();
 +    GetHooks().Attach();
  
      {
          std::unique_lock _(s_slotsMutex);
-@@ -50,16 +44,57 @@ bool App::AttachmentExtension::Load()
+@@ -51,17 +44,57 @@ bool App::AttachmentExtension::Load()
  
  bool App::AttachmentExtension::Unload()
  {
@@ -36,6 +37,7 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
 -    // Unhook<Raw::CharacterCustomizationGenitalsController::CheckState>();
 -    Unhook<Raw::CharacterCustomizationFeetController::CheckState>();
 -    Unhook<Raw::AppearanceChanger::GetSuffixValue>();
+-    Unhook<Raw::AttachmentSlots::UpdateWithExclusiveLock>();
 +    return GetHooks().Detach();
 +}
  
@@ -91,7 +93,7 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
  }
  
  void App::AttachmentExtension::OnInitializeSlots(Red::game::AttachmentSlots* aComponent,
-@@ -145,39 +180,30 @@ void App::AttachmentExtension::OnAttachTPP(Red::game::TPPRepresentationComponent
+@@ -147,39 +180,30 @@ void App::AttachmentExtension::OnAttachTPP(Red::game::TPPRepresentationComponent
  
      auto transactionSystem = Red::GetGameSystem<Red::ITransactionSystem>();
  
@@ -145,7 +147,32 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
                  }
              }
          }
-@@ -272,19 +298,12 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::Handle<Red::Entity>& aOwne
+@@ -253,7 +277,7 @@ bool App::AttachmentExtension::OnGetSuffixValue(Raw::AppearanceChanger::GetSuffi
+                                                 const Red::TweakDBID& aSuffixRecordID,
+                                                 Red::CString& aResult)
+ {
+-    if (aOwner && a2 && aSuffixRecordID == InnerSleevesSuffix && !s_skipVisualTagCheck)
++    if (aOwner && a2 && aSuffixRecordID == InnerSleevesSuffix)
+     {
+         aResult = IsVisualTagActive(aOwner, TorsoSlot, HideInnerSleevesTag, aItemID.tdbid)
+                       ? HideInnerSleevesSuffixValue
+@@ -264,15 +288,6 @@ bool App::AttachmentExtension::OnGetSuffixValue(Raw::AppearanceChanger::GetSuffi
+     return aOriginalFunc(aItemID, a2, aOwner, aSuffixRecordID, aResult);
+ }
+ 
+-void* App::AttachmentExtension::OnUpdateWithExclusiveLock(void* a1, void* a2, void* a3, void* a4)
+-{
+-    const auto previous = s_skipVisualTagCheck;
+-    s_skipVisualTagCheck = true;
+-    const auto result = Raw::AttachmentSlots::UpdateWithExclusiveLock(a1, a2, a3, a4);
+-    s_skipVisualTagCheck = previous;
+-    return result;
+-}
+-
+ bool App::AttachmentExtension::IsVisualTagActive(Red::Handle<Red::Entity>& aOwner,
+                                                  Red::TweakDBID aBaseSlotID, Red::CName aVisualTag,
+                                                  Red::TweakDBID aEquippedItemID)
+@@ -283,19 +298,12 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::Handle<Red::Entity>& aOwne
      {
          return true;
      }
@@ -169,7 +196,7 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
          }
      }
  
-@@ -296,25 +315,18 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::ITransactionSystem* aTrans
+@@ -307,25 +315,18 @@ bool App::AttachmentExtension::IsVisualTagActive(Red::ITransactionSystem* aTrans
                                                   Red::TweakDBID aSlotID, Red::CName aVisualTag,
                                                   Red::TweakDBID aEquippedItemID)
  {
@@ -202,7 +229,7 @@ index 649a618eeebe2e8a6f2ba91a8e07e229b35c82fe..3fb72891d374347d67b7b4771b70e2df
  //         if (slotData->spawningItemID && slotData->spawningItemID.tdbid != aEquippedItemID)
  //         {
 diff --git a/src/App/Extensions/Attachment/Extension.hpp b/src/App/Extensions/Attachment/Extension.hpp
-index 5e06d6012ac6f1c363e3377b4200d80e06a063cc..323eb547569fa8dd35d822f26bd3c05a5c24af37 100644
+index f22d22b489dba05960e5050c42f6cf860213bc85..323eb547569fa8dd35d822f26bd3c05a5c24af37 100644
 --- a/src/App/Extensions/Attachment/Extension.hpp
 +++ b/src/App/Extensions/Attachment/Extension.hpp
 @@ -1,6 +1,7 @@
@@ -227,7 +254,14 @@ index 5e06d6012ac6f1c363e3377b4200d80e06a063cc..323eb547569fa8dd35d822f26bd3c05a
      static void OnInitializeSlots(Red::game::AttachmentSlots* aComponent, Red::DynArray<Red::TweakDBID>& aSlotIDs);
      static bool OnSlotSpawningCheck(Red::game::AttachmentSlots* aComponent, Red::TweakDBID aSlotID);
      static void OnAttachTPP(Red::game::TPPRepresentationComponent* aComponent, uintptr_t);
-@@ -44,7 +52,6 @@ private:
+@@ -38,14 +46,12 @@ private:
+     static bool OnGetSuffixValue(Raw::AppearanceChanger::GetSuffixValuePtr aOriginalFunc,
+                                  const Red::ItemID& aItemID, uint64_t a2, Red::Handle<Red::GameObject>& aOwner,
+                                  const Red::TweakDBID& aSuffixRecordID, Red::CString& aResult);
+-    static void* OnUpdateWithExclusiveLock(void*, void*, void*, void*);
+ 
+     static bool IsVisualTagActive(Red::Handle<Red::Entity>& aOwner, Red::TweakDBID aBaseSlotID, Red::CName aVisualTag,
+                                   Red::TweakDBID aEquippedItemID = {});
      static bool IsVisualTagActive(Red::ITransactionSystem* aTransactionSystem, Red::Handle<Red::Entity>& aOwner,
                                    Red::TweakDBID aSlotID, Red::CName aVisualTag, Red::TweakDBID aEquippedItemID);
  
@@ -587,7 +621,7 @@ index 0000000000000000000000000000000000000000..ede23434b23aa5142c5d2d64669bd367
 +};
 +}
 diff --git a/src/Red/Addresses/Library.hpp b/src/Red/Addresses/Library.hpp
-index b2deba4ee4531efe077493a5b316635ea175ff7a..6a7ccf95a9ec83d4a1723af72d49889bca4a7005 100644
+index 1a36014275678dfa9728233de454b69978c12894..d2e60b10414d6984e42016534d087977816a7b48 100644
 --- a/src/Red/Addresses/Library.hpp
 +++ b/src/Red/Addresses/Library.hpp
 @@ -2,6 +2,10 @@
@@ -600,9 +634,17 @@ index b2deba4ee4531efe077493a5b316635ea175ff7a..6a7ccf95a9ec83d4a1723af72d49889b
 +constexpr uint32_t AttachmentSlots_LockedUpdateSlot = 1014897455;
  constexpr uint32_t Main = 240386859;
  
- constexpr uint32_t AISpotPersistentDataArray_Reserve = 3842971216;
+ constexpr uint32_t ExtensionService_Bootstrap = 1523060616;
+@@ -33,7 +37,6 @@ constexpr uint32_t AppearanceResource_FindAppearanceDefinition = 549398675;
+ constexpr uint32_t AttachmentSlots_InitializeSlots = 3224838039;
+ constexpr uint32_t AttachmentSlots_IsSlotEmpty = 4231927464;
+ constexpr uint32_t AttachmentSlots_IsSlotSpawning = 1283201918;
+-constexpr uint32_t AttachmentSlots_UpdateWithExclusiveLock = 2050568765;
+ 
+ constexpr uint32_t BufferReader_MakeType0 = 1299073554;
+ constexpr uint32_t BufferReader_MakeType1 = 3578095989;
 diff --git a/src/Red/AttachmentSlots.hpp b/src/Red/AttachmentSlots.hpp
-index 9159e92d99ac2f0997af4e0d49ec187a907c499f..fc214229238bb8847ca8cb5c703ebc2538b0f954 100644
+index a4ccdaf8a461def3bf3ca69c94802393a7f61005..ed01679f045fb7c6f832b933ff181ad1a299e09e 100644
 --- a/src/Red/AttachmentSlots.hpp
 +++ b/src/Red/AttachmentSlots.hpp
 @@ -2,6 +2,20 @@
@@ -626,3 +668,11 @@ index 9159e92d99ac2f0997af4e0d49ec187a907c499f..fc214229238bb8847ca8cb5c703ebc25
  constexpr auto InitializeSlots = Core::RawFunc<
      /* addr = */ Red::AddressLib::AttachmentSlots_InitializeSlots,
      /* type = */ void (*)(Red::game::AttachmentSlots*, Red::DynArray<Red::TweakDBID>&)>();
+@@ -14,7 +28,4 @@ constexpr auto IsSlotSpawning = Core::RawFunc<
+     /* addr = */ Red::AddressLib::AttachmentSlots_IsSlotSpawning,
+     /* type = */ bool (*)(Red::game::AttachmentSlots*, Red::TweakDBID)>();
+ 
+-constexpr auto UpdateWithExclusiveLock = Core::RawFunc<
+-    /* addr = */ Red::AddressLib::AttachmentSlots_UpdateWithExclusiveLock,
+-    /* type = */ void* (*)(void*, void*, void*, void*)>();
+ }

@@ -24,15 +24,15 @@
       "patches": [
         {
           "path": "patches/archive-xl/001-essentials.patch",
-          "sha256": "d65744074adf66b671ddfc86e2615a11308d5e809a9606ff2952cefd613c82ab"
+          "sha256": "f293b77659fba89c7e27bcb033a7b46341d966cf12766c135472ce2840ffe694"
         },
         {
           "path": "patches/archive-xl/002-sdk-api-cleanup.patch",
-          "sha256": "8aa219e84d51537fc3c5d2c1a64fba11b5ea76c207331ca2d6a7140e812e00de"
+          "sha256": "637b204a46f48c05e7213fd715fdfa0e8bdeb987d8f0f95d1bab32fbab9ab1fc"
         },
         {
           "path": "patches/archive-xl/003-attachment-lock-reentrancy.patch",
-          "sha256": "717218d3b33155ddf87357e9fa8a4c8d1d7c1491e9c2eddc2f82856539b41be1"
+          "sha256": "117dc6e28a2d07e41722c5bf0a3534c215dca590ee8ca2d9cfedc90f14899476"
         }
       ],
       "provenance": {
@@ -42,7 +42,12 @@
           "reference": "https://github.com/Selentia-IX/Cyberpunk_2077_2.5_FIX_RED4ext_ArchiveXL_TweakXL_Codeware/releases/tag/r1",
           "research": "docs/load-freeze-change-plan.txt",
           "notes": "Published save-load deadlock lead; independently verified three writer routes, implemented owner-scoped query routing and protected snapshots, and corrected listener lifetime and hook rollback. Native regressions passed; in-game validation remains outstanding."
-        }
+        },
+        "upstream": "https://github.com/psiberx/cp2077-archive-xl",
+        "version_tag": "v1.28.0",
+        "release": "https://github.com/psiberx/cp2077-archive-xl/releases/tag/v1.28.0",
+        "release_commit": "0984aa1c94df3c090ffe8eee6f549e1d4d466136",
+        "notes": "Official 2.5 release. Local layers rebased separately; superseded compatibility changes removed. See docs/psiberx-2.5-updates.txt. In-game validation remains outstanding."
       }
     },
     "codeware": {
@@ -50,16 +55,21 @@
       "patches": [
         {
           "path": "patches/codeware/001-essentials.patch",
-          "sha256": "cddac229d9d33b5c00338e6d860a31798aaf9eff7aabbcb41ceb5380c9409209"
+          "sha256": "6cdbd592f43dd1506c82f2ca93b8e25c949e94cd3ab8231679bf27651280e655"
         },
         {
           "path": "patches/codeware/002-sdk-api-cleanup.patch",
-          "sha256": "f57655bc41d75a9e14475399af6779e9664319e12651685914379fde03e8df45"
+          "sha256": "4c4346d53107cde583fc1f20a287066cff9d00ba6dc4c02a2b7c315facb425df"
         }
       ],
       "provenance": {
         "port": "https://github.com/psiberx/cp2077-codeware/pull/63",
-        "commit": "6ef34ff0dd01ce9406e809e56e268f20fab367c4"
+        "commit": "6ef34ff0dd01ce9406e809e56e268f20fab367c4",
+        "upstream": "https://github.com/psiberx/cp2077-codeware",
+        "version_tag": "v1.21.0",
+        "release": "https://github.com/psiberx/cp2077-codeware/releases/tag/v1.21.0",
+        "release_commit": "81cd3f0fed4a033ef831ae574329aa92bc64e500",
+        "notes": "Official 2.5 release. Local layers rebased separately; superseded compatibility changes removed. See docs/psiberx-2.5-updates.txt. In-game validation remains outstanding."
       }
     },
     "tweak-xl": {
@@ -67,16 +77,21 @@
       "patches": [
         {
           "path": "patches/tweak-xl/001-essentials.patch",
-          "sha256": "0a9547aeedebc1db1ab59f25b8c4f2a60f90a82bdc6d0031970e7287e01da6c1"
+          "sha256": "de5800a1e940ae756f8bf835569f5a3d4cc13eef6d53cd028a5d456ca7a317de"
         },
         {
           "path": "patches/tweak-xl/002-sdk-api-cleanup.patch",
-          "sha256": "4944b728e702204e0bbe1088c1ff819b306f8c386d7789bca0ec726baba68d8a"
+          "sha256": "2f7c4ea058f29f635fe5b63694c203b49901b7e81e77c5481b59b07f248d38c8"
         }
       ],
       "provenance": {
         "port": "https://github.com/psiberx/cp2077-tweak-xl/pull/22",
-        "commit": "fee3a9427c321445c67487e42e79dd2977c35701"
+        "commit": "fee3a9427c321445c67487e42e79dd2977c35701",
+        "upstream": "https://github.com/psiberx/cp2077-tweak-xl",
+        "version_tag": "v1.12.0",
+        "release": "https://github.com/psiberx/cp2077-tweak-xl/releases/tag/v1.12.0",
+        "release_commit": "0d13bb9057a0c70b35292c0d8a3c2076e2b6827a",
+        "notes": "Official 2.5 release. Local layers rebased separately; superseded compatibility changes removed. See docs/psiberx-2.5-updates.txt. In-game validation remains outstanding."
       }
     },
     "red4ext-sdk": {
@@ -294,9 +309,9 @@
     }
   },
   "archivexl_assets": {
-    "path": "build/ArchiveXL-1.27.5-assets.zip",
-    "url": "https://github.com/psiberx/cp2077-archive-xl/releases/download/v1.27.5/ArchiveXL-1.27.5.zip",
-    "sha256": "ce10bb94ca20367975f2362c6a1d47e1e5dd14cd4380f456628f0a96ce1d0913"
+    "path": "build/ArchiveXL-1.28.0-assets.zip",
+    "url": "https://github.com/psiberx/cp2077-archive-xl/releases/download/v1.28.0/ArchiveXL-1.28.0.zip",
+    "sha256": "a4f02416a5f1547f2529de3b2b4a23eddde0f40d511b009fc93635ba2db6e8e1"
   },
   "loader_dependencies": {
     "DETOURS": "detours",

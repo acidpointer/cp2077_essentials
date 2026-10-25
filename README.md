@@ -234,9 +234,9 @@ timestamp or `dirty` suffix:
 | --- | --- |
 | `RED4ext-1.31.0-game2.5-mo2-rootbuilder.zip` | MO2 with Root Builder |
 | `RED4ext-1.31.0-game2.5-game-root.zip` | Manual game-root installation; alternative to Root Builder |
-| `ArchiveXL-1.27.5-game2.5.zip` | ArchiveXL runtime |
-| `Codeware-1.20.6-game2.5.zip` | Codeware runtime |
-| `TweakXL-1.11.5-game2.5.zip` | TweakXL runtime |
+| `ArchiveXL-1.28.0-game2.5.zip` | ArchiveXL runtime |
+| `Codeware-1.21.0-game2.5.zip` | Codeware runtime |
+| `TweakXL-1.12.0-game2.5.zip` | TweakXL runtime |
 | `InputLoader-0.2.3-game2.5.zip` | Input Loader runtime |
 | `CyberEngineTweaks-1.38.0-game2.5-mo2-rootbuilder.zip` | CET with Root Builder |
 | `CyberEngineTweaks-1.38.0-game2.5-game-root.zip` | CET manual game-root installation |
@@ -259,9 +259,10 @@ python3 scripts/verify-build.py --addresses '/path/to/Cyberpunk 2077/bin/x64/cyb
 python3 -m unittest discover -s tests -v
 ```
 
-ArchiveXL's unchanged packed resource comes from checksum-pinned official
-ArchiveXL 1.27.5. CET reuses only the two TweakDB metadata files from its checksum-pinned
-official v1.38.0 release. Its prebuilt ASI and loader DLL are excluded.
+ArchiveXL's packed resource comes from checksum-pinned official
+ArchiveXL 1.28.0 (see [the update record](docs/psiberx-2.5-updates.txt)). CET reuses
+only the two TweakDB metadata files from its checksum-pinned official v1.38.0
+release. Its prebuilt ASI and loader DLL are excluded.
 Mod Settings uses its source-pinned packed archive and composes both script bundles
 from source; its package never includes user settings or a prebuilt DLL.
 Every DLL is compiled locally. Upload only the runtime ZIPs,

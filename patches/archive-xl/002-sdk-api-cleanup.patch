@@ -12,7 +12,7 @@ index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed
  template<typename T>
  concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
 diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
-index 7bd9f7a0ac4249cbb85c6802ff57d62a692e0850..ed1c18a02caa4682d6003dfca7332ede6c39c742 100644
+index e027d0c9e5bea53257e9ffa2e6fddce4d8919e1d..899d49486392b1ab67ca7cb8e1afb897bdfbc349 100644
 --- a/lib/Red/TypeInfo/Definition.hpp
 +++ b/lib/Red/TypeInfo/Definition.hpp
 @@ -189,8 +189,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a
@@ -245,7 +245,7 @@ index 33809e3eb2ccf6a9600b28ee66b1e232720596be..f40d34e210b7de8099b63bfe793aa722
          {
              auto lhsSubType = reinterpret_cast<CClass*>(reinterpret_cast<CRTTIHandleType*>(aLhsType)->innerType);
 diff --git a/src/App/Extensions/Mesh/Extension.cpp b/src/App/Extensions/Mesh/Extension.cpp
-index 1a8e361421cc3386d9c68e0dbc3186fec5107aed..b45d8dfb53aec5c9d6aefc771a8c5108510306ee 100644
+index dd06eebbf3bfbe180c990f66a1831d9990a6a391..b4c502e297c91cc867b1a1814ee567932a9676fd 100644
 --- a/src/App/Extensions/Mesh/Extension.cpp
 +++ b/src/App/Extensions/Mesh/Extension.cpp
 @@ -636,7 +636,7 @@ void App::MeshExtension::ExpandMaterialParams(const Core::SharedPtr<DynamicConte
@@ -257,7 +257,7 @@ index 1a8e361421cc3386d9c68e0dbc3186fec5107aed..b45d8dfb53aec5c9d6aefc771a8c5108
              continue;
  
          auto& reference = *reinterpret_cast<Red::ResourceReference<>*>(param.data.GetDataPtr());
-@@ -1142,7 +1142,7 @@ void App::MeshExtension::MeshState::EnsureContextReady()
+@@ -1146,7 +1146,7 @@ void App::MeshExtension::MeshState::EnsureContextReady()
  
      for (const auto& contextParam : contextParams)
      {
@@ -267,7 +267,7 @@ index 1a8e361421cc3386d9c68e0dbc3186fec5107aed..b45d8dfb53aec5c9d6aefc771a8c5108
              auto attrName = Red::CNamePool::Add(Str::SnakeCase(contextParam.name.ToString()).data());
              auto attrValue = *reinterpret_cast<Red::CName*>(contextParam.data.GetDataPtr());
 diff --git a/src/Red/TweakDB.hpp b/src/Red/TweakDB.hpp
-index f21e1d5c03ac47b37573830b3923f4aa06309d4a..4177be9e48b71916073e58451b018dd919c0ffed 100644
+index 2b51411695da16917271d7aadb7d38edea2d38b5..62faf16d56f478d5bcd69a5dbd3a3f072cbb280e 100644
 --- a/src/Red/TweakDB.hpp
 +++ b/src/Red/TweakDB.hpp
 @@ -84,7 +84,7 @@ inline void AppendToFlat(TweakDBID aFlatID, const I& aBegin, const I& aEnd)

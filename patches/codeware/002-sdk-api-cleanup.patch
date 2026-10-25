@@ -12,7 +12,7 @@ index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed
  template<typename T>
  concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
 diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
-index c8bc311a7e8817f3b59f260c348b85151c22af1c..f42e0e2e25c846b309bb513ea1eb595975a6432f 100644
+index 3a0f10572b4d31dd0a40eca01c8fe3cb29b47c29..19e3f19fd8281e0a2f03e98887eda02839799a38 100644
 --- a/lib/Red/TypeInfo/Definition.hpp
 +++ b/lib/Red/TypeInfo/Definition.hpp
 @@ -198,8 +198,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a
@@ -515,10 +515,10 @@ index 006ca835ec0f7af42039d5c1e7bfb70bb1289d7a..a2a1ee3c58dbd911dd85b22cb4d6a628
      RTTI_IMPL_TYPEINFO(App::ReflectionType);
      RTTI_IMPL_ALLOCATOR();
 diff --git a/src/App/Scripting/ScriptingService.cpp b/src/App/Scripting/ScriptingService.cpp
-index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3aa129b8c3 100644
+index 19085d54ec3508c546e3ebc0c7585d7b5bc555ae..23332693d8d3c927e66ae603e1b9758be3b4fc25 100644
 --- a/src/App/Scripting/ScriptingService.cpp
 +++ b/src/App/Scripting/ScriptingService.cpp
-@@ -171,7 +171,7 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
+@@ -169,7 +169,7 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
          return OnValidateScriptType(nativeType, scriptType);
      }
  
@@ -527,7 +527,7 @@ index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3a
      {
          return true;
      }
-@@ -179,11 +179,11 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
+@@ -177,11 +177,11 @@ bool App::ScriptingService::OnValidateProperty(void* aValidator, Red::ScriptProp
      return Raw::ScriptValidator::ValidateProperty(aValidator, aScriptProp, aNativeProp);
  }
  
@@ -541,7 +541,7 @@ index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3a
          {
              auto nativeInnerType = reinterpret_cast<Red::CRTTIBaseArrayType*>(aNativeType)->innerType;
              auto scriptInnerType = reinterpret_cast<Red::ScriptType*>(aScriptType->innerType);
-@@ -195,9 +195,9 @@ bool App::ScriptingService::OnValidateScriptType(Red::CBaseRTTIType* aNativeType
+@@ -193,9 +193,9 @@ bool App::ScriptingService::OnValidateScriptType(Red::CBaseRTTIType* aNativeType
  
      if (aScriptType->metaType == Red::EScriptType::StaticArray)
      {
@@ -554,7 +554,7 @@ index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3a
          {
              auto nativeInnerType = reinterpret_cast<Red::CRTTIBaseArrayType*>(aNativeType)->innerType;
              auto scriptInnerType = reinterpret_cast<Red::ScriptType*>(aScriptType->innerType);
-@@ -249,7 +249,7 @@ void App::ScriptingService::OnRegisterScriptOpCodes()
+@@ -247,7 +247,7 @@ void App::ScriptingService::OnRegisterScriptOpCodes()
  }
  
  void App::ScriptingService::ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame* aFrame, void* aRet,
@@ -563,7 +563,7 @@ index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3a
  {
      auto instanceType = *reinterpret_cast<Red::CClass**>(aFrame->code);
      aFrame->code += sizeof(Red::CClass*);
-@@ -261,7 +261,7 @@ void App::ScriptingService::ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame*
+@@ -259,7 +259,7 @@ void App::ScriptingService::ScriptOpCodeNew(Red::IScriptable*, Red::CStackFrame*
  }
  
  void App::ScriptingService::ScriptOpCodeCast(Red::IScriptable*, Red::CStackFrame* aFrame, void* aLhs,
@@ -572,7 +572,7 @@ index 67e79497f993b8bf10c378d8c6b46c3d24bb01ac..604bab923cfeb97a15f8fa46d2e70c3a
  {
      auto lhsType = *reinterpret_cast<Red::CClass**>(aFrame->code);
      aFrame->code += sizeof(Red::CClass*);
-@@ -311,7 +311,7 @@ void App::ScriptingService::OnCreateInstance(Red::IScriptable*& aInstance, Red::
+@@ -309,7 +309,7 @@ void App::ScriptingService::OnCreateInstance(Red::IScriptable*& aInstance, Red::
  }
  
  void App::ScriptingService::GetScriptGameInstance(Red::IScriptable*, Red::CStackFrame* aFrame,
@@ -637,7 +637,7 @@ index d9b4fc46969c3772ef3aa5be085c00882c63ba8e..25d28e1a04c94ceb1d5c414bd503d8bd
  
  bool App::WidgetInputService::IsCharacterInput(Red::EInputKey aKey)
 diff --git a/src/App/UI/inkKeyInputEvent.hpp b/src/App/UI/inkKeyInputEvent.hpp
-index d148cbe3cce57fe3cc6c7478720b8153f6a9ff55..16ba3e5776743175a8c9100d8817149b504a1446 100644
+index 23f7cb6061cd2b486542aab6c6039c9c2d07e292..a8f51c8b53bd2cbe1ee36de7a1b4fc06238f66dc 100644
 --- a/src/App/UI/inkKeyInputEvent.hpp
 +++ b/src/App/UI/inkKeyInputEvent.hpp
 @@ -35,9 +35,17 @@ struct inkKeyInputEvent : Red::inkInputEvent
@@ -755,19 +755,19 @@ index bc09ac24fc58ded7eaad3a9a9125093ec9ede261..0c1924cd7218275bb83ee9267961a8bd
 +                          Red::ScriptGameInstance* aRet, Red::rtti::IType* aType)>();
  }
 diff --git a/src/Red/ScriptBundle.hpp b/src/Red/ScriptBundle.hpp
-index ea9be1c48a3a84868266ff50a493e586a96638ad..80f3300f1d08d521e1bf1bcfd2e7b1762878c4d8 100644
+index f35af59c3f6642c8765074d57bdd9f3e8ae338c8..96691d297d76cf3aecb2578d17c90f4ad2cc2cfd 100644
 --- a/src/Red/ScriptBundle.hpp
 +++ b/src/Red/ScriptBundle.hpp
-@@ -72,7 +72,7 @@ enum class EScriptType : uint8_t
+@@ -68,7 +68,7 @@ enum class EScriptType : uint8_t
  
  struct ScriptType : ScriptDefinition
  {
--    CBaseRTTIType* rttiType;     // 18
-+    rtti::IType* rttiType;     // 18
-     ScriptDefinition* innerType; // 20
-     int32_t arraySize;           // 28
-     EScriptType metaType;        // 2C
-@@ -198,6 +198,11 @@ struct ScriptClass : ScriptDefinition
+-    CBaseRTTIType* rttiType;     // 40
++    rtti::IType* rttiType;     // 40
+     ScriptDefinition* innerType; // 48
+     int32_t arraySize;           // 50
+     EScriptType metaType;        // 54
+@@ -195,6 +195,11 @@ struct ScriptClass : ScriptDefinition
  // parent at +0x48, properties +0x50/+0x5C, functions +0x90/+0x9C, flags byte +0xD1 (importonly 0x02,
  // abstract 0x04, struct 0x10, new testonly 0x20); the definition collector 0xB2C408 walks a class's
  // +0x50, +0x60 and +0x90 arrays.
@@ -779,7 +779,7 @@ index ea9be1c48a3a84868266ff50a493e586a96638ad..80f3300f1d08d521e1bf1bcfd2e7b176
  static_assert(offsetof(ScriptClass, parent) == 0x48);
  static_assert(offsetof(ScriptClass, properties) == 0x50);
  static_assert(offsetof(ScriptClass, overrides) == 0x60);
-@@ -206,6 +211,9 @@ static_assert(offsetof(ScriptClass, flags) == 0xD1);
+@@ -203,6 +208,9 @@ static_assert(offsetof(ScriptClass, flags) == 0xD1);
  static_assert(offsetof(ScriptProperty, type) == 0xB8);
  static_assert(offsetof(ScriptType, innerType) == 0x48);
  static_assert(offsetof(ScriptType, metaType) == 0x54);
@@ -851,13 +851,13 @@ index 7b46ecc66e1d2c80a65616d620f6a8b17e7cd42f..9df7069e43ab42d34425f882d7db5cd3
  
      auto copy = *reinterpret_cast<DynArray<T>*>(data.value);
 diff --git a/src/pch.hpp b/src/pch.hpp
-index 8169dccf71b1b07253252992c66814cc82672e29..af263ffb89bdba855c4525069f7d4e87371951af 100644
+index 4b3db89ddd96048f37cce774cf96cec94289f729..0861a4d49745309ae9827afcdb6da56a7a36138e 100644
 --- a/src/pch.hpp
 +++ b/src/pch.hpp
-@@ -1,7 +1,6 @@
- #pragma once
+@@ -2,7 +2,6 @@
  
  #include <algorithm>
+ #include <atomic>
 -#include <codecvt>
  #include <concepts>
  #include <cstddef>

@@ -12,7 +12,7 @@ index eabadec81d835dc8421dd0dd7997c8c19ca60e87..713815aaad3d132ac268951d1a0e89ed
  template<typename T>
  concept IsTypeOrVoid = IsType<T> or std::is_void_v<T>;
 diff --git a/lib/Red/TypeInfo/Definition.hpp b/lib/Red/TypeInfo/Definition.hpp
-index 7bd9f7a0ac4249cbb85c6802ff57d62a692e0850..ed1c18a02caa4682d6003dfca7332ede6c39c742 100644
+index e027d0c9e5bea53257e9ffa2e6fddce4d8919e1d..899d49486392b1ab67ca7cb8e1afb897bdfbc349 100644
 --- a/lib/Red/TypeInfo/Definition.hpp
 +++ b/lib/Red/TypeInfo/Definition.hpp
 @@ -189,8 +189,8 @@ inline void ExtractArgs(C* aContext, CStackFrame* aFrame, std::tuple<Args...>& a

@@ -13,7 +13,8 @@ name hash at compile time. Its cleanup also replaces deprecated codecvt-based
 conversion with checked Windows UTF APIs. TweakXL fixes explicit-specialization
 syntax and explicitly handles no-op null/undefined YAML nodes. Deliberate
 polymorphic layout assertions are locally annotated, with every assertion
-still active. Original compatibility patches remain unchanged.
+still active. The three psiberx stacks were rebased onto their official 2.5
+releases; see the [update record](../docs/psiberx-2.5-updates.txt).
 
 `python3 scripts/patches.py export <project>` updates only the final layer.
 Use `--new-patch 003-description.patch` to append a separate layer. Generate
@@ -23,9 +24,9 @@ identity stay consistent; do not create cumulative diffs over later layers.
 | Project | Imported compatibility work | Local additions |
 | --- | --- | --- |
 | red4ext | Official [v1.31.0](https://github.com/wopss/RED4ext/releases/tag/v1.31.0) base includes [PR 154](https://github.com/wopss/RED4ext/pull/154) | Clang portability: wide default literal, scalar return qualifiers, unused parameters and initialization order |
-| archive-xl | Alexey-shishkin4's [PR 31](https://github.com/psiberx/cp2077-archive-xl/pull/31), including contributed fixes | Header include spelling for case-sensitive hosts |
-| codeware | KelpHect's [PR 63](https://github.com/psiberx/cp2077-codeware/pull/63), including contributed fixes | Explicit base-handle conversion under Clang |
-| tweak-xl | KelpHect's [PR 22](https://github.com/psiberx/cp2077-tweak-xl/pull/22) | Root build supplies the shared SDK |
+| archive-xl | Official [v1.28.0](https://github.com/psiberx/cp2077-archive-xl/releases/tag/v1.28.0); previous compatibility work credited to Alexey-shishkin4's [PR 31](https://github.com/psiberx/cp2077-archive-xl/pull/31), including contributed fixes | Shared SDK/case-sensitive host adaptations, preserved feature limits, and separate attachment-lock protection |
+| codeware | Official [v1.21.0](https://github.com/psiberx/cp2077-codeware/releases/tag/v1.21.0); previous compatibility work credited to KelpHect's [PR 63](https://github.com/psiberx/cp2077-codeware/pull/63), including contributed fixes | Retained native callback adaptations and API reconciliation, explicit base-handle conversion under Clang, checked Unicode conversion |
+| tweak-xl | Official [v1.12.0](https://github.com/psiberx/cp2077-tweak-xl/releases/tag/v1.12.0); previous compatibility work credited to KelpHect's [PR 22](https://github.com/psiberx/cp2077-tweak-xl/pull/22) | Root build supplies the shared SDK; metadata export bounds check and separate RTTI/YAML cleanup |
 | input-loader | Pinned official upstream plus defensive behavior researched in Keen's InputLoaderReborn binary | Shared SDK v1 API adaptation; `002-re-input-hardening.patch` retains newer upstream startup/cache and action/id fixes; [binary evidence](../docs/input-loader-research.txt). `003-durable-input-pipeline.patch` implements transactional generation publication, deterministic snapshot merging and startup lifecycle fixes from the [2.5 audit](../docs/input-loader-2.5-audit.txt). |
 | cyber-engine-tweaks | Official v1.38.0 includes game 2.5 support | Loads through RED4ext and its shared SDK resolver; keeps upstream Lua paths; Clang/header casing fixes. `002-runtime-stability.patch` adds lifecycle, Lua/override, graphics, TweakDB, IO and configuration fixes; [implementation and evidence](../docs/cet-2.5-fix-status.txt). The bundled ASI loader is excluded. Game validation remains pending. |
 | mod-settings | Official upstream main retains 0.2.21 and subsequent settings-preservation/cancel fixes | Local shared-SDK v1 port, retail script/input layouts, native settings prefix, bounded hook startup; [evidence and validation](../docs/mod-settings-2.5-port.txt). The separate `mod-settings-redlib` overlay adapts the pinned headers and retains declarative RTTI registration under Clang, using the existing Codeware technique, without editing dependency files. |

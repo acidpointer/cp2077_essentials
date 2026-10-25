@@ -1,0 +1,96 @@
+Official psiberx 2.5 releases -- 2026-10-25
+
+Updated source pins:
+  ArchiveXL v1.28.0
+    previous: d56db6e0e63e9562be92a17e58ecbbf3d824cd56
+    current:  0984aa1c94df3c090ffe8eee6f549e1d4d466136
+    https://github.com/psiberx/cp2077-archive-xl/releases/tag/v1.28.0
+  Codeware v1.21.0
+    previous: a652bbbcf6feb65988c67f15f428e9398a3d827c
+    current:  81cd3f0fed4a033ef831ae574329aa92bc64e500
+    https://github.com/psiberx/cp2077-codeware/releases/tag/v1.21.0
+  TweakXL v1.12.0
+    previous: b527894603fccdac3da6a19ea4e2a5f536b3724c
+    current:  0d13bb9057a0c70b35292c0d8a3c2076e2b6827a
+    https://github.com/psiberx/cp2077-tweak-xl/releases/tag/v1.12.0
+
+All three upstream releases advertise game patch 2.5 compatibility. ArchiveXL
+also reports a fix for a potential crash when patching .ent resources. Its
+new mesh validation, localization handling and extension-service integration
+are retained. Source inspection and address presence do not establish runtime
+compatibility with this project's shared, patched SDK.
+
+Migration and patch review:
+* The old working contents matched their saved stacks before migration.
+  Backups and per-layer source trees are retained locally under
+  build/mod-updates-20261025/. Existing CET edits were preserved.
+* Each compatibility, SDK cleanup and attachment-lock layer was rebased
+  separately and regenerated with scripts/patches.py export. No layer was
+  collapsed; exporter reconstruction and checksums cover the new base.
+* Upstream now supplies most address/layout and script-import changes. Those
+  duplicate local changes disappear from the compatibility layers. Original
+  community-port attribution remains in patches/README.md and lock provenance.
+* Codeware keeps its local native callback signature adaptations and fallback
+  vanilla API reconciliation. Upstream alias/function replacement and dynamic
+  getter parameter handling are retained. The duplicate local script overloads
+  for CallbackSystemHandler.SetRunMode/SetLifetime were removed in favor of the
+  upstream bridges. Native script/input offset assertions remain real Clang
+  static_assert checks. Public redscript ERTTIType naming and checked UTF
+  conversion remain in the separate SDK cleanup layer.
+* TweakXL takes its updated upstream data files and hashes. Its local metadata
+  export bounds check remains, together with the separate RTTI/YAML cleanup.
+* ArchiveXL's new single-writer thread-local skip workaround overlaps our
+  existing attachment-lock layer. The final layer replaces that workaround
+  with the existing three owner-scoped writer routes and protected snapshots;
+  it retains listener lifetime management and hook rollback. The upstream
+  workaround is not installed alongside those hooks.
+* ArchiveXL retains its previous cooked-node element-edit limits, node lookup
+  guard, 0x30 ResourceRequest layout and safe missing-address resolver.
+  JournalTree_ProcessJournalIndex and ResourceLoader_OnUpdate keep their
+  previously unavailable hashes: journal indexing and resource hot reload
+  remain disabled. No new addresses were guessed or claimed as fixes.
+* The shared SDK and unrelated mod/dependency pins are unchanged. The vendor
+  SDK Gitlinks contained in the new upstream commits are not initialized or
+  used by this build; all three targets still consume sources/red4ext-sdk.
+
+ArchiveXL resource pin:
+  https://github.com/psiberx/cp2077-archive-xl/releases/download/v1.28.0/ArchiveXL-1.28.0.zip
+  SHA256 a4f02416a5f1547f2529de3b2b4a23eddde0f40d511b009fc93635ba2db6e8e1
+  Downloaded bytes match the digest in the official GitHub release API.
+  Only Bundle/ArchiveXL.archive is reused; the plugin DLL is built locally.
+
+Validation:
+* Repository suite: 90 tests ran, 16 optional tests skipped, remaining tests
+  passed. Log: build/mod-updates-20261025/unittest.log.
+* Independent patches.py check all: all eight projects passed.
+  Log: build/mod-updates-20261025/patch-check.log.
+* Official source-boundary audit passed for all eight registered submodules.
+* Retail address database: Codeware 108/108, TweakXL 11/11, ArchiveXL 137/139
+  unique matches. Only ArchiveXL's same two disabled-feature hashes are absent.
+  CET 32/32 and Mod Settings 6/6 also passed; their sources were not migrated.
+* Release builds and package checks passed for ArchiveXL, Codeware and TweakXL:
+  Microsoft ABI assertions, warnings as errors, AMD64 DLLs, exports, symbols,
+  source/SDK provenance, ZIP contents and checksums. Logs remain at
+  build/logs/{archive-xl,codeware,tweak-xl}-release.log.
+* Five focused native tests passed under Wine, including the previous locking
+  path and four old-header dispatch negative controls. Production attachment
+  and listener helpers were rebuilt. No game DLLs were loaded. The sandbox's
+  local-socket restriction required running Wine outside it with an isolated
+  prefix. Logs: build/mod-updates-20261025/native-{build,tests}.log.
+* Packaged Codeware scripts compiled against a copied vanilla 2.5 cache using
+  the existing scc.exe/scc_lib.dll. No real game cache was written. The compiler
+  output and input/output checksums are retained under
+  build/mod-updates-20261025/codeware-scripts/.
+* The three updated runtime ZIPs, separate symbols and a manifest/checksum file
+  are collected under build/mod-updates-20261025/dist/. This is a three-mod
+  validation distribution; it does not replace dist/release/ or constitute a
+  published seven-mod release. verify-build.py passed against the retail
+  address database, and sha256sum --check passed for all six archives.
+  Log: build/mod-updates-20261025/verify-build.log. The packaged ArchiveXL
+  resource bytes also match the pinned 1.28.0 release asset exactly.
+
+No game/MO2 files were modified. Only the three requested upstream pins were
+advanced. No commits were made inside submodules, and nothing was pushed or
+published.
+A real game startup, gameplay, save/load and save-compatibility test is still
+required; native fixture execution and script compilation are isolated checks.
