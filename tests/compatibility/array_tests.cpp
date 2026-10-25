@@ -123,9 +123,80 @@ static void Run(const wchar_t* path)
     FreeLibrary(module);
     std::printf("PASS old SDK arrays: multi-page growth, rollback, shrink, allocator union/virtual ABI, destructor, %zu allocations/frees\n",r->allocs);
 }
+static void RunAdoption(const wchar_t* path)
+{
+    auto r=std::make_shared<Resources>();auto domain=r->domain;
+    auto* cls=r->arena.Borrow(domain,profile::Class,r->cls.data());
+    auto* array=static_cast<std::byte*>(cls)+0x58;
+    ArrayServices services;
+    services.nativeAllocatorVtable=reinterpret_cast<uintptr_t>(r->nativeAllocator.data());
+    services.allocatorHandle=0x1729;
+    services.allocate=[r](size_t bytes,size_t)->void* {
+        auto* p=std::calloc(1,bytes);if(p){r->allocations.insert(p);++r->allocs;}return p;
+    };
+    services.free=[r](void* p){Require(r->allocations.erase(p)==1,"adoption foreign/double free");++r->frees;std::free(p);};
+    unsigned preparations{};void* function{};
+    services.prepareElement=[&](TypeId type,void* native) {
+        Require(type==profile::Function && native==r->function.data(),"typed native element preparation");
+        function=r->arena.Borrow(domain,type,native);++preparations;
+    };
+    auto makeNative=[&](uint32_t capacity,uint32_t size) {
+        auto* buffer=static_cast<uintptr_t*>(services.allocate(size_t(capacity)*8+8,8));
+        for(uint32_t i=0;i<size;++i)buffer[i]=reinterpret_cast<uintptr_t>(r->function.data());
+        buffer[capacity]=services.nativeAllocatorVtable;
+        return Header{reinterpret_cast<uintptr_t>(buffer),capacity,size};
+    };
+    auto h=makeNative(3,2);std::memcpy(r->cls.data()+0x58,&h,sizeof(h));
+    ArrayAdapter adapter(domain,r->arena,{{r.get(),Translate},r},services);
+    // Bad allocator identity is rejected without taking ownership or changing
+    // the native array. The native caller remains responsible for its buffer.
+    reinterpret_cast<uintptr_t*>(h.data)[h.capacity]^=8;
+    Reject([&]{adapter.Bind(cls,profile::Class,"staticFuncsData");},Error::IdentityMismatch);
+    Require(r->frees==0 && std::memcmp(r->cls.data()+0x58,&h,sizeof(h))==0,"failed adoption preserves owner");
+    reinterpret_cast<uintptr_t*>(h.data)[h.capacity]=services.nativeAllocatorVtable;
+    adapter.Bind(cls,profile::Class,"staticFuncsData");
+    Require(preparations==1 && r->allocs==1,"adopt without copying native backing");
+    auto resize=Resize::Bind(domain,[&](void* a,uint32_t n,uint32_t size,uint32_t alignment,ArrayAdapter::Mover move) {
+        adapter.Reallocate(a,n,size,alignment,move);
+    });
+    auto resolver=Resolve::Bind(domain,[&](uint32_t hash)->uintptr_t {
+        if(hash!=0x7AA013D2)throw Failure(Error::UnknownOperation);
+        return reinterpret_cast<uintptr_t>(resize.entry());
+    });
+    auto module=LoadLibraryW(path);Require(module,"adoption guest load");
+    Export<void(*)(Resolve::Entry,void*)>(module,"ConfigureArray")(resolver.entry(),array);
+    const auto element=Export<void*(*)(uint32_t)>(module,"Element");
+    const auto data=Export<void*(*)()>(module,"Data");
+    Require(element(0)==function && element(1)==function,"native populated elements are canonical guest views");
+    auto* oldGuest=data();
+    auto replacement=makeNative(7,3);
+    std::memcpy(r->cls.data()+0x58,&replacement,sizeof(replacement));
+    services.free(reinterpret_cast<void*>(h.data)); // Actual native-side growth owns disposal.
+    adapter.Synchronize(array);
+    std::array<std::byte,8> scratch{};
+    Require(r->arena.memory().Read(reinterpret_cast<uintptr_t>(oldGuest),scratch)==Error::Retired,"native growth retires old guest alias");
+    Require(r->frees==1 && element(2)==function && data()!=oldGuest,"native growth is adopted without a second free");
+    // A native mutation inside capacity is observed directly by retained views.
+    reinterpret_cast<uintptr_t*>(replacement.data)[1]=0;
+    adapter.Synchronize(array);
+    Require(!element(1),"native element update remains coherent");
+    Export<void(*)(uint32_t)>(module,"Grow")(12);
+    Require(r->frees==2 && element(0)==function && !element(1),"guest growth after adoption uses allocator ownership");
+    oldGuest=data();h=r->header();
+    const Header empty{services.nativeAllocatorVtable,0,0};
+    std::memcpy(r->cls.data()+0x58,&empty,sizeof(empty));services.free(reinterpret_cast<void*>(h.data));
+    adapter.Synchronize(array);
+    Require(r->arena.memory().Read(reinterpret_cast<uintptr_t>(oldGuest),scratch)==Error::Retired,"native clear retires aliases");
+    Require(Export<uint32_t(*)()>(module,"AllocatorHandle")()==0x1729,"native clear restores guest allocator");
+    Check(adapter.Retire());Check(resize.Retire());Check(resolver.Retire());
+    Check(r->arena.Retire(function));Check(r->arena.Retire(cls));domain->Close();
+    Require(r->allocs==r->frees && r->allocations.empty() && domain->CanUnload(),"adopted ownership drains");
+    FreeLibrary(module);
+    std::puts("PASS populated native arrays: adoption, typed elements, native growth/clear, retained aliases, guest growth, allocator identity");
+}
 int main(int argc,char**)
 {
-    try {Run(argc>1 ? L"array_guest_unoptimized.dll" : L"array_guest.dll");}
+    try {const auto* path=argc>1 ? L"array_guest_unoptimized.dll" : L"array_guest.dll";RunAdoption(path);Run(path);}
     catch(const Failure& e){std::fprintf(stderr,"FAIL array contract %u\n",unsigned(e.code()));return 1;}
     catch(const std::exception& e){std::fprintf(stderr,"FAIL %s\n",e.what());return 1;}
 }

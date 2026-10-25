@@ -113,7 +113,18 @@ struct RttiAdapter::State : std::enable_shared_from_this<State>
         void GetBitfields(DynArray<CBitfield*>&,bool) override { Unsupported(); }
         void GetClasses(CClass*,DynArray<CClass*>&,bool(*)(CClass*),bool) override { Unsupported(); }
         void GetDerivedClasses(CClass*,DynArray<CClass*>&) override { Unsupported(); }
-        void RegisterType(IType*,uint32_t) override { Unsupported(); }
+        void RegisterType(IType* type,uint32_t id) override
+        {
+            auto c=Enter();if(!c.state->services.registerType)Unsupported();
+            if(!type)throw Failure(Error::UnknownPointer);
+            uintptr_t native{};
+            Check(c.state->arena.memory().Translate(c.state->domain->id(),profile::RttiType,Direction::ToNative,
+                                                    reinterpret_cast<uintptr_t>(type),native));
+            // The native RTTI registry can retain the object even when its
+            // insertion path throws. Keep defining-module/backing ownership.
+            c.state->published.store(true);
+            c.state->services.registerType(reinterpret_cast<void*>(native),id);
+        }
         void sub_88() override { Unsupported(); }
         void sub_90() override { Unsupported(); }
         void UnregisterType(IType*) override { Unsupported(); }

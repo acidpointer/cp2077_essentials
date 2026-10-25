@@ -24,6 +24,10 @@ struct RttiServices
     std::function<TypeMetadata(void*)> metadata;
     std::function<void(uint64_t,uint64_t)> registerScriptName;
     std::function<uint64_t(uint64_t,bool)> convertName;
+    // Registration accepts only previously established guest/native type
+    // identities. The service may publish before returning or throwing.
+    // Native ownership and any reverse virtual dispatch must already be bound.
+    std::function<void(void*,uint32_t)> registerType;
     // Sink must construct the native 64-byte SDK callback from this closure.
     // It may store or invoke it before returning (or throwing).
     std::function<void(std::function<void()>,bool)> addCallback;

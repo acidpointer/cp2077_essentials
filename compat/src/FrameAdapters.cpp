@@ -20,12 +20,13 @@ void* Translate(const SharedPointers& pointers, TypeId type, Direction direction
 }
 bool ScalarResult::Valid() const noexcept
 {
-    return (size==1 || size==2 || size==4 || size==8) &&
-        alignment && alignment<=size && (alignment & (alignment-1))==0;
+    return (size==0 && alignment==1) || ((size==1 || size==2 || size==4 || size==8) &&
+        alignment && alignment<=size && (alignment & (alignment-1))==0);
 }
 void ScalarResult::CheckOutput(const void* output) const
 {
-    if (!Valid() || !output || reinterpret_cast<uintptr_t>(output)%alignment) throw Failure(Error::InvalidRange);
+    if (!Valid() || (size ? !output || reinterpret_cast<uintptr_t>(output)%alignment : output!=nullptr))
+        throw Failure(Error::InvalidRange);
 }
 ScriptRoute::Registration BindScript(Domain::Ptr domain, ScriptEntry legacy, SharedPointers pointers, ScalarResult result)
 {

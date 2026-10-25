@@ -1,0 +1,17 @@
+{
+  "runtime": "wine-11.20 (Staging)",
+  "build_record_sha256": "0589dee7851b7d4db15d23aebb73c484d142a9f2e6d55e15b388ff7376485ef1",
+  "plugin_sha256": "6be425177778a3857a392251bbbcd1aab450dda600c1a56b0f4dd4eac9c3a9cc",
+  "runs": [
+    {
+      "mode": "bridged",
+      "returncode": 0,
+      "output": "RESOLVE 0x99f909fd\nRESOLVE 0x69b30fe4\nRESOLVE 0xc4970b6c\nRESOLVE 0xee0d0cca\nRESOLVE 0x720e2815\nRESOLVE 0x99f909fd\nRESOLVE 0x9ccf1543\nRESOLVE 0xba0c115d\nPLUGIN Starting up Mod Settings 0.2.21\nBase address: 0000000140000000\nRESOLVE 0x4a610f64\nBRIDGED register callback: native size=0x48 handler=+0x40\nBRIDGED post-register callback: native size=0x48 handler=+0x40\nPASS unchanged DLL passed register/post-register callback conversion and reached script registration; later operations untested\n"
+    },
+    {
+      "mode": "unbridged",
+      "returncode": 0,
+      "output": "RESOLVE 0x99f909fd\nRESOLVE 0x69b30fe4\nRESOLVE 0xc4970b6c\nRESOLVE 0xee0d0cca\nRESOLVE 0x720e2815\nRESOLVE 0x99f909fd\nRESOLVE 0x9ccf1543\nRESOLVE 0xba0c115d\nPLUGIN Starting up Mod Settings 0.2.21\nBase address: 0000000140000000\nRESOLVE 0x4a610f64\nNATIVE handler read at +0x40: 0000000000000077\nPASS negative control: unbridged old callback faults in native-layout copy\n"
+    }
+  ]
+}

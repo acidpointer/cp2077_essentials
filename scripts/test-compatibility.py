@@ -68,7 +68,15 @@ def main():
     parser.add_argument('--runtime', type=Path)
     parser.add_argument('--label', default='default', help='Retain separate run records for each runtime')
     parser.add_argument('--jobs', type=int, default=4)
+    parser.add_argument('--probe-plugin', type=Path, help='Copy a local DLL into an isolated startup probe; never installs or launches the game')
+    parser.add_argument('--probe-only', action='store_true', help='With --run-only/--probe-plugin, execute only the copied-DLL probe')
     args = parser.parse_args()
+    if args.probe_plugin and (args.platform != 'win64' or args.build_only):
+        parser.error('--probe-plugin requires a Win64 run')
+    if args.probe_only and (not args.run_only or not args.probe_plugin):
+        parser.error('--probe-only requires --run-only and --probe-plugin')
+    if args.probe_plugin and (not args.probe_plugin.is_file() or args.probe_plugin.name.lower() in ('red4ext.dll', 'compat_plugin_probe.exe')):
+        parser.error('probe input must be an existing plugin DLL with a distinct filename')
     if not args.label or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in args.label):
         parser.error('label must contain only letters, digits, dash or underscore')
     out = (args.out or ROOT / 'build/compat' / args.platform).resolve()
@@ -79,7 +87,7 @@ def main():
     sdk_digest = headers(ROOT / 'sources/red4ext-sdk/include')
     targets = ['compat_core_tests', 'compat_live_tests']
     if args.platform == 'win64':
-        targets += ['compat_sdk_tests', 'compat_platform_tests', 'compat_function_tests', 'compat_array_tests', 'compat_registration_tests']
+        targets += ['compat_sdk_tests', 'compat_platform_tests', 'compat_function_tests', 'compat_array_tests', 'compat_registration_tests', 'compat_plugin_probe']
     suffix = '.exe' if args.platform == 'win64' else ''
     if os.name == 'nt' and args.platform == 'portable':
         parser.error('portable mode is a Unix algorithm check; use win64 on Windows')
@@ -138,7 +146,7 @@ def main():
             raise RuntimeError('inputs changed during compilation; rebuild')
         binaries = [out / 'bin' / (target + suffix) for target in targets]
         if args.platform == 'win64':
-            binaries += [out / 'bin' / (name + '.dll') for name in ('legacy_guest', 'legacy_guest_unoptimized', 'array_guest', 'array_guest_unoptimized', 'registration_guest', 'registration_guest_unoptimized', 'dependency', 'initializer')]
+            binaries += [out / 'bin' / (name + '.dll') for name in ('legacy_guest', 'legacy_guest_unoptimized', 'array_guest', 'array_guest_unoptimized', 'registration_guest', 'registration_guest_unoptimized', 'startup_guest', 'RED4ext', 'dependency', 'initializer')]
         record['binaries'] = {p.relative_to(out).as_posix(): digest(p) for p in binaries}
         record['complete'] = True
         save(record, manifest)
@@ -165,6 +173,8 @@ def main():
         runs.append(('compat_array_tests', ['unoptimized']))
         runs.extend(('compat_registration_tests', [mode]) for mode in ('unoptimized', 'throw'))
         runs.extend(('compat_function_tests', [mode]) for mode in ('throw', 'persistent', 'detach-failure'))
+    if args.probe_only:
+        runs = []
     for target, arguments in runs:
         name = target + ('-' + '-'.join(arguments) if arguments else '')
         log_path = out / f'{args.label}-{name}.log'
@@ -177,6 +187,32 @@ def main():
         if result.get('returncode', 1) or 'PASS' not in output:
             print('\n'.join(output.splitlines()[-40:]))
             return 1
+    if args.probe_plugin:
+        # Main may use the host executable's grandparent as a game root. Give
+        # it a new private tree containing no user's game/config/save files.
+        case = Path(tempfile.mkdtemp(prefix='plugin-probe-', dir=out))
+        binary_dir = case / 'bin/x64'
+        binary_dir.mkdir(parents=True)
+        for name in ('compat_plugin_probe.exe', 'RED4ext.dll'):
+            shutil.copy2(out / 'bin' / name, binary_dir / name)
+        plugin = binary_dir / args.probe_plugin.name
+        shutil.copy2(args.probe_plugin, plugin)
+        probe = {'runtime': runtime, 'build_record_sha256': digest(manifest),
+                 'plugin_sha256': digest(plugin), 'runs': []}
+        for mode in ('bridged', 'unbridged'):
+            log_path = case / (mode + '.log')
+            command = runner + [str(binary_dir / 'compat_plugin_probe.exe'), str(plugin)]
+            if mode == 'unbridged':
+                command.append(mode)
+            result = execute(command, binary_dir, env, log_path, 60)
+            output = log_path.read_text(errors='replace')
+            probe['runs'].append({'mode': mode, **result, 'output': output})
+            save(probe, case / 'results.json')
+            print(mode, result.get('returncode', 'timeout'), output, flush=True)
+            if result.get('returncode', 1) or 'PASS' not in output:
+                print('Probe evidence:', case)
+                return 1
+        print('Probe evidence:', case)
     return 0
 
 

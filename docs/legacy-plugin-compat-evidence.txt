@@ -539,6 +539,124 @@ virtual slots reject calls. Populated native arrays, native-initiated growth,
 nontrivial elements, object/handle lifetimes, broader function calls and loader/
 hook routing still need implementation. No production plugin admission changed.
 
+E33. Populated arrays, early routing and unchanged Mod Settings startup
+---------------------------------------------------------------------
+
+Date: 2026-10-25. Sources: compat/src/{ArrayAdapter,NativeRtti,EarlyModules,
+ModuleNotifications,ResolverRouter,ModulePin,FrameAdapters}.cpp and the matching
+tests/compatibility/ tests. No production RED4ext admission or game files changed.
+
+ArrayAdapter now adopts already populated native pointer buffers through reviewed
+Class/Function owner fields. It validates capacity, alignment, allocator tail and
+each active element identity; a typed preparation service can create missing
+canonical element views. Adoption does not copy/free the original allocation.
+Synchronize handles reviewed native replacement/clear and same-buffer element
+changes while all observers are quiescent. Old guest aliases retire without
+double-freeing the storage disposed by the native operation. In-place capacity
+changes fail because their allocation lifetime is unknown. Tests include actual
+optimized/unoptimized old-header reads, subsequent growth/destruction, allocator
+mismatch preservation and allocation/free balance. Arbitrary native mutation,
+nontrivial elements, private arrays and copy/move remain unsupported.
+
+RegisterType now translates a previously mapped guest IType and marks publication
+before calling the native registry. Tests reject null/raw/unmapped pointers and
+retain published ownership when the registry throws. This is not adoption of a
+guest-created class descriptor. NativeRtti uses current-SDK virtual signatures
+and constructs current callbacks from the retained closure. The receiver in this
+test remains synthetic. Script/frame/opcode adapters also accept explicit void
+contracts with null output buffers. Actual old-header void calls preserve frame
+changes on return and exception; invalid output buffers are rejected.
+
+EarlyModules publishes module ranges from LdrRegisterDllNotification before DLL
+initializers, using immutable preallocated records and no allocation, application
+mutex or OS call inside the notification. ASCII absolute ABI roots are configured
+before notification registration. Unloads leave tombstones; native module records
+prevent address reuse from inheriting a legacy domain. Overflow/overlap errors
+latch. ResolverRouter selects a sealed catalog from the actual caller module;
+unknown legacy hashes never fall through to the native resolver. Native calls
+keep their existing resolver behavior, independently of surrounding legacy TLS.
+Its bounded diagnostics record caller/hash/domain/error and explicit overflow.
+
+ModulePins acquires real OS references in ordinary resolver context, before a
+publishing adapter is exposed. Concurrent first callers retain one reference
+without holding an application lock across OS loader calls. The actual old SDK
+startup fixture registers a callback in DllMain, then resolves/calls from a worker
+without inherited TLS. The test drops the normal LoadLibrary reference before
+Main. Concurrent reference balancing, nested domain routing, cached entries,
+missing catalogs, closed domains, native reuse and diagnostic overflow pass.
+Failed initializers, native Windows and production dependency policies are open.
+
+Unchanged installed DLL control
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Input: mod_settings.dll from the MO2 mod_settings_v0.2.21.zip directory, SHA256
+  6be425177778a3857a392251bbbcd1aab450dda600c1a56b0f4dd4eac9c3a9cc
+The matching source archive is the official jackhumbert/mod_settings v0.2.21 tag,
+SHA256 32722596877868974631629780a91c71e2706320a7fcb7c24acec735e24fe2f2.
+Optional local source/disassembly evidence is under .research/mod-settings/.
+The installed DLL is copied unchanged to a fresh build/compat/ private host tree;
+no user game executable, game data, MO2 deployment or save is loaded.
+
+Earlier read-only disassembly establishes that Main passes callbacks at vtable
+slots +0xC0/+0xC8 with size 0x28 and handler +0x20. The installed retail receiver
+copies 0x48-byte callbacks using handler +0x40. The observed game log stops just
+before this boundary, but there is no matching session exception stack. The
+exact original crashing PC is therefore still not claimed.
+
+The paired probe now executes those calls from the unchanged DLL. With the
+adapter, both current-layout callbacks are stored and destroyed and the plugin
+reaches its first script-registration call. With the old object passed directly
+to the native-layout receiver, the receiver reads handler 0x77 at +0x40 and
+faults during its copy operation. Both controls reproduce under Wine and GE.
+This is stronger evidence for the specific ABI mismatch, not a complete game
+startup result and not proof that every later operation is compatible.
+
+The probe explicitly models a startup serial counter and resident handle
+references so ordinary engine setup can precede the tested callback boundary.
+These are fake-engine scaffolds, not production adapters. Eagerly resolved
+unknown hashes receive inaccessible diagnostic pages; their first use records
+the hash and access kind and exits 78. An initial run exposed a data write to
+ISerializable_Counter (0x9CCF1543), distinguishing eager resolution from use.
+The checkpoint uses TerminateProcess after flushing output. ExitProcess would
+invoke unsupported DLL detach/engine cleanup; an earlier run reached the callback
+checkpoint then faulted at that excluded teardown operation (0x03521331).
+Both failed exploratory configurations remain in the generated probe records.
+
+The probe does not execute the registration callback bodies or install hooks.
+Those bodies create custom class descriptors with ordinary C++ new and register
+them; the current RegisterType contract rejects their unmapped identities.
+Class identity, reverse virtual calls, allocation/instance/handle ownership,
+broader result/container contracts and native engine services remain required.
+Production configuration, Query reconciliation, Unload suppression and reviewed
+private hook contracts are also outstanding. They Will Remember's previously
+observed redscript wrapper-signature errors are separate from this native ABI.
+
+Validation and reproduction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+11 Python schema tests, 2 portable Release tests and 2 ASan/UBSan/LSan tests pass.
+The sanitizer's sandboxed invocation failed because LeakSanitizer cannot inspect
+threads under tracing; the same binaries pass outside that sandbox without
+changing any system setting or disabling checks. All 15 Win64 suite runs pass
+under system Wine 11.20 and GE Wine 11.0 through Steam Runtime. Each runtime also
+passes the unchanged-DLL bridged and expected-fault unbridged control.
+
+Final generated build-record SHA256:
+  portable: 4ff310ec8f182bdb3b7d6dffe08c0a68ef442556160a4a84b350fc23a140fb08
+  win64:    0589dee7851b7d4db15d23aebb73c484d142a9f2e6d55e15b388ff7376485ef1
+Effective current-SDK header identity:
+  7924a145bc90606c5091dc0483f12de15dac99f68b19f149d085191dcbcd3643
+Results: build/compat/{portable,win64}/results-completion-*.json,
+build/compat/win64/plugin-probe-*/results.json and
+build/compat/asan/Testing/Temporary/LastTest.log. Preserved compact run records
+are under docs/legacy-compat-startup-lab/; binary inputs remain local.
+
+Reproduce using compat/README.txt's build/runtime commands, then:
+  python3 scripts/test-compatibility.py --run-only --probe-only \
+    --probe-plugin '<local-mod_settings.dll>'
+No source pin, packaged loader or production resolver behavior changed in this
+compatibility work. This completes concrete substeps, not the plan or G1-G5.
+
 Decision
 --------
 

@@ -12,6 +12,7 @@
 #include <RED4ext/Memory/Vault-inl.hpp>
 #include <RED4ext/SharedSpinLock-inl.hpp>
 #include <RED4ext/CNamePool-inl.hpp>
+#include <RED4ext/Scripting/Stack.hpp>
 
 struct Counts { int live,copies,calls,badDomain;uint32_t (*current)(); };
 static Counts* counts;
@@ -67,3 +68,12 @@ extern "C" __declspec(dllexport) bool CheckRegistration()
 }
 extern "C" __declspec(dllexport) void UnknownVirtual()
 { RED4ext::CRTTISystem::Get()->InitializeScriptRuntime(); }
+extern "C" __declspec(dllexport) void RegisterMappedType(void* type,uint32_t id)
+{ static_cast<RED4ext::IRTTISystem*>(RED4ext::CRTTISystem::Get())->RegisterType(static_cast<RED4ext::rtti::IType*>(type),id); }
+extern "C" __declspec(dllexport) void VoidScript(void*,void* value,void* output,int64_t extra)
+{
+    Observe();if(output)throw 81;
+    auto* frame=static_cast<RED4ext::CStackFrame*>(value);
+    ++frame->currentParam;
+    if(extra<0)throw 82;
+}

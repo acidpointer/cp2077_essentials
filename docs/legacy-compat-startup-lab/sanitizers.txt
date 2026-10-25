@@ -1,0 +1,47 @@
+ASan/UBSan/LSan, Clang portable Debug
+Flags: -fsanitize=address,undefined -fno-omit-frame-pointer
+Command: ctest --test-dir build/compat/asan --output-on-failure
+The sandboxed attempt failed in LeakSanitizer thread inspection.
+This successful rerun used the same binaries outside that sandbox.
+No sanitizer was disabled and no system setting changed.
+
+Start testing: Oct 25 02:54 EEST
+----------------------------------------------------------
+1/2 Testing: compat_core
+1/2 Test: compat_core
+Command: "<repo>/build/compat/asan/bin/compat_core_tests"
+Directory: <repo>/build/compat/asan
+"compat_core" start time: Oct 25 02:54 EEST
+Output:
+----------------------------------------------------------
+PASS core: schema identities domains lifetime callbacks routing frames containers retirement early-module-publication resolver-diagnostics
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"compat_core" end time: Oct 25 02:54 EEST
+"compat_core" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/2 Testing: compat_live
+2/2 Test: compat_live
+Command: "<repo>/build/compat/asan/bin/compat_live_tests"
+Directory: <repo>/build/compat/asan
+"compat_live" start time: Oct 25 02:54 EEST
+Output:
+----------------------------------------------------------
+PASS hardware oracle: 171 encodings 16416 cases, memory/GPR/XMM/defined flags
+PASS live mappings: pointers arrays preflight quarantine native reuse
+PASS compound mappings: atomic publication, allocator discriminator and vector transitions
+PASS concurrent native atomics and retirement
+PASS virtual identity: immutable tables, canonical base aliases, retirement
+PASS instruction rejection, unchanged failure state and addressing
+<end of output>
+Test time =   0.12 sec
+----------------------------------------------------------
+Test Passed.
+"compat_live" end time: Oct 25 02:54 EEST
+"compat_live" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Oct 25 02:54 EEST

@@ -22,6 +22,11 @@ public:
                AddressKind kind, std::string_view signature, uintptr_t adapter, size_t table_size = 0);
     Error Seal() noexcept;
     uintptr_t Resolve(uint32_t primary, AddressKind expected) const;
+    // The RED4ext export supplies only a hash. Its kind is already part of the
+    // sealed, identity-checked operation contract; never infer it from an address.
+    uintptr_t Resolve(uint32_t primary) const;
+    const Domain::Ptr& domain() const noexcept { return domain_; }
+    bool sealed() const noexcept { return sealed_; }
 private:
     const Schema& schema_;
     Domain::Ptr domain_;

@@ -3,6 +3,8 @@
 #include <compat/CallbackBridge.hpp>
 #include <compat/CallRouter.hpp>
 #include <compat/DomainRegistry.hpp>
+#include <compat/EarlyModules.hpp>
+#include <compat/ResolverRouter.hpp>
 #include <compat/ObjectRegistry.hpp>
 #include <compat/Profile.hpp>
 #include <atomic>
@@ -61,6 +63,37 @@ static void SchemaTests()
     Reject(Error::WrongKind, [&] { catalog.Resolve(first.primary, AddressKind::Table); });
     Reject(Error::UnknownOperation, [&] { catalog.Resolve(1, AddressKind::Function); });
 }
+static void EarlyModuleTests()
+{
+    EarlyModules modules(256);
+    Reject(Error::InvalidRange,[&]{modules.AddRoot(L"relative/path",1);});
+    Reject(Error::InvalidRange,[&]{modules.AddRoot(L"Z:/legacy/../native",1);});
+    modules.AddRoot(L"Z:/legacy/2.31",71);
+    Reject(Error::Overlap,[&]{modules.AddRoot(L"Z:/legacy/2.31/nested",72);});
+    modules.Seal();
+    Reject(Error::Closed,[&]{modules.AddRoot(L"Z:/other",73);});
+    Check(modules.Loaded(0x1000,0x100,L"z:\\LEGACY\\2.31\\plugin.dll"));
+    Require(modules.Find(0x1080).domain==71 && !modules.Find(0x1100).domain,"preallocated range and case folding");
+    Check(modules.Loaded(0x2000,0x100,L"Z:/legacy/2.310/near.dll"));
+    Require(!modules.Find(0x2080).domain,"root requires directory separator boundary");
+    Check(modules.Loaded(0x3000,0x100,L"\\??\\Z:\\legacy\\2.31\\dependency.dll"));
+    Require(modules.Find(0x3080).domain==71,"NT prefix normalized without OS callbacks");
+    Check(modules.Unloaded(0x1000));Require(modules.Find(0x1080).error==Error::Retired,"unload leaves a tombstone");
+    Check(modules.Loaded(0x1000,0x100,L"Z:/native/reused.dll"));
+    Require(modules.Find(0x1080).error==Error::None && !modules.Find(0x1080).domain,"native reuse does not inherit old ABI");
+    std::atomic<bool> done{},bad{};
+    std::thread reader([&]{while(!done.load())if(modules.Find(0x3080).domain!=71)bad=true;});
+    for(uintptr_t i=0;i<100;++i)
+    {Check(modules.Loaded(0x10000+i*0x100,0x80,L"Z:/legacy/2.31/worker.dll"));Check(modules.Unloaded(0x10000+i*0x100));}
+    done=true;reader.join();Require(!bad,"notification publication permits concurrent lookup");
+    EarlyModules limited(1);limited.AddRoot(L"C:/legacy",1);limited.Seal();
+    Check(limited.Loaded(0x1000,0x100,L"C:/legacy/one.dll"));
+    Require(limited.Loaded(0x2000,0x100,L"C:/legacy/two.dll")==Error::Capacity &&
+            limited.Find(0x2050).error==Error::Capacity,"overflow cannot become native fallthrough");
+    EarlyModules overlap(2);overlap.AddRoot(L"C:/legacy",1);overlap.Seal();
+    Check(overlap.Loaded(0x1000,0x100,L"C:/legacy/one.dll"));
+    Require(overlap.Loaded(0x1080,0x100,L"C:/native/two.dll")==Error::Overlap,"active ranges cannot overlap");
+}
 
 struct MixedResult { uint64_t sum; double floating; uint64_t domain; };
 struct MixedTag;
@@ -71,6 +104,71 @@ struct PublishedTag;
 using PublishedRouter = CallRouter<void(), PublishedTag, 1>;
 struct CleanupTag;
 using CleanupRouter = CallRouter<void(), CleanupTag, 1>;
+
+struct ResolveFixtureTag;
+using ResolveFixture=CallRouter<uint32_t(),ResolveFixtureTag,2>;
+static void ResolverTests()
+{
+    // Deliberately synthetic operations; do not label fake entries as game
+    // relocations. The real export/old-header path is checked by plugin_probe.
+    const Operation operations[]{
+        {"fixture.entry",101,"a1",AddressKind::Function,"u32()",0},
+        {"fixture.table",102,"a2",AddressKind::Table,"u32[2]",8}};
+    const Schema schema{profile::Core.source,profile::Core.target,profile::Types,operations};
+    auto a=DomainFor(81),b=DomainFor(82);
+    auto entry=ResolveFixture::Bind(a,[]{return Domain::Current()->id();});
+    auto other=ResolveFixture::Bind(b,[]{return Domain::Current()->id();});
+    const uint32_t table[]{31,32};
+    auto makeCatalog=[&](Domain::Ptr domain,ResolveFixture::Entry function) {
+        auto catalog=std::make_shared<AddressCatalog>(schema,std::move(domain));
+        Check(catalog->Bind("fixture.entry",101,"a1",AddressKind::Function,"u32()",reinterpret_cast<uintptr_t>(function)));
+        Check(catalog->Bind("fixture.table",102,"a2",AddressKind::Table,"u32[2]",reinterpret_cast<uintptr_t>(table),8));
+        Check(catalog->Seal());return catalog;
+    };
+    auto ca=makeCatalog(a,entry.entry()),cb=makeCatalog(b,other.entry());
+    EarlyModules modules(8);modules.AddRoot(L"C:/legacy-a",81);modules.AddRoot(L"C:/legacy-b",82);
+    modules.AddRoot(L"C:/unconfigured",83);modules.Seal();
+    Check(modules.Loaded(0x1000,0x100,L"C:/legacy-a/first.dll"));
+    Check(modules.Loaded(0x2000,0x100,L"C:/legacy-b/second.dll"));
+    Check(modules.Loaded(0x3000,0x100,L"C:/unconfigured/third.dll"));
+    Check(modules.Loaded(0x4000,0x100,L"C:/native/native.dll"));
+    std::atomic<unsigned> nativeCalls{};
+    ResolverRouter router(modules,[](void* state,uint32_t hash)->uintptr_t {
+        ++*static_cast<std::atomic<unsigned>*>(state);return uintptr_t(hash)+0x10000;
+    },&nativeCalls);
+    router.Add(ca);router.Add(cb);
+    Reject(Error::Overlap,[&]{router.Add(ca);});router.Seal();
+    Reject(Error::Closed,[&]{router.Add(ca);});
+    auto cached=reinterpret_cast<ResolveFixture::Entry>(router.Resolve(101,0x1050).address);
+    Require(cached==entry.entry() && !Domain::Current(),"explicit caller selects domain and restores TLS");
+    std::thread worker([&]{Require(cached()==81 && router.Resolve(101,0x2050).address==reinterpret_cast<uintptr_t>(other.entry()),
+                                  "cached entry and resolver work without parent TLS");});worker.join();
+    {
+        Domain::Scope scope(*b);
+        Require(router.Resolve(101,0x1050).address==reinterpret_cast<uintptr_t>(cached) && Domain::Current()==b.get(),
+                "nested foreign scope does not select caller ABI");
+        Require(router.Resolve(101,0x4050).address==0x10065,"native caller uses native resolver inside legacy TLS");
+    }
+    Require(router.Resolve(102,0x1050).address==reinterpret_cast<uintptr_t>(table),"table routing preserves reviewed kind");
+    Require(router.Resolve(999,0x1050).error==Error::UnknownOperation && nativeCalls==1,"unknown legacy hash never reaches native");
+    Require(router.Resolve(101,0x3050).error==Error::IdentityMismatch,"missing domain catalog fails closed");
+    Check(modules.Unloaded(0x1000));
+    Require(router.Resolve(101,0x1050).error==Error::Retired,"stale module caller rejected");
+    Check(modules.Loaded(0x1000,0x100,L"C:/native/reused.dll"));
+    Require(router.Resolve(101,0x1050).address==0x10065,"native reuse bypasses old ABI");
+    b->Close();Require(router.Resolve(101,0x2050).error==Error::Closed,"closed domain rejects fresh resolution");
+    ResolverRouter::Diagnostic diagnostic;
+    Require(router.ReadDiagnostic(0,diagnostic) && diagnostic.primary==999 && diagnostic.domain==81 &&
+            diagnostic.caller==0x1050 && diagnostic.error==Error::UnknownOperation,"structured diagnostic identifies missing contract");
+    std::vector<std::thread> writers;
+    for(int n=0;n<4;++n)writers.emplace_back([&]{for(int j=0;j<32;++j)(void)router.Resolve(999,0x3050);});
+    for(auto& writer:writers)writer.join();
+    Require(router.diagnostics_overflowed(),"bounded diagnostics report overflow");
+    for(size_t i=0;i<ResolverRouter::DiagnosticCapacity;++i)
+        Require(router.ReadDiagnostic(i,diagnostic) && diagnostic.error!=Error::None,"concurrent diagnostic publication is complete");
+    Require(router.ReadDiagnostic(0,diagnostic) && diagnostic.primary==999 && diagnostic.domain==81,"overflow preserves oldest evidence");
+    a->Close();Check(entry.Retire());Check(other.Retire());
+}
 
 static void DomainTests()
 {
@@ -282,6 +380,6 @@ static void ValueTests()
 
 int main()
 {
-    try { SchemaTests(); DomainTests(); CallbackTests(); ValueTests(); std::puts("PASS core: schema identities domains lifetime callbacks routing frames containers retirement"); }
+    try { SchemaTests(); EarlyModuleTests(); ResolverTests(); DomainTests(); CallbackTests(); ValueTests(); std::puts("PASS core: schema identities domains lifetime callbacks routing frames containers retirement early-module-publication resolver-diagnostics"); }
     catch (const std::exception& error) { std::fprintf(stderr, "FAIL %s\n", error.what()); return 1; }
 }

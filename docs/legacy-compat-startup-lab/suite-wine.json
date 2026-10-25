@@ -1,0 +1,81 @@
+{
+  "runtime": "wine-11.20 (Staging)",
+  "build_record_sha256": "0589dee7851b7d4db15d23aebb73c484d142a9f2e6d55e15b388ff7376485ef1",
+  "runs": [
+    {
+      "returncode": 0,
+      "target": "compat_core_tests",
+      "output": "PASS core: schema identities domains lifetime callbacks routing frames containers retirement early-module-publication resolver-diagnostics\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_live_tests",
+      "output": "PASS hardware oracle: 171 encodings 16416 cases, memory/GPR/XMM/defined flags\nPASS live mappings: pointers arrays preflight quarantine native reuse\nPASS compound mappings: atomic publication, allocator discriminator and vector transitions\nPASS concurrent native atomics and retirement\nPASS virtual identity: immutable tables, canonical base aliases, retirement\nPASS instruction rejection, unchanged failure state and addressing\nPASS Windows views: 409 handled, worker/unwind/SEH/foreign/retirement controls\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_sdk_tests",
+      "output": "PASS SDK chain: callbacks=1 copies=2 live=0 frames=3 nested=1 mediated=14\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_platform_tests",
+      "output": "LOADER events=1:1,1:2,1:3,2:1,2:2,2:3,2:4,2:5,1:5, PASS dependency and parent ordering\nADAPTER PASS sret mixed_arguments nested_domains worker CXX_cleanup\nUNWIND PASS registered_generated_code CXX SEH virtual_stack_walk\nPASS platform mechanisms; no game or production plugin loaded\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_function_tests",
+      "output": "PASS function preparation, cross-domain rejection, rollback before publication, explicit detach\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_array_tests",
+      "output": "PASS populated native arrays: adoption, typed elements, native growth/clear, retained aliases, guest growth, allocator identity\nPASS old SDK arrays: multi-page growth, rollback, shrink, allocator union/virtual ABI, destructor, 6 allocations/frees\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_registration_tests",
+      "output": "PASS historical registration: virtual RTTI, metadata, callback conversion, typed pools, inline properties, arrays, functions, close cleanup\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_plugin_probe",
+      "output": "RESOLVE 0x4a610f64\nBRIDGED register callback: native size=0x48 handler=+0x40\nRESOLVE 0x4a610f64\nBRIDGED post-register callback: native size=0x48 handler=+0x40\nPASS unchanged DLL passed register/post-register callback conversion and reached script registration; later operations untested\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_sdk_tests-unoptimized",
+      "output": "PASS SDK chain: callbacks=1 copies=2 live=0 frames=3 nested=1 mediated=19\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_array_tests-unoptimized",
+      "output": "PASS populated native arrays: adoption, typed elements, native growth/clear, retained aliases, guest growth, allocator identity\nPASS old SDK arrays: multi-page growth, rollback, shrink, allocator union/virtual ABI, destructor, 6 allocations/frees\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_registration_tests-unoptimized",
+      "output": "PASS historical registration: virtual RTTI, metadata, callback conversion, typed pools, inline properties, arrays, functions, close cleanup\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_registration_tests-throw",
+      "output": "PASS historical registration: virtual RTTI, metadata, callback conversion, typed pools, inline properties, arrays, functions, close cleanup\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_function_tests-throw",
+      "output": "PASS publication retention: throw; no shutdown-time guest cleanup\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_function_tests-persistent",
+      "output": "PASS publication retention: persistent; no shutdown-time guest cleanup\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_function_tests-detach-failure",
+      "output": "PASS publication retention: detach-failure; no shutdown-time guest cleanup\n"
+    }
+  ]
+}

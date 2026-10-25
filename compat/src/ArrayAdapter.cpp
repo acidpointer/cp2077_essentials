@@ -100,6 +100,43 @@ struct ArrayAdapter::State
     State(Domain::Ptr d,ViewArena& a,SharedPointers p,ArrayServices s)
         : domain(std::move(d)),owner(domain->Retain()),arena(a),pointers(std::move(p)),services(std::move(s)) {}
     ~State() { Domain::Scope cleanup(owner);services={};pointers.lifetime.reset(); }
+    void Validate(const Header& h,TypeId element)
+    {
+        if(h.size>h.capacity || h.capacity>(UINT32_MAX-8)/8)throw Failure(Error::InvalidRange);
+        if(!h.capacity)
+        {
+            if(h.data && h.data!=services.nativeAllocatorVtable)throw Failure(Error::IdentityMismatch);
+            return;
+        }
+        const auto bytes=size_t(h.capacity)*8+8;
+        if(bytes>arena.allocation_limit())throw Failure(Error::Capacity);
+        if(!h.data || h.data%8 || h.data>UINTPTR_MAX-bytes)throw Failure(Error::InvalidRange);
+        uintptr_t allocator{};
+        std::memcpy(&allocator,reinterpret_cast<void*>(h.data+size_t(h.capacity)*8),8);
+        if(allocator!=services.nativeAllocatorVtable)throw Failure(Error::IdentityMismatch);
+        const auto pointee=element==profile::FunctionPointer ? profile::Function : profile::Property;
+        for(uint32_t i=0;i<h.size;++i)
+        {
+            uintptr_t native{},guest{};std::memcpy(&native,reinterpret_cast<void*>(h.data+size_t(i)*8),8);
+            auto result=arena.memory().Translate(domain->id(),pointee,Direction::ToGuest,native,guest);
+            if(result==Error::UnknownPointer && services.prepareElement)
+            {
+                services.prepareElement(pointee,reinterpret_cast<void*>(native));
+                result=arena.memory().Translate(domain->id(),pointee,Direction::ToGuest,native,guest);
+            }
+            Check(result);
+        }
+    }
+    void* Adopt(const Header& h,TypeId element)
+    {
+        Validate(h,element);
+        if(!h.capacity)return nullptr;
+        auto* guest=arena.Allocate(domain,size_t(h.capacity)*8+8);
+        try { Check(arena.PromoteArray(guest,element,reinterpret_cast<void*>(h.data),h.capacity,
+                                       profile::ArrayAllocator,domain->id())); }
+        catch(...) { (void)arena.Retire(guest);throw; }
+        return guest;
+    }
     Header Read(const Owner& item) const
     {
         Header h{};std::memcpy(&h,item.native,sizeof(h));
@@ -160,10 +197,44 @@ void ArrayAdapter::Bind(void* guestOwner,TypeId ownerType,std::string_view name)
     const auto guest=reinterpret_cast<uintptr_t>(guestOwner)+field->guest_offset;
     for(const auto& item:state.arrays)if(item.guest==guest)throw Failure(Error::Overlap);
     auto* header=reinterpret_cast<Header*>(native+field->native_offset);Header h{};std::memcpy(&h,header,sizeof(h));
-    if(h.capacity || h.size || (h.data && h.data!=state.services.nativeAllocatorVtable))throw Failure(Error::UnsupportedValue);
     if(state.arrays.size()==64)throw Failure(Error::Capacity);
-    state.arrays.push_back({guest,header,field->pointee});
-    h.data=state.services.nativeAllocatorVtable;std::memcpy(header,&h,sizeof(h));
+    // Reserve first: nothing after successful mapping may allocate or throw.
+    state.arrays.reserve(state.arrays.size()+1);
+    auto* buffer=state.Adopt(h,field->pointee);
+    state.arrays.push_back({guest,header,field->pointee,buffer,
+                           h.capacity ? reinterpret_cast<void*>(h.data) : nullptr,h.capacity});
+    if(!h.capacity) { h.data=state.services.nativeAllocatorVtable;std::memcpy(header,&h,sizeof(h)); }
+}
+void ArrayAdapter::Synchronize(void* guestArray)
+{
+    if(!state_)throw Failure(Error::Retired);
+    auto& state=*state_;Domain::Scope scope(*state.domain);
+    std::unique_lock guard(state.control,std::try_to_lock);
+    if(!guard.owns_lock() || state.poisoned)throw Failure(Error::Busy);
+    for(auto& item:state.arrays)if(item.guest==reinterpret_cast<uintptr_t>(guestArray))
+    {
+        Header h{};std::memcpy(&h,item.native,sizeof(h));
+        if(h.capacity && h.data==reinterpret_cast<uintptr_t>(item.nativeBuffer))
+        {
+            if(h.capacity!=item.capacity)throw Failure(Error::IdentityMismatch);
+            state.Validate(h,item.element);return;
+        }
+        auto* buffer=state.Adopt(h,item.element);
+        if(item.guestBuffer)
+        {
+            const auto error=state.arena.Retire(item.guestBuffer);
+            if(error!=Error::None)
+            {
+                if(buffer)(void)state.arena.Retire(buffer);
+                state.poisoned=true;throw Failure(error);
+            }
+        }
+        item.guestBuffer=buffer;item.nativeBuffer=h.capacity ? reinterpret_cast<void*>(h.data) : nullptr;
+        item.capacity=h.capacity;
+        if(!h.capacity) { h.data=state.services.nativeAllocatorVtable;std::memcpy(item.native,&h,sizeof(h)); }
+        return;
+    }
+    throw Failure(Error::UnknownPointer);
 }
 void ArrayAdapter::Reallocate(void* guestArray,uint32_t capacity,uint32_t elementSize,uint32_t alignment,Mover mover)
 {

@@ -10,6 +10,8 @@ add_custom_command(OUTPUT "${_profile}"
   VERBATIM)
 add_library(compat_core STATIC
   "${_compat}/src/Domain.cpp" "${_compat}/src/DomainRegistry.cpp"
+  "${_compat}/src/EarlyModules.cpp"
+  "${_compat}/src/ResolverRouter.cpp"
   "${_compat}/src/Schema.cpp" "${_compat}/src/AddressCatalog.cpp"
   "${_compat}/src/ObjectRegistry.cpp" "${_compat}/src/ValueMarshaller.cpp"
   "${_compat}/src/BorrowedValue.cpp" "${_compat}/src/LiveMemory.cpp"
@@ -19,10 +21,12 @@ if(WIN32)
   target_sources(compat_core PRIVATE "${_compat}/src/FunctionAdapter.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/ArrayAdapter.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/RttiAdapter.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/NativeRtti.cpp")
+  target_sources(compat_core PRIVATE "${_compat}/src/ModuleNotifications.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/PropertyAdapter.cpp")
   target_sources(compat_core PRIVATE "${_compat}/src/ModulePin.cpp")
   target_include_directories(compat_core SYSTEM PRIVATE "${ESSENTIALS_ROOT}/sources/red4ext-sdk/include")
-  set_source_files_properties("${_compat}/src/RttiAdapter.cpp" PROPERTIES
+  set_source_files_properties("${_compat}/src/RttiAdapter.cpp" "${_compat}/src/NativeRtti.cpp" PROPERTIES
     COMPILE_DEFINITIONS "RED4EXT_STATIC_LIB;NOMINMAX;WIN32_LEAN_AND_MEAN")
   # Native-memory probes must retain asynchronous SEH regions even when memcpy
   # or atomics become intrinsics. /EHsc can optimize those scopes away.

@@ -40,4 +40,13 @@ uintptr_t AddressCatalog::Resolve(uint32_t primary, AddressKind expected) const
     }
     throw Failure(Error::UnknownOperation);
 }
+
+uintptr_t AddressCatalog::Resolve(uint32_t primary) const
+{
+    if (!sealed_) throw Failure(Error::Closed);
+    if (Domain::Current() != domain_.get()) throw Failure(Error::IdentityMismatch);
+    for (size_t i = 0; i < schema_.operations.size(); ++i)
+        if (schema_.operations[i].primary == primary) return bindings_[i];
+    throw Failure(Error::UnknownOperation);
+}
 }

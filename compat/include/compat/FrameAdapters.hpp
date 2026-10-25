@@ -12,11 +12,13 @@ struct SharedPointers
     PointerTranslator translator;
     std::shared_ptr<void> lifetime;
 };
-// Initial operation contract: synchronous scalar results, never owning handles
-// or pointers. Context is a registered Instance identity/view; aux must be null.
+// Synchronous scalar or explicit void results, never owning handles/pointers.
+// Void uses a null result address; a non-null address is a contract mismatch.
+// Context is a registered Instance identity/view; aux must be null.
 struct ScalarResult
 {
     size_t size{4}, alignment{4};
+    static constexpr ScalarResult Void() noexcept { return {0,1}; }
     bool Valid() const noexcept;
     void CheckOutput(const void* output) const;
 };

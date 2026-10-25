@@ -21,6 +21,7 @@
 #include <cstring>
 #include <optional>
 #include <stdexcept>
+#include <thread>
 
 using namespace compat;
 static void Require(bool value,const char* message) { if(!value)throw std::runtime_error(message); }
@@ -50,7 +51,7 @@ struct Resources
     std::optional<RED4ext::Callback<void(*)()>> callbacks[2];
     Counts counts;
     bool throwSink{};
-    unsigned allocations{},properties{},destroyed{},namePairs{};
+    unsigned allocations{},properties{},destroyed{},namePairs{},registeredTypes{};
     ScriptEntry script{};
     Resources()
     {
@@ -94,6 +95,11 @@ static RttiServices Services(const std::shared_ptr<Resources>& r)
         r->callbacks[post ? 1 : 0].emplace([invoke=std::move(invoke)]{invoke();});
         if(r->throwSink)throw std::runtime_error("sink published then threw");
     };
+    s.registerType=[r](void* type,uint32_t id) {
+        Require(type==r->cls.data() && id==0x12345 && Current()==41,"native registration identity/id/domain");
+        ++r->registeredTypes;
+        if(r->throwSink)throw std::runtime_error("type published then threw");
+    };
     return s;
 }
 static void Retirement()
@@ -103,6 +109,14 @@ static void Retirement()
     auto pin=ModulePin::Acquire(reinterpret_cast<const void*>(code));
     Require(FreeLibrary(module) && GetModuleHandleW(L"registration_guest.dll")==module,"OS reference retains DLL");
     pin.reset();Require(!GetModuleHandleW(L"registration_guest.dll"),"final OS reference releases DLL");
+    module=LoadLibraryW(L"registration_guest.dll");Require(module,"concurrent pin fixture load");
+    code=GetProcAddress(module,"ConfigureRegistration");
+    auto pins=std::make_shared<ModulePins>();
+    std::array<std::thread,8> callers;
+    for(auto& thread:callers)thread=std::thread([&]{pins->Retain(reinterpret_cast<uintptr_t>(module),reinterpret_cast<uintptr_t>(code));});
+    for(auto& thread:callers)thread.join();
+    Require(FreeLibrary(module) && GetModuleHandleW(L"registration_guest.dll")==module,"concurrent first resolvers retain module");
+    pins.reset();Require(!GetModuleHandleW(L"registration_guest.dll"),"duplicate concurrent references are balanced");
     auto r=std::make_shared<Resources>();auto domain=r->domain;
     RttiAdapter rtti(domain,r->arena,{{r.get(),Translate},r},Services(r),r->system.data());
     auto* guest=rtti.guest();auto* cls=rtti.View({r->cls.data(),profile::Class});
@@ -201,6 +215,14 @@ static void Registration(const char* mode)
     r->modulePin=ModulePin::Acquire(reinterpret_cast<const void*>(configure));
     Require(FreeLibrary(module),"release loader reference while callback owner pins code");
     configure(resolver.entry(),&r->counts);
+    const auto registerType=Export<void(*)(void*,uint32_t)>(module,"RegisterMappedType");
+    Reject([&]{registerType(nullptr,0x12345);},Error::UnknownPointer);
+    Reject([&]{registerType(r->cls.data(),0x12345);},Error::UnknownPointer);
+    Require(!r->registeredTypes,"unknown type identity never reaches native registry");
+    bool typeThrew=false;
+    try {registerType(cls,0x12345);} catch(const std::runtime_error&) {typeThrew=true;}
+    Require(typeThrew==r->throwSink && r->registeredTypes==1 && rtti.Retire()==Error::Published,
+            "type publication retains domain even when the registry throws");
     stage="metadata";Require(Export<bool(*)()>(module,"CheckMetadata")(),"old SDK virtual metadata and CName return ABI");
     Reject([&]{Export<void(*)()>(module,"UnknownVirtual")();},Error::UnknownOperation);
     const auto install=Export<void(*)(bool)>(module,"InstallRegistration");
@@ -220,6 +242,27 @@ static void Registration(const char* mode)
     Check(r->arena.memory().Add({domain->id(),1,profile::Core.Find(profile::Bytecode),code,code,1,true}));
     std::memcpy(frame.data(),&code,8);r->script(nullptr,frame.data(),&result,0);
     Require(result==73 && !Current(),"published script callback returns through old frame");
+    auto voidScript=BindScript(domain,Export<ScriptEntry>(module,"VoidScript"),pointers,ScalarResult::Void());
+    voidScript.entry()(nullptr,frame.data(),nullptr,0);
+    Require(frame[0x62]==std::byte{1} && !Current(),"actual old-header void script synchronizes frame without an output buffer");
+    Reject([&]{voidScript.entry()(nullptr,frame.data(),&result,0);},Error::InvalidRange);
+    bool voidThrew=false;
+    try {voidScript.entry()(nullptr,frame.data(),nullptr,-1);}catch(int code){voidThrew=code==82;}
+    Require(voidThrew && frame[0x62]==std::byte{2} && !Current(),"void script exception preserves frame copy-out and domain cleanup");
+    Check(voidScript.Retire());
+    const OpcodeTable::Operation voidOperation{17,[](void*,void* native,void* output,void* auxiliary) {
+        Require(!output && !auxiliary,"void opcode has no result/auxiliary buffers");
+        ++*reinterpret_cast<uint8_t*>(static_cast<std::byte*>(native)+0x62);
+    },ScalarResult::Void()};
+    OpcodeTable voidOpcodes(domain,pointers,{&voidOperation,1});
+    {
+        const ValueMarshaller framePlan(profile::Core,profile::StackFrame);
+        BorrowedValue binding(domain->id(),framePlan,frame,pointers.translator);
+        binding.CallGuest([&](void* guest) {voidOpcodes.data()[17](nullptr,guest,nullptr,nullptr);});
+        Require(frame[0x62]==std::byte{3},"void native opcode synchronizes frame without an output buffer");
+        Reject([&]{voidOpcodes.data()[17](nullptr,binding.guest(),&result,nullptr);},Error::InvalidRange);
+    }
+    Check(voidOpcodes.Retire());
     Require(rtti.Retire()==Error::Published,"published RTTI stays resident after handle retirement");
     domain->Close();Reject([&]{(*r->callbacks[0])();},Error::Closed);
     for(auto& callback:r->callbacks)callback.reset();

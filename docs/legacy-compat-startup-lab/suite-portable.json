@@ -1,0 +1,16 @@
+{
+  "runtime": "linux",
+  "build_record_sha256": "4ff310ec8f182bdb3b7d6dffe08c0a68ef442556160a4a84b350fc23a140fb08",
+  "runs": [
+    {
+      "returncode": 0,
+      "target": "compat_core_tests",
+      "output": "PASS core: schema identities domains lifetime callbacks routing frames containers retirement early-module-publication resolver-diagnostics\n"
+    },
+    {
+      "returncode": 0,
+      "target": "compat_live_tests",
+      "output": "PASS hardware oracle: 171 encodings 16416 cases, memory/GPR/XMM/defined flags\nPASS live mappings: pointers arrays preflight quarantine native reuse\nPASS compound mappings: atomic publication, allocator discriminator and vector transitions\nPASS concurrent native atomics and retirement\nPASS virtual identity: immutable tables, canonical base aliases, retirement\nPASS instruction rejection, unchanged failure state and addressing\n"
+    }
+  ]
+}
