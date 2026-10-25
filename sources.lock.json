@@ -163,13 +163,23 @@
         {
           "path": "patches/mod-settings/001-essentials.patch",
           "sha256": "cd1ea4c9df3d26978e85c9dca4a1982a0c83eb38c5bd0702794aba6102c06604"
+        },
+        {
+          "path": "patches/mod-settings/002-menu-compatibility.patch",
+          "sha256": "8ca233fa958e4cebd1437cae215101bb79ab7ec8ed25a25fb92f2f25e46e124e"
         }
       ],
       "provenance": {
         "upstream": "https://github.com/jackhumbert/mod_settings",
         "version_tag": "v0.2.21",
         "release_commit": "42318192d4eac203f3010e76672098010802496e",
-        "notes": "Pinned official main e9048159 retains version 0.2.21 and adds settings-preservation and reject-change fixes after the release. Local source port uses the shared 2.5 SDK; see docs/mod-settings-2.5-port.txt. No in-game validation."
+        "notes": "Pinned official main e9048159 retains version 0.2.21 and adds settings-preservation and reject-change fixes after the release. Local source port uses the shared 2.5 SDK; see docs/mod-settings-2.5-port.txt. No in-game validation.",
+        "menu_compatibility": {
+          "port": "https://github.com/jackhumbert/mod_settings/pull/34",
+          "commit": "f13e57dac850338e8af3448b65f7a77a185054aa",
+          "notes": "butrico31 2.5 menu-resource refresh, with MenuScenario_ModSettings restored in the pregame scenario list. Local wrappers preserve the original game menus and the event used by Native Settings UI 1.97. See docs/mod-settings-2.5-port.txt. No game test.",
+          "packed_sha256": "d021b6b065379bf577dae40609319bee6460fbc4f4dab997b88ee1e04bddf702"
+        }
       }
     }
   },

@@ -35,6 +35,13 @@ Exact imported source revisions are retained in `sources.lock.json` provenance.
 These changes are not all original work by this project; preserve contributor
 credit and the [upstream license notices](../licenses/README.md).
 
+Mod Settings's `002-menu-compatibility.patch` wraps the game's menu population
+instead of replacing it, preserving mod.io and Native Settings UI's insertion
+event. Its 2.5 menu resources incorporate butrico31's [PR 34](https://github.com/jackhumbert/mod_settings/pull/34)
+at `f13e57dac850338e8af3448b65f7a77a185054aa`, with the custom
+`MenuScenario_ModSettings` restored in the pregame scenario list. The original
+integration layer is preserved. See the [port record](../docs/mod-settings-2.5-port.txt).
+
 CET's stability layer is local work against the preserved integration layer,
 not an imported community fix or an upstream update. Its lock/queue and UTF-8
 file adapters are CET-owned; dependency sources and pins remain unchanged.

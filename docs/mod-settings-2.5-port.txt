@@ -296,3 +296,40 @@ PR 34 reports a separate stale menu-resource issue (missing 2.5 menu entries):
 That resource refresh is not included in this focused startup repair. The
 existing archive and its earlier documented digest remain unchanged; menu
 compatibility must not be inferred from successful native discovery.
+
+Menu compatibility follow-up, 2026-10-25
+--------------------------------------
+Native Settings UI 1.97 adds its Mods button when the game's AddMenuItem sees
+OnSwitchToModioMenu. Mod Settings's old PopulateMenuItemList replacements
+omit that event, removing both the game's mod.io entry and Native Settings
+UI's insertion opportunity. Their source paths are:
+  src/redscript/mod_settings/Extensions/{Singleplayer,Pause,Death}MenuGameController.reds
+Native Settings UI's upstream implementation:
+  https://github.com/justarandomguyintheinternet/CP77_nativeSettings/blob/main/nativeSettings/init.lua
+
+002-menu-compatibility.patch changes those three methods to wrappers: run the
+original method, append Mod Settings, then refresh. The game retains its menu
+entries, conditions and behavior. Appending preserves its hard-coded main-menu
+mod.io button index. Native Settings UI's code and its separate Mods page are
+unchanged; Mod Settings keeps its own event and page.
+
+The old menu.inkmenu and pregame_menu.inkmenu also replace full game resources
+with 2.3 copies. The saved layer includes butrico31's PR 34 resource refresh,
+with the missing MenuScenario_ModSettings restored to the pregame scenario
+list. It retains all 60/35 retail menu entries and 25/20 retail scenarios,
+plus the custom menu entry in each resource and custom pregame scenario.
+Other packed files (widget and localization) retain identical segment bytes.
+The packed menus were checked against their source files; the original
+001-essentials.patch and the upstream Gitlink remain unchanged.
+
+This correction uses the existing patch/build/package flow. No new toolchain
+or asset-audit infrastructure is required by the repository or CI. The previous
+startup repair's package hashes above describe that earlier build. The current
+package and checksums are under dist/mod-settings-fixed/. Actual coexistence
+in the game, menu navigation and settings interaction still require a game test.
+
+Validation: the affected Release build, packaged-script compilation against
+the copied vanilla 2.5 cache, existing native fixture, patch reconstruction,
+source-boundary audit, package verification and both archive checksums passed.
+The existing Python suite collected 90 tests: 74 passed, 16 optional checks
+skipped. No game/MO2 files were changed and no game test was performed.
