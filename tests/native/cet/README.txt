@@ -6,6 +6,12 @@ not establish game startup, real D3D12 correctness or save compatibility.
 Portable checks (Clang, sanitizer runtime and bootstrapped pinned dependencies):
   CP2077_REQUIRE_CET_TESTS=1 python3 -m unittest discover -s tests -p test_cet_runtime.py -v
 
+The general tooling suite runs before patch application on a fresh CI checkout.
+Runtime tests skip there until the saved CET patches supply their production
+helpers. The required post-build invocation above rejects missing patches or
+dependencies. The TDBID regression keeps its five-second execution deadline;
+it must exercise the patched methods, not upstream's unbounded cycle traversal.
+
 Three tests compile/run with ASan and UBSan:
   portable.cpp: actual Lua lock, task queue, metadata and JSON helpers;
     expired owner, lock move ownership, recursive/reentrant drain, concurrent

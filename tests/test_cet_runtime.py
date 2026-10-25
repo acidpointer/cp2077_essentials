@@ -5,12 +5,24 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'sources/cyber-engine-tweaks/src'
 
 
 class CetRuntime(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        # The tooling suite also runs on fresh upstream checkouts, before the
+        # build applies our saved patches. The cycle test must not extract the
+        # upstream method that these patches deliberately replace.
+        if not (SOURCE / 'common/Runtime.h').is_file():
+            message = 'Apply the saved CET patches before running native runtime helper tests.'
+            if os.environ.get('CP2077_REQUIRE_CET_TESTS') == '1':
+                raise RuntimeError(message)
+            raise unittest.SkipTest(message)
+
     def test_portable_helpers(self):
         compiler = shutil.which('clang++')
         json_include = ROOT / 'build/deps/cet-json/include'
@@ -52,6 +64,8 @@ class CetRuntime(unittest.TestCase):
     def test_tdbid_cycles(self):
         compiler = shutil.which('clang++')
         if not compiler:
+            if os.environ.get('CP2077_REQUIRE_CET_TESTS') == '1':
+                self.fail('CET cycle tests require clang++')
             self.skipTest('clang++ is required')
         def method(signature):
             text = (SOURCE / 'scripting/LuaVM.cpp').read_text()
@@ -104,6 +118,32 @@ int main() {
             self.assertEqual(compiled.returncode,0,compiled.stderr)
             run = subprocess.run([str(executable)],capture_output=True,text=True,timeout=5,env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0'))
             self.assertEqual(run.returncode,0,run.stdout+run.stderr)
+
+
+class CetRuntimeReadiness(unittest.TestCase):
+    def test_fresh_checkout_skips_optional_runtime_suite_without_compiling(self):
+        with tempfile.TemporaryDirectory(prefix='cet-unpatched-') as temporary:
+            with patch(__name__ + '.SOURCE', Path(temporary)), \
+                 patch.dict(os.environ, {'CP2077_REQUIRE_CET_TESTS': '0'}), \
+                 patch(__name__ + '.subprocess.run') as run:
+                result = unittest.TestResult()
+                unittest.defaultTestLoader.loadTestsFromTestCase(CetRuntime).run(result)
+        self.assertTrue(result.wasSuccessful(), result.errors + result.failures)
+        self.assertEqual(len(result.skipped), 1)
+        self.assertIn('Apply the saved CET patches', result.skipped[0][1])
+        run.assert_not_called()
+
+    def test_required_runtime_suite_rejects_unpatched_sources(self):
+        with tempfile.TemporaryDirectory(prefix='cet-unpatched-') as temporary:
+            with patch(__name__ + '.SOURCE', Path(temporary)), \
+                 patch.dict(os.environ, {'CP2077_REQUIRE_CET_TESTS': '1'}), \
+                 patch(__name__ + '.subprocess.run') as run:
+                result = unittest.TestResult()
+                unittest.defaultTestLoader.loadTestsFromTestCase(CetRuntime).run(result)
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn('Apply the saved CET patches', result.errors[0][1])
+        self.assertEqual(result.skipped, [])
+        run.assert_not_called()
 
 
 if __name__ == '__main__':
