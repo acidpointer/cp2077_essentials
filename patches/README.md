@@ -50,6 +50,13 @@ Focused regressions exercise production helpers and Lua continuations. The
 [test scope](../tests/native/cet/README.txt) and implementation record retain
 the unresolved engine ABI/job-cycle questions and actual game-test limits.
 
+CET's `003-native-settings-conversion.patch` restores valid native struct
+upcasts while preserving rejection of unrelated types and downcasts. It also
+logs failed overrides and returns failure without retrying engine side effects.
+The earlier layers remain byte-for-byte unchanged. The [empty-page investigation
+and reproduction](../docs/native-settings-empty-pages-lab/README.txt) and extended
+Windows runtime checks cover the regression; in-game acceptance is still pending.
+
 The plugins' community vendor-SDK gitlink bumps are deliberately excluded:
 all builds use the separate patched official SDK submodule. Build scripts,
 toolchains and documentation belong to the root repository rather than being

@@ -1,0 +1,56 @@
+diff --git a/src/reverse/Converter.h b/src/reverse/Converter.h
+index c397ba7ed8a36c0e218718c523a25c67461646d3..f7d56a8982729a56d458cb273fef5f4f80e0c6ac 100644
+--- a/src/reverse/Converter.h
++++ b/src/reverse/Converter.h
+@@ -199,12 +199,21 @@ struct ClassConverter : LuaRED<ClassReference, "ClassReference">
+ 
+     RED4ext::CStackType ToRED(sol::object aObject, RED4ext::rtti::IType* apRtti, TiltedPhoques::Allocator* apAllocator)
+     {
+-        RED4ext::CStackType result;
++        RED4ext::CStackType result{};
+         result.type = apRtti;
+         if (aObject.is<ClassReference>())
+         {
+             auto* source = aObject.as<ClassReference*>();
+-            result.value = source->GetType() == apRtti ? source->GetHandle() : nullptr;
++            const auto* sourceType = source ? source->GetType() : nullptr;
++            // Native structs share their base prefix (for example inkTextRef
++            // passed to inkWidgetRef.SetVisible). Preserve legal upcasts while
++            // rejecting unrelated types, downcasts and non-class descriptors.
++            if (sourceType && apRtti && sourceType->GetType() == RED4ext::rtti::ERTTIType::Class &&
++                apRtti->GetType() == RED4ext::rtti::ERTTIType::Class &&
++                static_cast<const RED4ext::CClass*>(sourceType)->IsA(apRtti))
++            {
++                result.value = source->GetHandle();
++            }
+         }
+         // Disabled until new allocator is implemented
+         // Current implementation can leak
+diff --git a/src/scripting/FunctionOverride.cpp b/src/scripting/FunctionOverride.cpp
+index 3ac60d16f9856d0da6ef003736ccc0270a9e96ea..b36a8168db0e1face929a23bbf399aaab5d4d9d4 100644
+--- a/src/scripting/FunctionOverride.cpp
++++ b/src/scripting/FunctionOverride.cpp
+@@ -481,6 +481,23 @@ bool FunctionOverride::ExecuteChain(
+                 }
+             }
+         }
++        else
++        {
++            // The entry override owns this invocation. Keep the full nested
++            // traceback in its mod log; internal calls without a mod environment
++            // use the scripting log. Never retry the original: next() may have
++            // already performed engine-side effects before the failure.
++            const auto& environment = aChain.Overrides.back()->Environment;
++            auto logger = environment.valid()
++                ? environment["__logger"].get_or<std::shared_ptr<spdlog::logger>>(nullptr)
++                : std::shared_ptr<spdlog::logger>{};
++            if (!logger)
++                logger = spdlog::get("scripting");
++            if (!logger)
++                logger = spdlog::default_logger();
++            logger->error("Override '{}' failed: {}", pRealFunction->fullName.ToString(), luaResult.get<sol::error>().what());
++            realRetValue = false;
++        }
+     }
+     else
+     {

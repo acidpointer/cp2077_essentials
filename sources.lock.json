@@ -163,6 +163,10 @@
         {
           "path": "patches/cyber-engine-tweaks/002-runtime-stability.patch",
           "sha256": "b64c62e4b3bc874de35a0256d2e050602290c8de26fe4f010086d435d2107931"
+        },
+        {
+          "path": "patches/cyber-engine-tweaks/003-native-settings-conversion.patch",
+          "sha256": "b8945d379bd62b6b1faa1086e1a18fa8fd8766501fd4fa9489130a00ffdf1f79"
         }
       ],
       "provenance": {

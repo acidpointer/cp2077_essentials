@@ -12,6 +12,9 @@
 #include <iostream>
 #include <filesystem>
 #include <cstdlib>
+#include <sstream>
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/ostream_sink.h>
 #undef assert
 #define assert(condition) do { if (!(condition)) { std::cerr << "Check failed: " << #condition << " at " << __FILE__ << ':' << __LINE__ << '\n'; std::exit(1); } } while (0)
 #include "lsqlite3/lsqlite3.h"
@@ -19,8 +22,14 @@
 // Only engine-facing calls/storage are replaced. The production continuation
 // method and its real sol2/LuaJIT objects are compiled below, unchanged.
 namespace RED4ext {
-struct CBaseFunction {}; struct CClassFunction; struct CClass; struct IScriptable;
-struct CStackFrame; struct CStackType; struct CScriptStack;
+struct CBaseFunction {
+    struct { bool isStatic = true; } flags;
+    struct { const char* ToString() const { return "SettingsMainGameController::PopulateCategorySettingsOptions"; } } fullName;
+};
+struct CClassFunction; struct CClass; struct IScriptable;
+struct CStackFrame { char* code{}; uint8_t currentParam{}; };
+struct CStackType { void* type{}; void* value{}; };
+struct CScriptStack {};
 }
 namespace TiltedPhoques {
 template<class T> using Vector = std::vector<T>;
@@ -30,6 +39,12 @@ struct Scripting
 {
     CETLua::Lockable<sol::state> State;
     auto GetLockedState() { return State.Lock(); }
+    int Collections = 0;
+    void CollectGarbage() { ++Collections; }
+    static void ToRED(sol::object object, RED4ext::CStackType& target) {
+        if (!object.is<int>()) throw sol::error("invalid test return conversion");
+        *static_cast<int*>(target.value) = object.as<int>();
+    }
 };
 #include "scripting/FunctionOverride.h"
 struct Access : FunctionOverride
@@ -37,12 +52,24 @@ struct Access : FunctionOverride
     using FunctionOverride::Invocation;
     using FunctionOverride::InvocationScope;
     using FunctionOverride::WrapNextOverride;
+    using FunctionOverride::ExecuteChain;
 };
+// Engine trampolines/global ownership are stand-ins, not production hooks.
+static int originalCalls = 0;
+static bool RealRunPureScriptFunction(RED4ext::CBaseFunction*, RED4ext::CScriptStack*, RED4ext::CStackFrame*) {
+    ++originalCalls; return true;
+}
+static bool CallScriptFunction(RED4ext::CBaseFunction*, RED4ext::IScriptable*, RED4ext::CStackFrame*, void*, void*) {
+    ++originalCalls; return true;
+}
+struct TestOverrideOwner { Scripting* m_pScripting; };
+static TestOverrideOwner* s_pOverride;
 struct RTTIHelper
 {
     static RTTIHelper& Get() { static RTTIHelper helper; return helper; }
     sol::variadic_results ExecuteFunction(RED4ext::CBaseFunction*, RED4ext::IScriptable*, sol::variadic_args args, int, std::string&)
     {
+        ++originalCalls;
         sol::variadic_results result;
         for (auto arg : args) result.emplace_back(arg);
         return result;
@@ -56,6 +83,7 @@ template<class F> sol::function MakeSolFunction(sol::state& lua, F function)
     return result;
 }
 #include "continuation.inc"
+#include "execute-chain.inc"
 
 static void continuations(Scripting& scripting, sol::state& lua)
 {
@@ -100,6 +128,77 @@ static void continuations(Scripting& scripting, sol::state& lua)
         assert(std::string(result.get<sol::error>().what()).find("bad%s%n%%") != std::string::npos);
     }
 }
+static void dispatch(Scripting& scripting, sol::state& lua)
+{
+    std::ostringstream modLog, fallbackLog;
+    auto modLogger = std::make_shared<spdlog::logger>("probe-mod", std::make_shared<spdlog::sinks::ostream_sink_mt>(modLog));
+    auto fallback = std::make_shared<spdlog::logger>("scripting", std::make_shared<spdlog::sinks::ostream_sink_mt>(fallbackLog));
+    spdlog::register_logger(fallback);
+    sol::environment env(lua, sol::create);
+    env["__logger"] = modLogger;
+    auto context = [&](const char* body, bool withEnvironment = true) {
+        auto call = std::make_shared<FunctionOverride::Context>();
+        call->ScriptFunction = lua.script(body).get<sol::protected_function>();
+        if (withEnvironment) call->Environment = env;
+        return call;
+    };
+    RED4ext::CBaseFunction native;
+    FunctionOverride::CallChain chain{};
+    chain.Trampoline = &native;
+    chain.pScripting = &scripting;
+    chain.CollectGarbage = true;
+    chain.Before.push_back(context("return function() beforeCount=beforeCount+1 end"));
+    chain.After.push_back(context("return function() afterCount=afterCount+1 end"));
+    lua["beforeCount"] = 0; lua["afterCount"] = 0;
+    std::vector<sol::object> args;
+    int returned = -7, output = -8;
+    RED4ext::CStackType result{nullptr, &returned};
+    std::vector<RED4ext::CStackType> out{{nullptr, &output}};
+    TestOverrideOwner owner{&scripting};
+    s_pOverride = &owner;
+    auto run = [&] {
+        args = {sol::make_object(lua, 3)};
+        originalCalls = 0;
+        return Access::ExecuteChain(chain, nullptr, &args, &result, &out, nullptr, nullptr, nullptr, 0);
+    };
+    chain.Overrides = {context("return function(x,next) return next(x+1),9 end")};
+    assert(run());
+    assert(returned == 4 && output == 9 && originalCalls == 1 && args.empty());
+    assert(lua["beforeCount"].get<int>() == 1 && lua["afterCount"].get<int>() == 1);
+    const int collections = scripting.Collections;
+    chain.Overrides = {context("return function(x,next) savedFailureNext=next; error('bad%s%n%%{payload}') end")};
+    returned = -7; output = -8;
+    assert(!run());
+    assert(returned == -7 && output == -8 && originalCalls == 0 && args.empty());
+    assert(scripting.Collections == collections + 1);
+    assert(lua["beforeCount"].get<int>() == 2 && lua["afterCount"].get<int>() == 2);
+    assert(modLog.str().find("bad%s%n%%{payload}") != std::string::npos);
+    assert(modLog.str().find("PopulateCategorySettingsOptions") != std::string::npos);
+    assert(fallbackLog.str().empty());
+    auto expired = lua["savedFailureNext"].get<sol::protected_function>()(1);
+    assert(!expired.valid() && std::string(expired.get<sol::error>().what()).find("expired") != std::string::npos);
+
+    // Invalid environments use the shared scripting log. Failure after next()
+    // must not retry the original engine call or convert missing return values.
+    chain.Overrides = {context("return function(x,next) next(x); error('after-next') end", false)};
+    assert(!run());
+    assert(originalCalls == 1 && args.empty() && returned == -7 && output == -8);
+    assert(fallbackLog.str().find("after-next") != std::string::npos);
+
+    // Nested failures escape through the full dispatcher; handled errors do not
+    // become failure just because a lower continuation threw an exception.
+    chain.Overrides = {context("return function() error('nested-failure') end"),
+                       context("return function(x,next) return next(x) end")};
+    assert(!run());
+    assert(originalCalls == 0 && modLog.str().find("nested-failure") != std::string::npos);
+    modLog.str(""); modLog.clear();
+    chain.Overrides.back() = context("return function(x,next) local ok=pcall(next,x); assert(not ok); return 11,12 end");
+    assert(run());
+    assert(returned == 11 && output == 12 && modLog.str().empty() && args.empty());
+    spdlog::drop("scripting");
+    s_pOverride = nullptr;
+}
+
 static void sqlite(sol::state& lua)
 {
     lua.require("sqlite3", luaopen_lsqlite3);
@@ -175,6 +274,7 @@ int main()
     auto& lua = locked.Get();
     lua.open_libraries(sol::lib::base,sol::lib::package,sol::lib::io,sol::lib::os,sol::lib::math,sol::lib::table,sol::lib::string,sol::lib::jit,sol::lib::ffi);
     continuations(scripting,lua);
+    dispatch(scripting,lua);
     for (bool enabled : {false,true})
     {
         lua.safe_script(enabled ? "jit.on()" : "jit.off()", sol::script_pass_on_error);
@@ -186,5 +286,5 @@ int main()
     assert(ffi.valid());
     sqlite(lua);
     unicodeFiles(lua);
-    std::cout << "CET continuation, expired-next, errors, LuaJIT, FFI and SQLite checks passed\n";
+    std::cout << "CET full override dispatch, continuation lifetime, errors, LuaJIT, FFI and SQLite checks passed\n";
 }

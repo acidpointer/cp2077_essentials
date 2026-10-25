@@ -128,6 +128,11 @@ F18 Implemented: checked conversion compatibility before Assign, per-call
 F19 Implemented: per-call converter visitors/type metadata, current bitfield
   RTTI and wrapper compatibility checks. Reentrant engine conversion needs
   game tests; the production DLL compiles these paths.
+  Follow-up: the original exact-class check rejected legitimate native struct
+  upcasts and left Native Settings UI pages empty. The separate 003 layer uses
+  checked class ancestry and fixes the outer override dispatcher's silent error
+  path. Production-method Windows regressions now cover both, including old-code
+  negative controls. See docs/native-settings-empty-pages-lab/README.txt.
 F20 Implemented: registry of weak proxy control blocks, Lua owner validation
   after acquiring Lua, generation invalidation, stable callback copies and
   owner tombstones. Full engine-held callback/GC/reload dispatch is pending.

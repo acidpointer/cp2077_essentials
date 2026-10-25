@@ -32,19 +32,30 @@ Windows checks (after the ordinary Release build):
   python3 scripts/test-cet-runtime.py
   python3 scripts/test-cet-runtime.py --runner wine
 
-The first command only builds four Windows executables. The tag workflow
+The first command only builds five Windows executables. The tag workflow
 requires this build and the three portable tests; Wine is optional. The
 second command executes them in a separate build/cet-runtime/wine-prefix;
 it needs wineserver sockets permitted by the local environment. It does not
 access a game prefix. --native-build and --output support isolated build trees.
+--only cet-conversion or --only cet-lua selects a focused runtime check.
 
-  cet-lua: actual WrapNextOverride extracted from production plus the actual
+  cet-lua: actual WrapNextOverride and ExecuteChain extracted from production plus the actual
     FunctionOverride.h invocation owner; real pinned sol2/Windows GC64 LuaJIT
     and lsqlite3/SQLite. Only the engine function call/storage is replaced.
     Multiple/chained callbacks, escaped next, format-token errors, JIT on/off,
     GC, FFI, active statements/backup during DB close, Unicode files/loadfile,
     the actual SandboxIO factory's separate mod streams and unchanged CWD.
     This does not run the whole override descriptor hook or engine proxy ABI.
+    Full dispatcher cases cover successful return/out values, unhandled and
+    nested errors, Lua-handled errors, mod/scripting log routing, literal format
+    tokens, observer execution, argument cleanup/GC, expired next after failure,
+    and no retry of an original call that already ran before an error.
+  cet-conversion: actual ClassConverter::ToRED and SDK CClass::IsA extracted
+    unchanged; real sol2/LuaJIT, fake RTTI descriptors and wrapper storage.
+    Exact types and immediate/multiple-level upcasts pass; downcasts, siblings,
+    unrelated types, non-class/null descriptors, nil/wrong Lua values and empty
+    storage are rejected. Converted arguments borrow the original storage.
+    This does not exercise the engine's allocation or RTTI registration.
   cet-lifecycle: actual Runtime.cpp, fake MinHook; callback quiescence,
     stop-from-callback, owned hook transaction and injected hook failures.
     It does not simulate every CET constructor or window/metadata schedule.
