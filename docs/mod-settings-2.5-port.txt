@@ -6,6 +6,11 @@ Date: 2026-10-25. This is a source/build/ABI audit and isolated regression
 record. No game startup, gameplay, save/load or settings-persistence test was
 performed with this build. No game or MO2 files were changed.
 
+The initial port failed native-definition validation in the user's subsequent
+startup attempt. The registration defect and corrected package are recorded
+in the follow-up at the end of this document; the original checks below did
+not establish successful startup.
+
 Source and attribution
 ----------------------
 Official upstream: https://github.com/jackhumbert/mod_settings
@@ -226,3 +231,68 @@ actual callback registry, menu assets, input events, other installed scripts,
 user.ini writes/reloads, shutdown, or save compatibility. A startup test and
 focused bool/int/float/enum/keybinding, accept/cancel/defaults, notification and
 restart-persistence checks remain necessary in the real 2.5 game.
+
+Startup registration follow-up, 2026-10-25
+----------------------------------------
+The 03:05:39 RED4ext session loads our DLL successfully and compiles scripts,
+then reports all seven Mod Settings native classes and inkActionName.ToName
+missing. RED4ext's ValidateScripts hook displays that validation failure and
+terminates the process. This explains the recorded startup termination; no
+access-violation instruction or matching minidump is claimed. See the separate
+mod-settings-startup-2026-10-25-forensics.txt record for captured log, object
+and PDB evidence.
+
+The installed failing DLL matched the previous workspace build exactly:
+  1854538d22dc7dbccd22218ea41c49da98cc60a2c6a67c5830636ec6227e7b6b
+The compiler never instantiated RedLib's inline static template registrars:
+RTTI_DEFINE_CLASS/RTTI_EXPAND_CLASS only specialized their builders. The old
+fixture constructed a registrar manually and therefore bypassed this defect.
+Script compilation alone likewise cannot check the game's native registry.
+
+The managed RedLib overlay now takes a retained address of each class or
+expansion registrar after its builder specialization, using the technique
+already present in Codeware's RedLib. Clang emits their initialization, while
+inline identity prevents duplicate registration across translation units.
+The upstream dependency and source Gitlinks remain unchanged. The overlay
+was exported and reconstructed through scripts/mod_settings.py, which also
+updated its checksum; no patch hash was edited manually.
+
+Validation of this correction:
+* Actual declaration macros and registrar templates, included in two TUs:
+  old overlay exits 42 with "declared RTTI classes and expansions discovered
+  exactly once across translation units"; fixed overlay passes. Engine-facing
+  probe operations are replaced with counters; discovery is production code.
+* A private RED4ext.dll shim loads a copied actual plugin DLL and calls Main
+  with fake loader services. The previously installed DLL exits 42 because
+  its registration/description queues are empty. The rebuilt DLL queues both
+  callbacks and unloads all hooks successfully. Engine class callbacks are
+  deliberately not invoked by this check, and no game DLL is loaded.
+* Release build passed; the DLL now includes all seven RTTI class names and
+  ToName. Packaged packed.reds/module.reds compiled against the copied vanilla
+  2.5 cache. All 90 Python tests passed (16 optional checks skipped); independent
+  patch reconstruction, package verification and six unique address matches
+  also passed.
+
+The existing dist/release manifest referenced absent ZIPs, so collection was
+performed in dist/mod-settings-fixed without replacing that distribution:
+  ModSettings-0.2.21-game2.5.zip
+  SHA256: 790d32539a923fc00b06f71ac4644f0df1e480b9177f83f9eaf39854eeccc298
+  DLL SHA256: 6df3d1f98ed836a31e93efc9ee7b6fe3f746ca8c749e3516e75cd26c0a64acc0
+
+Reproduce the DLL discovery and isolated script compile after the build:
+  python3 scripts/test-mod-settings.py --runner wine \
+    --plugin-dll build/plugins/release/bin/mod_settings.dll \
+    --runtime-zip dist/mod-settings-fixed/ModSettings-0.2.21-game2.5.zip \
+    --scc-dir /path/to/copied/compiler \
+    --vanilla-cache /path/to/copied/vanilla/final.redscripts
+
+This is a verified correction of the missing-registration defect, not a game
+startup or gameplay pass. Game/MO2 files were not modified. Actual engine RTTI
+registration, settings interaction and persistence still require a game test.
+Upstream PR 33 independently addresses the older callback/script layouts:
+  https://github.com/jackhumbert/mod_settings/pull/33
+PR 34 reports a separate stale menu-resource issue (missing 2.5 menu entries):
+  https://github.com/jackhumbert/mod_settings/pull/34
+That resource refresh is not included in this focused startup repair. The
+existing archive and its earlier documented digest remain unchanged; menu
+compatibility must not be inferred from successful native discovery.

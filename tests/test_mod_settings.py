@@ -209,7 +209,7 @@ class RedLibOverlay(unittest.TestCase):
 
 @unittest.skipUnless(os.environ.get('CP2077_MOD_SETTINGS_HARNESS'), 'set CP2077_MOD_SETTINGS_HARNESS for the native fixture')
 class NativeRuntime(unittest.TestCase):
-    def test_retail_callbacks_and_hook_rollback(self):
+    def test_declarative_discovery_retail_callbacks_and_hook_rollback(self):
         runner = shlex.split(os.environ.get('CP2077_MOD_SETTINGS_RUNNER', ''))
         result = subprocess.run([*runner, os.environ['CP2077_MOD_SETTINGS_HARNESS']],
                                 capture_output=True, text=True, timeout=45)

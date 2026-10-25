@@ -20,9 +20,12 @@ def main():
     parser.add_argument('--scc-dir', type=Path, help='Directory containing scc.exe and scc_lib.dll')
     parser.add_argument('--vanilla-cache', type=Path, help='Vanilla 2.5 final.redscripts to copy for an isolated compile')
     parser.add_argument('--runtime-zip', type=Path, help='Mod Settings runtime archive (default: current dist/release package)')
+    parser.add_argument('--plugin-dll', type=Path, help='Also check DLL discovery during Main with a private fake loader')
     args = parser.parse_args()
     if bool(args.scc_dir) != bool(args.vanilla_cache) or (args.scc_dir and not args.runner):
         parser.error('--scc-dir and --vanilla-cache require each other and --runner')
+    if args.plugin_dll and not args.runner:
+        parser.error('--plugin-dll requires --runner')
     output = args.output.resolve()
     if not output.is_relative_to(c.ROOT / 'build'):
         parser.error('--output must stay under build/')
@@ -43,10 +46,17 @@ def main():
         if wine:
             env.update(WINEPREFIX=str(output / 'wine-prefix'), WINEDEBUG='-all',
                        WINEDLLOVERRIDES='winemenubuilder.exe=d')
+        def platform_path(path):
+            return 'Z:' + str(path.resolve()).replace('/', '\\') if wine else str(path)
         with (output / 'runtime.log').open('w') as log:
-            subprocess.run([*runner, str(build / 'mod-settings-runtime.exe')], env=env,
+            command = [*runner, str(build / 'mod-settings-runtime.exe')]
+            if args.plugin_dll:
+                plugin = build / 'plugin-under-test.dll'
+                shutil.copyfile(args.plugin_dll, plugin)
+                command.append(platform_path(plugin))
+            subprocess.run(command, env=env,
                            stdout=log, stderr=subprocess.STDOUT, check=True, timeout=60)
-        print('Native callback and hook regressions passed.')
+        print('Native RTTI discovery, callback and hook regressions passed.')
         if args.scc_dir:
             version = c.config()['projects']['mod-settings']['version']
             archive = (args.runtime_zip or c.ROOT / 'dist/release' /
@@ -68,8 +78,6 @@ def main():
                 with zipfile.ZipFile(archive) as packed:
                     for name in ['packed.reds', 'module.reds']:
                         (scripts / name).write_bytes(packed.read('red4ext/plugins/mod_settings/' + name))
-                def platform_path(path):
-                    return 'Z:' + str(path).replace('/', '\\') if wine else str(path)
                 compiled = root / 'compiled.redscripts'
                 command = [*runner, str(root / 'scc.exe'), '-compile', platform_path(scripts.parent),
                            '-outputCacheFile', platform_path(compiled)]

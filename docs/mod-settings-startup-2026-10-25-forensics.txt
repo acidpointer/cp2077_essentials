@@ -1,0 +1,154 @@
+Mod Settings startup failure: independent forensic record
+========================================================
+
+Date: 2026-10-25. Target: Cyberpunk 2077 2.50 / 3.0.88.46235,
+RED4ext 1.31.0, ModSettings-0.2.21-game2.5.
+
+Finding
+-------
+The new Mod Settings source port omits native RTTI registration when built
+with Clang. Its RedLib declaration macros do not require the inline static
+ClassDefinition/ClassExpansion registrar members to be instantiated. The
+installed DLL consequently never registers its seven native classes or the
+inkActionName.ToName extension. Scripts compile, but the game's subsequent
+native-definition validation fails. RED4ext's validation hook displays the
+failure and calls TerminateProcess(GetCurrentProcess(), 1).
+
+This explains the recorded 03:05:39 startup attempt. It is a defect in our
+source port. The user confirmed that only the new game2.5 package was enabled;
+the old v0.2.21 binary's callback-layout defect is a separate investigation.
+The earlier 03:04 log alone did not identify a faulting instruction. Do not
+assign an exception address or claim a matching minidump was recovered.
+
+Evidence preservation
+---------------------
+Raw local captures, original binary/PDB/object files, symbol dumps and hashes:
+  build/mod-settings-startup-root-cause-20261025/
+
+The captured installed DLL came from this path relative to the MO2 instance:
+  mods/ModSettings-0.2.21-game2.5/red4ext/plugins/mod_settings/mod_settings.dll
+Size: 189440 bytes.
+SHA256: 1854538d22dc7dbccd22218ea41c49da98cc60a2c6a67c5830636ec6227e7b6b
+It matched build/plugins/release/bin/mod_settings.dll before the concurrent
+fix/rebuild. Raw captures are generated local evidence, not release payloads.
+
+Baseline root revision: e845a9ad9a7a6198caf4e2acf713fece551bf0af
+Baseline RedLib overlay: patches/mod-settings-redlib/001-sdk-api.patch
+SHA256: 3279ab4c191e3df213fe7ff68ca3c9f1143790c3e1cc09a17516fa5fc94830d0
+The baseline lock and patch were captured with read-only git show, so later
+working-tree edits do not alter this record's input identity.
+
+Observed startup sequence
+-------------------------
+Times below are local UTC+03:00 on 2026-10-25. Source paths are relative to
+the MO2 instance; excerpts omit host-specific game paths.
+
+overwrite/Root/red4ext/logs/red4ext-2026-10-25-03-05-39.log
+SHA256: b51ea7100198ecfcd5d888564bdd7374f692dc0c6a524fb28d071758a62a8fe7
+  03:05:41.276 Mod Settings (version: 0.2.21) has been loaded.
+  03:05:41.841 7 plugin(s) loaded.
+  03:05:41.850 RED4ext has been started.
+  03:05:44.236 scc invoked successfully, 26438 source refs were registered.
+  03:05:44.671 Script validation errors in mod_settings/packed.reds:
+    line   3: missing native function ToName in inkActionName
+    line 299: missing native class ModSettings
+    line 324: missing native class ModConfigVarBool
+    line 333: missing native class ModConfigVarName
+    line 339: missing native class ModConfigVarKeyBinding
+    line 357: missing native class ModConfigVarFloat
+    line 366: missing native class ModConfigVarInt32
+    line 375: missing native class ModConfigVarEnum
+
+overwrite/r6/logs/redscript_rCURRENT.log
+SHA256: bfadbc7a1183812bdd0b14d5f541d526ac778f625f641a4e28cf0226df1d0a3f
+  03:05:44 Compilation complete.
+  03:05:44 Output successfully saved to r6/cache/final.redscripts.modded.
+
+overwrite/red4ext/logs/mod_settings-2026-10-25-03-05-41.log
+SHA256: ed4e127c6d881179fbc1ded153733fe19bbe612236b0546352011cd69cb68b97
+  03:05:41.275 Starting up Mod Settings 0.2.21.
+  03:05:43.682 No user settings file, using defaults.
+The latter message is reached through the script-data hook. The plugin was
+running; successful DLL admission did not establish successful type discovery.
+
+Source-to-binary explanation
+----------------------------
+1. Main.cpp calls Red::TypeInfoRegistrar::RegisterDiscovered() after installing
+   hooks and registering the scripts. The call is present; adding it again
+   would not populate the missing discovery queues.
+
+2. The seven class declarations are in ModSettings.cpp and ModConfigVar.hpp;
+   ActionNameEx.hpp declares the extension. The baseline generated RedLib
+   include/Red/TypeInfo/Macros/Definition.hpp specializes TypeInfoBuilder but
+   never references ClassDefinition<T>::s_registrar or the corresponding
+   ClassExpansion registrar. Those inline static template members contain
+   the constructor side effects that append registration/description callbacks.
+
+3. llvm-nm --demangle on the captured Main.cpp.obj and ModSettings.cpp.obj
+   finds the discovery callback vectors but no s_registrar, ClassDefinition
+   or ClassExpansion symbols. The original PDB's public-symbol dump also
+   contains none of those registrars. The installed DLL contains none of the
+   seven complete NUL-terminated RTTI class names or the ToName method name.
+   String absence is supporting evidence; the source, object symbols and
+   runtime validation errors together establish the defect. The absence in
+   compiler output also rules out explaining this solely as linker stripping.
+
+4. The existing Codeware port already accounts for this compiler behavior in
+   sources/codeware/lib/Red/TypeInfo/Macros/Definition.hpp. It takes the address
+   of each declaration's registrar in a used variable, requiring instantiation
+   and preserving that reference under the Windows linker. That adaptation
+   was missing from Mod Settings' independent RedLib overlay.
+
+5. sources/red4ext/src/dll/Hooks/ValidateScripts.cpp records each native
+   validation error, builds the failure message and invokes
+   SHOW_MESSAGE_BOX_AND_EXIT_FILE_LINE. Its definition in Utils.hpp calls
+   TerminateProcess(GetCurrentProcess(), 1) after the message box. These
+   observed errors therefore lead to an intentional startup termination;
+   a native access-violation minidump is not needed to explain this attempt.
+
+Compiler references, checked 2026-10-25:
+  https://eel.is/c++draft/temp.inst#3
+  https://eel.is/c++draft/temp.inst#4
+  Class-template instantiation does not itself instantiate static member
+  definitions; a member's initialization side effects require an actual use
+  that needs its definition.
+  https://clang.llvm.org/docs/AttributeReference.html#used
+  Clang's used attribute requires emission and prevents linker section
+  garbage collection on COFF. The ELF behavior is different and is not the
+  relevant target here.
+
+Validation gap and correction
+-----------------------------
+The preexisting native regression constructed TypeInfoRegistrar explicitly.
+It tested copying/invoking the retail-sized callbacks and transactional hook
+lifecycle, but bypassed the real declaration macros. The separate redscript
+compile validated script syntax/type declarations, without an engine RTTI
+registry to verify their native implementations. Both could pass with this
+DLL defect present.
+
+A separate user-confirmed session is implementing the correction and extending
+the regression. During this investigation its actual-macro, multiple-translation-
+unit probe produced:
+  FAIL: declared RTTI classes and expansions discovered exactly once across translation units
+That negative result and its probe sources were copied into the local evidence
+directory. This investigation did not author or run that other session's test,
+and does not claim its pending fix or rebuilt package has passed a game test.
+
+The correction belongs in the managed Mod Settings RedLib overlay: explicitly
+instantiate/preserve registrars for declarations and expansions, export the
+overlay through scripts/mod_settings.py, and rebuild the Mod Settings package.
+Validation must exercise the actual declaration macros, including one-time
+registration when a header is included by multiple translation units. Inspect
+the rebuilt DLL for the seven class registrars and extension, then perform a
+separately authorized game startup test to check native validation and later
+settings behavior. No compatibility shim is needed to correct this source-
+port registration defect.
+
+Scope
+-----
+Only local forensic evidence and this report were written by this investigation.
+No game/MO2 files were changed, no game was launched, and no Git state was
+mutated. Concurrent source/test changes belong to the other active session.
+The known ArchiveXL journal-hook limitation and CET tweakdbstr load error are
+not explanations for the demonstrated missing Mod Settings registrations;
+their independent runtime effects are outside this finding.

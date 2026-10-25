@@ -316,7 +316,7 @@
     "patches": [
       {
         "path": "patches/mod-settings-redlib/001-sdk-api.patch",
-        "sha256": "3279ab4c191e3df213fe7ff68ca3c9f1143790c3e1cc09a17516fa5fc94830d0"
+        "sha256": "6ac48c06e376931b1c1dd9ca9aa09653020b84ed2f17763aa4b40f1624ba315a"
       }
     ]
   }
